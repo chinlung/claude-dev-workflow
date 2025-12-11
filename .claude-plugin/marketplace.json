@@ -1,0 +1,19 @@
+{
+  "name": "scl-claude-plugins",
+  "owner": {
+    "name": "scl@hanchih.com"
+  },
+  "metadata": {
+    "description": "Claude Code plugins collection by scl",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "dev-workflow",
+      "source": "./plugins/dev-workflow",
+      "description": "完整的開發工作流程系統，從需求分析到品質檢查的自動化流程。靈感來自 Kiro IDE 的 8 角色工作流程。",
+      "version": "1.0.0",
+      "keywords": ["workflow", "development", "automation", "code-review", "testing", "architecture"]
+    }
+  ]
+}
