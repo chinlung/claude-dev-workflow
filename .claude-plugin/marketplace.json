@@ -14,6 +14,13 @@
       "description": "完整的開發工作流程系統，從需求分析到品質檢查的自動化流程。靈感來自 Kiro IDE 的 8 角色工作流程。",
       "version": "1.0.0",
       "keywords": ["workflow", "development", "automation", "code-review", "testing", "architecture"]
+    },
+    {
+      "name": "multi-agent-debate",
+      "source": "./plugins/multi-agent-debate",
+      "description": "多代理辯證系統 - 透過多角度思考與批判審查，產出最優實踐方案",
+      "version": "1.0.0",
+      "keywords": ["multi-agent", "debate", "decision-making", "planning", "architecture"]
     }
   ]
 }
