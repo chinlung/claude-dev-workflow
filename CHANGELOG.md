@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2025-12-19
+
+### Added
+- **Multi-Agent Debate Plugin**: A dialectical system for multi-perspective decision making
+  - `/debate` command for initiating debates
+  - 5 specialized agents:
+    - Orchestrator: Analyzes requirements and configures perspectives
+    - Perspective A/B/C: Proposes solutions from different angles
+    - Critic: Reviews proposals and provides quantitative scoring
+  - Smart perspective configuration based on requirement type
+  - Quantitative scoring system (30-point scale)
+  - Consensus-driven decision making (≥2 agents must agree)
+  - Iterative refinement through multiple debate rounds
+  - User participation at key decision points
+- Updated README to document both plugins in the collection
+- Traditional Chinese documentation for multi-agent-debate
+
 ## [1.1.0] - 2025-12-11
 
 ### Added

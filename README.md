@@ -1,10 +1,40 @@
-# Claude Dev Workflow Plugin
+# Claude Code Plugins Collection
 
 [English](README.md) | [繁體中文](README.zh-TW.md)
 
+A collection of powerful plugins for Claude Code, featuring automated development workflows and multi-perspective decision-making systems.
+
+## Available Plugins
+
+| Plugin | Description | Command |
+|--------|-------------|---------|
+| [Dev Workflow](#dev-workflow-plugin) | Complete development workflow from requirements to QA | `/dev-workflow` |
+| [Multi-Agent Debate](#multi-agent-debate-plugin) | Multi-perspective analysis with critical review | `/debate` |
+
+## Installation
+
+```bash
+# Add the marketplace
+/plugin marketplace add chinlung/claude-dev-workflow
+
+# Install all plugins
+/plugin install dev-workflow@scl-claude-plugins
+/plugin install multi-agent-debate@scl-claude-plugins
+```
+
+Or install directly:
+
+```bash
+/plugin install chinlung/claude-dev-workflow
+```
+
+---
+
+# Dev Workflow Plugin
+
 A comprehensive development workflow system for Claude Code, automating the journey from requirements analysis to quality assurance.
 
-Inspired by the 8-role workflow system from [Kiro IDE](https://kiro.dev), designed by [Pahud Hsieh](https://www.facebook.com/pahud.hsieh). Watch the [tutorial video](https://www.youtube.com/watch?v=RdrRHXbXZF8) to learn more about the original concept. This plugin adapts the workflow for Claude Code's architecture.
+Inspired by the 8-role workflow system from [Kiro IDE](https://kiro.dev), designed by [Pahud Hsieh](https://www.facebook.com/pahud.hsieh). Watch the [tutorial video](https://www.youtube.com/watch?v=RdrRHXbXZF8) to learn more about the original concept.
 
 ## Features
 
@@ -15,22 +45,6 @@ Inspired by the 8-role workflow system from [Kiro IDE](https://kiro.dev), design
 - **Progress Tracking** with TodoWrite
 - **Flexible Execution**: Full workflow, single step, or resume from checkpoint
 - **Language Agnostic**: Works with any programming language
-
-## Installation
-
-```bash
-# Add the marketplace
-/plugin marketplace add chinlung/claude-dev-workflow
-
-# Install the plugin
-/plugin install dev-workflow@scl-claude-plugins
-```
-
-Or install directly:
-
-```bash
-/plugin install chinlung/claude-dev-workflow
-```
 
 ## Usage
 
@@ -132,9 +146,130 @@ docs/task-{YYYYMMDD-HHMM}-{brief-name}/
 └─────────────────┘
 ```
 
+---
+
+# Multi-Agent Debate Plugin
+
+A multi-agent dialectical system that generates optimal solutions through multi-perspective analysis and critical review.
+
+## Features
+
+- **5 Specialized Agents** working collaboratively
+- **Smart Perspective Configuration** based on requirement type
+- **Quantitative Scoring System** (30-point scale)
+- **Consensus-Driven Decision Making** (≥2 agents must agree)
+- **Iterative Refinement** through multiple debate rounds
+- **User Participation** at key decision points
+
+## Usage
+
+### Basic Usage
+
+```bash
+/debate Design a caching strategy for the API layer
+```
+
+### With Options
+
+```bash
+/debate <requirement> [--max-rounds N] [--perspectives "angle1,angle2,angle3"]
+```
+
+**Examples:**
+```bash
+/debate Should we use microservices or monolith for the new project?
+/debate --max-rounds 5 How to optimize database query performance?
+/debate --perspectives "security,performance,maintainability" Design the authentication system
+```
+
+## Agents
+
+| Agent | Role |
+|-------|------|
+| Orchestrator | Analyzes requirements, configures perspectives, manages workflow |
+| Perspective A | Proposes solutions from assigned angle |
+| Perspective B | Proposes solutions from assigned angle |
+| Perspective C | Proposes solutions from assigned angle |
+| Critic | Reviews all proposals, raises challenges, provides quantitative scoring |
+
+## Workflow
+
+```
+┌─────────────────┐
+│  Orchestrator   │ → Analyze & Configure Perspectives
+└────────┬────────┘
+         ▼
+┌─────────────────────────────────────┐
+│  Perspective A │ B │ C  (Parallel)  │ → Initial Proposals
+└────────┬────────────────────────────┘
+         ▼
+┌─────────────────┐
+│     Critic      │ → Review & Challenge
+└────────┬────────┘
+         ▼
+┌─────────────────────────────────────┐
+│  Perspective A │ B │ C  (Parallel)  │ → Rebuttals & Revisions
+└────────┬────────────────────────────┘
+         ▼
+┌─────────────────┐
+│ Consensus Check │ → ≥2 agree? → Done
+└────────┬────────┘   Otherwise ↩️ Back to Critic
+         ▼
+┌─────────────────┐
+│  User Decision  │ → Continue / Adopt / Intervene / Reset
+└─────────────────┘
+```
+
+## Smart Perspective Configuration
+
+The Orchestrator automatically selects perspectives based on requirement type:
+
+| Requirement Type | Perspective A | Perspective B | Perspective C |
+|-----------------|---------------|---------------|---------------|
+| Architecture Design | Performance-First | Maintainability-First | Scalability-First |
+| Feature Development | Fast Delivery | Quality-First | UX-First |
+| Performance Optimization | Algorithm Optimization | Caching Strategy | Architecture Refactoring |
+| Bug Fixing | Quick Patch | Root Cause Fix | Defensive Refactoring |
+| Technology Selection | Mainstream & Stable | Emerging Tech | Custom Solution |
+| Security Issues | Least Privilege | Defense in Depth | Zero Trust |
+| User Experience | Simplify Flow | Add Guidance | Customization |
+| Cost Control | Minimum Cost | Balanced Approach | Long-term Investment |
+| Refactoring | Incremental | Complete Rewrite | Hybrid Strategy |
+
+## Scoring Criteria
+
+The Critic evaluates each proposal on three dimensions (10 points each, 30 total):
+
+| Dimension | Criteria |
+|-----------|----------|
+| **Feasibility** | Technical achievability, resource availability, timeline reasonability |
+| **Benefit** | Problem resolution degree, positive value, ROI |
+| **Risk Control** | Risk identification completeness, mitigation reliability, failure impact scope |
+
+**Score Guide:**
+- 9-10: Excellent - Complete solution / Mature technology
+- 7-8: Good - Mostly solved / Minor preparation needed
+- 5-6: Fair - Partially solved / Challenges exist but manageable
+- 3-4: Poor - Limited benefit / Significant resources required
+- 1-2: Very Poor - Minimal benefit / Questionable feasibility
+
+## Use Cases
+
+- Architecture design decisions
+- Feature development planning
+- Performance optimization strategies
+- Bug fix approaches
+- Technology stack selection
+- Security solution design
+- UX improvement strategies
+- Cost optimization plans
+- Refactoring task planning
+
+---
+
 ## Configuration
 
-The plugin works out of the box with any project. Each agent will adapt to your project's structure and conventions.
+Both plugins work out of the box with any project. Each agent adapts to your project's structure and conventions.
 
 For project-specific coding standards, consider creating a `CLAUDE.md` file in your project root with your team's guidelines.
 
@@ -148,6 +283,6 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## Acknowledgments
 
-- Inspired by the 8-role workflow system from [Kiro IDE](https://kiro.dev), designed by [Pahud Hsieh](https://www.facebook.com/pahud.hsieh)
+- Dev Workflow inspired by the 8-role workflow system from [Kiro IDE](https://kiro.dev), designed by [Pahud Hsieh](https://www.facebook.com/pahud.hsieh)
 - [Tutorial video](https://www.youtube.com/watch?v=RdrRHXbXZF8) explaining the original workflow concept
 - Built for [Claude Code](https://claude.ai/code)
