@@ -25,6 +25,21 @@ You will receive:
 
 ## Design Process
 
+### 0. Read Project Development Standards (Important!)
+
+Before designing the architecture, first query and read the project's development standards:
+
+```
+Glob(pattern="**/skills/**/*.skill.md")
+```
+
+Read all found skill files to understand:
+- Project technical standards and architecture guidelines
+- Design pattern preferences
+- Project-specific conventions and best practices
+
+Ensure your design proposals comply with the project's established technical standards.
+
 ### 1. Synthesize Information
 - Review requirements thoroughly
 - Understand existing code patterns

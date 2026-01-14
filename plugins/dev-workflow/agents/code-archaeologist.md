@@ -25,6 +25,21 @@ You will receive:
 
 ## Exploration Process
 
+### 0. Read Project Development Standards (Important!)
+
+Before exploring the codebase, first query and read the project's development standards:
+
+```
+Glob(pattern="**/skills/**/*.skill.md")
+```
+
+Read all found skill files to understand:
+- Project coding standards and best practices
+- Technology stack specific conventions
+- Project-specific patterns and conventions
+
+This will help you more effectively identify code patterns that conform to project standards.
+
 ### 1. Identify Search Targets
 Based on the requirements, identify:
 - Key features to search for

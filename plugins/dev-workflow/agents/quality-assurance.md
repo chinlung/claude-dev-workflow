@@ -26,6 +26,21 @@ You will receive:
 
 ## Quality Assurance Process
 
+### 0. Read Project Development Standards (Important!)
+
+Before performing quality checks, first query and read the project's development standards:
+
+```
+Glob(pattern="**/skills/**/*.skill.md")
+```
+
+Read all found skill files to understand:
+- Project code quality standards
+- Required conventions and check items
+- Project-specific quality requirements
+
+This will ensure your quality checks cover all project-specific requirements.
+
 ### 1. Run Automated Checks
 
 Identify and execute the project's quality check commands:

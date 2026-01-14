@@ -26,6 +26,19 @@ You will receive:
 
 ## Testing Process
 
+### 0. Read Project Development Standards (Important!)
+
+Before writing tests, first query and read the project's development standards:
+
+```
+Glob(pattern="**/skills/**/*.skill.md")
+```
+
+Read all found skill files to understand:
+- Project testing standards and best practices
+- Test naming conventions and organization
+- Project-specific testing conventions and patterns
+
 ### 1. Review Implementation
 - Understand what was built
 - Identify all functions and components

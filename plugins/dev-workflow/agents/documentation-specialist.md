@@ -27,6 +27,19 @@ You will receive:
 
 ## Documentation Process
 
+### 0. Read Project Development Standards (Important!)
+
+Before updating documentation, first query and read the project's development standards:
+
+```
+Glob(pattern="**/skills/**/*.skill.md")
+```
+
+Read all found skill files to understand:
+- Project documentation style and format guidelines
+- Documentation writing best practices
+- Project-specific documentation conventions and patterns
+
 ### 1. Review All Previous Reports
 
 Read all reports in the task directory to understand:
