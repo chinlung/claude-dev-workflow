@@ -1,6 +1,6 @@
 {
   "name": "dev-workflow",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Complete development workflow system with 6 specialized agents: requirements analysis, code exploration, architecture design, implementation, testing, and quality assurance.",
   "author": {
     "name": "scl@hanchih.com"

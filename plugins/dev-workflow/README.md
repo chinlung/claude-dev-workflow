@@ -135,6 +135,7 @@ plugins/dev-workflow/
 - **工具鏈適應**：自動識別 npm、yarn、pytest、go test 等測試/建構工具
 
 每個 Agent 在執行前會：
-1. 檢查專案的 `CLAUDE.md`、`CONTRIBUTING.md` 等標準文件
-2. 探索現有代碼模式
-3. 適配專案的技術棧和慣例
+1. **讀取專案開發規範**：查詢 `**/skills/**/*.skill.md` 了解專案特定的開發標準和最佳實踐
+2. 檢查專案的 `CLAUDE.md`、`CONTRIBUTING.md` 等標準文件
+3. 探索現有代碼模式
+4. 適配專案的技術棧和慣例
