@@ -37,7 +37,19 @@ allowed-tools: Read, Write, Bash, AskUserQuestion, Glob
 
 ## 函數簽名
 
+```
 [語言] 精確的函數/方法簽名，包含所有參數型別和回傳值型別
+```
+
+範例（Rust）：
+```rust
+fn parse_amount(input: &str, currency: Currency) -> Result<Money, ParseError>
+```
+
+範例（PHP）：
+```php
+public function calculateTax(float $amount, string $region): float|TaxException
+```
 
 ---
 
@@ -79,13 +91,17 @@ allowed-tools: Read, Write, Bash, AskUserQuestion, Glob
 | 最大合法值 | [預期] | |
 | 最小非法值（恰好超出） | [預期 Error] | |
 | null / nil / None | [預期] | |
+| [其他邊界] | [預期] | |
 
 ---
 
 ## 不變量（Invariants）
 
+> 函數執行前後必須成立的條件。
+
 **前置條件（Preconditions）**：
 - [條件 1]
+- [條件 2]
 
 **後置條件（Postconditions）**：
 - [條件 1：如果成功，則...]
@@ -99,12 +115,15 @@ allowed-tools: Read, Write, Bash, AskUserQuestion, Glob
 
 **冪等性**：重複執行同一操作是否應產生相同結果？
 - [是 / 否 / 不適用]
+- 若是，說明冪等性的範圍和條件：
 
 **順序依賴**：操作順序是否影響結果？
 - [是 / 否 / 不適用]
+- 若是，說明合法的操作順序：
 
 **並發安全**：是否需要支援多執行緒/多 process 同時呼叫？
 - [是 / 否 / 不適用]
+- 若是，說明同步策略或預期行為：
 
 ---
 
@@ -114,6 +133,7 @@ allowed-tools: Read, Write, Bash, AskUserQuestion, Glob
 |------|------|------|
 | 時間複雜度 | [要求或「無要求」] | |
 | 空間複雜度 | [要求或「無要求」] | |
+| 最大執行時間 | [要求或「無要求」] | |
 
 ---
 
@@ -129,8 +149,16 @@ allowed-tools: Read, Write, Bash, AskUserQuestion, Glob
 
 ## 不在範圍內
 
+> 明確列出，防止 implementers 過度實作，也防止 reviewers 針對範圍外的事情扣分。
+
 - [項目 1]
 - [項目 2]
+
+---
+
+## 參考資料
+
+- [相關文件、標準、業界慣例的連結]
 
 ---
 
@@ -163,10 +191,21 @@ allowed-tools: Read, Write, Bash, AskUserQuestion, Glob
 
 ### 簽核
 
-- [ ] **implementer-a**：同意規格
-- [ ] **implementer-b**：同意規格
-- [ ] **critic**：規格可測試，邊界條件足夠明確
-- [ ] **adversary**：邊界條件足夠明確，可進行攻擊測試
+- [ ] **implementer-a**：同意規格，無保留意見（或列出保留意見）
+  - 簽核時間：
+  - 保留意見（如有）：
+
+- [ ] **implementer-b**：同意規格，無保留意見（或列出保留意見）
+  - 簽核時間：
+  - 保留意見（如有）：
+
+- [ ] **critic**：規格可測試，邊界條件足夠明確，無歧義
+  - 簽核時間：
+  - 備註：
+
+- [ ] **adversary**：邊界條件足夠明確，可以進行攻擊測試
+  - 簽核時間：
+  - 備註：
 
 **Phase 1 完成時間**：_______________
 
@@ -175,7 +214,12 @@ allowed-tools: Read, Write, Bash, AskUserQuestion, Glob
 ## Phase 2：實作完成確認
 
 - [ ] **implementer-a**：實作完成，unit test 通過，IMPL_A_REPORT.md 已提交
+  - 完成時間：
+  - 已知風險摘要（來自 REPORT）：
+
 - [ ] **implementer-b**：實作完成，unit test 通過，IMPL_B_REPORT.md 已提交
+  - 完成時間：
+  - 已知風險摘要（來自 REPORT）：
 
 **Phase 2 完成時間**：_______________
 
@@ -186,20 +230,25 @@ allowed-tools: Read, Write, Bash, AskUserQuestion, Glob
 ### Critic 審查結論
 
 - [ ] **critic**：通過審查——所有已知問題均為 severity <= 1
+  - 簽核時間：
+  - 審查範圍聲明：
   - 發現的問題數量：Severity 5: ___ / 4: ___ / 3: ___ / 2: ___ / 1: ___
+  - 已修復確認（如有）：
 
 ### Adversary 攻擊結論
 
-- [ ] **adversary**：3 輪攻擊均失敗
+- [ ] **adversary**：3 輪攻擊均失敗，無法找到可利用的漏洞
+  - 簽核時間：
   - Round 1 邊界攻擊：攻擊 ___ 次，成功 ___ 次
   - Round 2 語意攻擊：攻擊 ___ 次，成功 ___ 次
   - Round 3 假設攻擊：攻擊 ___ 次，成功 ___ 次
+  - 攻擊範圍限制（未涵蓋的面向）：
 
 ### 修復循環記錄
 
-| 問題編號 | Severity | 修復者 | 重審結果 |
-|---------|---------|-------|---------|
-| | | | |
+| 問題編號 | Severity | 退回時間 | 修復者 | 重審時間 | 重審結果 |
+|---------|---------|---------|-------|---------|---------|
+| | | | | | |
 
 **Phase 3 完成時間**：_______________
 
@@ -208,7 +257,9 @@ allowed-tools: Read, Write, Bash, AskUserQuestion, Glob
 ## Phase 4：整合完成
 
 - [ ] **verifier**：最終實作完成，VERIFICATION.md 已提交
+  - 完成時間：
   - SPEC.md 需求覆蓋率：___/___（100% 才能簽核）
+  - 殘留的不確定性（來自 VERIFICATION.md）：
 
 **Phase 4 完成時間**：_______________
 
