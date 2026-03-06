@@ -10,6 +10,7 @@ A collection of powerful plugins for Claude Code, featuring automated developmen
 |--------|-------------|---------|
 | [Dev Workflow](#dev-workflow-plugin) | Complete development workflow from requirements to QA | `/dev-workflow` |
 | [Multi-Agent Debate](#multi-agent-debate-plugin) | Multi-perspective analysis with critical review | `/debate` |
+| [High-Precision Dev](#high-precision-dev-plugin) | Safety-critical code with p^4 error rate compression | `/init`, `/start` |
 
 ## Installation
 
@@ -20,6 +21,7 @@ A collection of powerful plugins for Claude Code, featuring automated developmen
 # Install all plugins
 /plugin install dev-workflow@scl-claude-plugins
 /plugin install multi-agent-debate@scl-claude-plugins
+/plugin install high-precision-dev@scl-claude-plugins
 ```
 
 Or install directly:
@@ -267,9 +269,93 @@ The Critic evaluates each proposal on three dimensions (10 points each, 30 total
 
 ---
 
+---
+
+# High-Precision Dev Plugin
+
+A multi-agent development mode that compresses single-agent error rate from p to p^4 through epistemic division of labor. Designed for safety-critical code: cryptography, financial calculations, data validation, and security-critical logic.
+
+## Intensity Spectrum
+
+This plugin is the highest level of a three-level intensity spectrum:
+
+```
+Single Agent (~1x)  →  /debate (~4-5x)  →  /start (~12-18x)
+General CRUD           Decisions            Safety-critical code
+```
+
+**Chain them**: Use `/debate` to decide What/Why, then `/start` to implement How.
+
+## Usage
+
+### Step 1: Initialize
+
+```bash
+/init parse_amount
+```
+
+This creates `SPEC.md` and `CONSENSUS.md` templates. Fill in SPEC.md completely (especially the boundary conditions table).
+
+### Step 2: Start
+
+```bash
+/start ./SPEC.md
+```
+
+This runs the full 4-phase workflow:
+
+1. **Spec Review** — All agents review SPEC.md for ambiguity
+2. **Dual Implementation** — Two implementers work independently in isolated worktrees
+3. **Adversarial Review** — Critic finds bugs + Adversary attacks with 3 rounds
+4. **Integration** — Verifier merges the best parts with full SPEC.md coverage
+
+## Agents
+
+| Agent | Role | Output |
+|-------|------|--------|
+| Implementer A | Independent defensive implementation | `IMPL_A_REPORT.md` |
+| Implementer B | Independent defensive implementation | `IMPL_B_REPORT.md` |
+| Critic | Find bugs using severity 1-5 scale | `CRITIQUE.md` |
+| Adversary | 3-round red team attack (boundary, semantic, assumption) | `ATTACKS.md` |
+| Verifier | Compare, merge, verify against SPEC.md | `VERIFICATION.md` |
+
+## Workflow
+
+```
+┌─────────────────────────────────────┐
+│  All Agents (except Verifier)       │ → Spec Review
+└────────────────┬────────────────────┘
+                 ▼
+┌─────────────────────────────────────┐
+│  Implementer A │ B  (Parallel)      │ → Independent Implementation
+│  (Worktree Isolation)               │
+└────────────────┬────────────────────┘
+                 ▼
+┌─────────────────────────────────────┐
+│  Critic │ Adversary  (Parallel)     │ → Adversarial Review
+└────────────────┬────────────────────┘
+    severity ≥ 3 │ ↩️ Fix cycle (max 3)
+                 ▼
+┌─────────────────────────────────────┐
+│           Verifier                  │ → Final Integration
+└─────────────────────────────────────┘
+```
+
+## When to Use
+
+| Use This | Use `/debate` Instead | Use Single Agent |
+|----------|-----------------------|------------------|
+| Core algorithms | Architecture decisions | General CRUD |
+| Cryptography | Technology selection | UI adjustments |
+| Financial calculations | Design trade-offs | Config changes |
+| Data validation | Refactoring strategy | Quick prototypes |
+| Security-critical logic | Spec validation | |
+
+---
+
 ## Configuration
 
-Both plugins work out of the box with any project. Each agent adapts to your project's structure and conventions.
+All plugins work out of the box with any project. Each agent adapts to your project's structure and conventions.
 
 For project-specific coding standards, consider creating a `CLAUDE.md` file in your project root with your team's guidelines.
 

@@ -21,6 +21,13 @@
       "description": "多代理辯證系統 - 透過多角度思考與批判審查，產出最優實踐方案",
       "version": "1.0.0",
       "keywords": ["multi-agent", "debate", "decision-making", "planning", "architecture"]
+    },
+    {
+      "name": "high-precision-dev",
+      "source": "./plugins/high-precision-dev",
+      "description": "高精確度多 Agent 開發模式 - 透過認識論分工將錯誤率從 p 壓縮至 p^4",
+      "version": "1.0.0",
+      "keywords": ["high-precision", "multi-agent", "adversarial-review", "verification", "safety-critical"]
     }
   ]
 }
