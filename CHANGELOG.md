@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-03-06
+
+### Added
+- **High-Precision Dev Plugin**: Multi-agent development mode for safety-critical code
+  - `/high-precision-dev:init` command to scaffold SPEC.md and CONSENSUS.md
+  - `/high-precision-dev:start` command to run the 4-phase verification workflow
+  - 5 specialized agents:
+    - Implementer A/B: Independent defensive implementation in isolated worktrees
+    - Critic: Systematic bug finding with severity 1-5 scale
+    - Adversary: 3-round red team attack (boundary, semantic, assumption)
+    - Verifier: Final integration with SPEC.md coverage verification
+  - Error rate compression from p to p^4 through epistemic division of labor
+  - Phase 3 fix cycle limit (max 3 iterations) with adversary re-attack
+  - Verifier Step Zero: checks CRITIQUE.md/ATTACKS.md before integration
+  - Three-level intensity spectrum documentation (single agent → /debate → /start)
+- Updated marketplace version to 1.1.0
+- Updated README with High-Precision Dev plugin documentation (EN + zh-TW)
+
 ## [1.2.0] - 2025-12-19
 
 ### Added

@@ -5,6 +5,24 @@
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [1.3.0] - 2026-03-06
+
+### 新增
+- **高精確度開發插件**：針對安全關鍵程式碼的多 Agent 開發模式
+  - `/high-precision-dev:init` 指令用於建立 SPEC.md 和 CONSENSUS.md 模板
+  - `/high-precision-dev:start` 指令用於執行 4 Phase 驗證工作流程
+  - 5 個專門代理人：
+    - 實作者 A/B：在隔離 worktree 中獨立進行防禦性實作
+    - 批評者：使用 severity 1-5 分級系統性找出問題
+    - 攻擊者：三輪紅隊攻擊（邊界、語意、假設）
+    - 驗證者：最終整合，100% SPEC.md 需求覆蓋驗證
+  - 透過認識論分工將錯誤率從 p 壓縮至 p^4
+  - Phase 3 修復循環上限（最多 3 次），含 adversary 重新攻擊
+  - 驗證者步驟零：整合前檢查 CRITIQUE.md/ATTACKS.md
+  - 三級強度光譜文件（單一 Agent → /debate → /start）
+- 更新 marketplace 版本至 1.1.0
+- 更新 README 加入高精確度開發插件文件（中英文）
+
 ## [1.2.0] - 2025-12-19
 
 ### 新增
