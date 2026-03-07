@@ -23,11 +23,13 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, TodoWrite, AskUserQues
 
 ### Phase 0：需求分析與角度配置
 
-使用 Task tool 調用 orchestrator agent：
+**如果使用者提供了 `--perspectives`**：直接使用使用者指定的三個角度，跳過 Orchestrator 呼叫。
+
+**否則**，使用 Task tool 調用 orchestrator agent：
 ```
 Task(
   subagent_type="multi-agent-debate:orchestrator",
-  prompt="需求描述：$ARGUMENTS\n\n請分析需求並決定三個 Agent 的思考角度。"
+  prompt="需求描述：{需求描述}\n\n請分析需求並決定三個 Agent 的思考角度。"
 )
 ```
 
@@ -95,8 +97,8 @@ Task(
 
 檢查共識狀態：
 - ≥2 個 Agent 同意某方案 → 達成共識，進入 Phase 5
-- 未達成共識且 <10 輪 → 回到 Phase 2
-- 達到 10 輪仍未達成 → Critic 最終裁決
+- 未達成共識且未達 {max-rounds} 輪 → 回到 Phase 2
+- 達到 {max-rounds} 輪仍未達成 → Critic 最終裁決
 
 ### Phase 5：使用者互動
 

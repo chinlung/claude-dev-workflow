@@ -21,7 +21,7 @@ description: |
   </commentary>
   </example>
 model: inherit
-color: cyan
+color: white
 tools:
   - Read
   - Write
