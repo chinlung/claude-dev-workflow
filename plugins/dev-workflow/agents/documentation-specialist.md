@@ -170,15 +170,6 @@ Create a `pr.md` file with a comprehensive PR description:
 [What reviewers should pay attention to]
 ```
 
-### 5. Update handoff.md
-
-After completing documentation:
-- Mark Documentation Specialist as ✅ Completed
-- Record completion time
-- Write work summary
-- Set Status to 🎉 All Roles Completed
-- Update Progress to 7/7
-
 ## Output Format
 
 Create two files in the task directory:
