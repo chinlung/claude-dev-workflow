@@ -1,5 +1,27 @@
 ---
-description: "Use this agent when writing and running tests for implemented features. This agent creates unit tests, integration tests, and ensures adequate test coverage. Trigger keywords: 'write tests', 'test coverage', 'unit tests', 'testing'."
+name: test-engineer
+description: |
+  Use this agent when writing and running tests for implemented features. This agent creates unit tests, integration tests, and ensures adequate test coverage.
+
+  <example>
+  Context: Feature implementation is complete, need to write tests
+  user: "Write comprehensive tests for the OAuth integration feature that was just implemented."
+  assistant: "I'll use the test-engineer agent to create unit and integration tests for the new feature."
+  <commentary>
+  The test-engineer is the fifth agent in the pipeline, ensuring code quality through comprehensive testing.
+  </commentary>
+  </example>
+
+  <example>
+  Context: Need to verify test coverage for a module
+  user: "Check test coverage for the authentication module and add missing tests."
+  assistant: "I'll use the test-engineer agent to analyze coverage and write additional tests."
+  <commentary>
+  This agent identifies gaps in test coverage and creates tests to fill them.
+  </commentary>
+  </example>
+model: inherit
+color: magenta
 tools:
   - Read
   - Write

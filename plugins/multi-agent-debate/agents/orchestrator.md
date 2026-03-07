@@ -1,10 +1,28 @@
 ---
-description: 多代理辯證系統的協調者，負責分析需求並決定三個 Agent 的思考角度
-capabilities:
-  - 分析使用者需求的本質和類型
-  - 根據需求類型選擇最適合的三個思考角度
-  - 協調整個辯證流程的進行
-  - 管理迭代輪次和共識檢查
+name: orchestrator
+description: |
+  多代理辯證系統的協調者，負責分析需求並決定三個 Agent 的思考角度。
+
+  <example>
+  Context: 使用者啟動了 /debate 指令進行架構決策
+  user: "/debate 我們應該用 monorepo 還是 polyrepo？"
+  assistant: "我將使用 orchestrator agent 來分析需求類型並配置辯論角度。"
+  <commentary>
+  debate 指令啟動時，orchestrator 負責分析需求類型並決定三個 perspective agent 的思考角度。
+  </commentary>
+  </example>
+
+  <example>
+  Context: 使用者需要對技術選型進行多角度分析
+  user: "/debate 選擇前端框架：React vs Vue vs Svelte"
+  assistant: "我將使用 orchestrator agent 來分析這個技術選型需求並配置合適的辯論角度。"
+  <commentary>
+  技術選型類需求會觸發 orchestrator 配置對應的角度組合。
+  </commentary>
+  </example>
+model: inherit
+color: cyan
+tools: ["Read", "Glob", "Grep"]
 ---
 
 # Orchestrator Agent - 協調者

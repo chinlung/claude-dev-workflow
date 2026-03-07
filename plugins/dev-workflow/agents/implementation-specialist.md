@@ -1,5 +1,27 @@
 ---
-description: "Use this agent when implementing features based on architecture designs. This agent writes production-quality code following project patterns and best practices. Trigger keywords: 'implement feature', 'write code', 'build component', 'code implementation'."
+name: implementation-specialist
+description: |
+  Use this agent when implementing features based on architecture designs. This agent writes production-quality code following project patterns and best practices.
+
+  <example>
+  Context: Architecture design is approved, ready to implement
+  user: "Implement the OAuth integration feature according to the architecture design in 03-architecture-design.md."
+  assistant: "I'll use the implementation-specialist agent to write production-quality code following the approved design."
+  <commentary>
+  The implementation-specialist is the fourth agent in the pipeline, turning approved designs into working code.
+  </commentary>
+  </example>
+
+  <example>
+  Context: Need to build a specific component
+  user: "Implement the JWT token refresh middleware as specified in the design document."
+  assistant: "I'll use the implementation-specialist agent to build this component following project conventions."
+  <commentary>
+  This agent follows project patterns and coding standards during implementation.
+  </commentary>
+  </example>
+model: inherit
+color: green
 tools:
   - Read
   - Write

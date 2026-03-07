@@ -1,5 +1,27 @@
 ---
-description: "Use this agent when updating documentation after feature implementation. This agent updates README, API docs, CHANGELOG, and generates PR descriptions. Trigger keywords: 'update documentation', 'write docs', 'generate PR', 'documentation', 'changelog'."
+name: documentation-specialist
+description: |
+  Use this agent when updating documentation after feature implementation. This agent updates README, API docs, CHANGELOG, and generates PR descriptions.
+
+  <example>
+  Context: Feature is implemented, tested, and quality-checked, need documentation updates
+  user: "Update documentation and generate a PR description for the OAuth integration feature."
+  assistant: "I'll use the documentation-specialist agent to update all relevant docs and create the PR description."
+  <commentary>
+  The documentation-specialist is the seventh and final agent in the pipeline, handling all documentation updates.
+  </commentary>
+  </example>
+
+  <example>
+  Context: Need to update CHANGELOG and API docs
+  user: "Update the CHANGELOG and API documentation for the new authentication endpoints."
+  assistant: "I'll use the documentation-specialist agent to update the relevant documentation."
+  <commentary>
+  This agent handles README, API docs, CHANGELOG, and PR descriptions.
+  </commentary>
+  </example>
+model: inherit
+color: cyan
 tools:
   - Read
   - Write

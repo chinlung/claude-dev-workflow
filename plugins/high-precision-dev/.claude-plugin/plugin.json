@@ -1,9 +1,10 @@
 {
   "name": "high-precision-dev",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "High-Precision Multi-Agent development mode - compress single-agent error rate from p to p^4 through epistemic division of labor",
   "author": {
-    "name": "scl@hanchih.com"
+    "name": "Chin Lung",
+    "email": "scl@hanchih.com"
   },
   "license": "MIT",
   "repository": "https://github.com/chinlung/claude-dev-workflow",

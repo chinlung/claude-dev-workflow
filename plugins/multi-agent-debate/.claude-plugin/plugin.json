@@ -1,9 +1,10 @@
 {
   "name": "multi-agent-debate",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "多代理辯證系統 - 透過多角度思考與批判審查，產出最優實踐方案",
   "author": {
-    "name": "scl@hanchih.com"
+    "name": "Chin Lung",
+    "email": "scl@hanchih.com"
   },
   "license": "MIT",
   "repository": "https://github.com/chinlung/multi-agent-debate",

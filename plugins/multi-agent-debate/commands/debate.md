@@ -12,6 +12,13 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, TodoWrite, AskUserQues
 
 需求描述：$ARGUMENTS
 
+## 參數解析
+
+在開始流程前，先解析參數：
+- 從 `$ARGUMENTS` 中提取 `--max-rounds N`（預設 10），作為最大辯論輪數
+- 從 `$ARGUMENTS` 中提取 `--perspectives "角度1,角度2,角度3"`，如有提供則跳過 Orchestrator 的角度配置
+- 移除參數後的剩餘文字作為需求描述
+
 ## 執行流程
 
 ### Phase 0：需求分析與角度配置
@@ -67,10 +74,21 @@ Task(
 ```
 Task(
   subagent_type="multi-agent-debate:perspective-a",
-  prompt="Critic 對你的挑戰：{挑戰內容}\n\n請回應挑戰並表態。",
+  prompt="Critic 對你的挑戰：{對A的挑戰內容}\n\n請回應挑戰並表態。",
   run_in_background=true
 )
-// ... 對 B 和 C 同樣處理
+
+Task(
+  subagent_type="multi-agent-debate:perspective-b",
+  prompt="Critic 對你的挑戰：{對B的挑戰內容}\n\n請回應挑戰並表態。",
+  run_in_background=true
+)
+
+Task(
+  subagent_type="multi-agent-debate:perspective-c",
+  prompt="Critic 對你的挑戰：{對C的挑戰內容}\n\n請回應挑戰並表態。",
+  run_in_background=true
+)
 ```
 
 ### Phase 4：共識檢查

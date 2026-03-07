@@ -1,5 +1,27 @@
 ---
-description: "Use this agent when designing the architecture and solution approach for a feature. This agent proposes multiple solutions, compares trade-offs, and recommends the best approach with detailed implementation plans. Trigger keywords: 'design solution', 'architecture design', 'technical approach', 'implementation strategy'."
+name: solution-architect
+description: |
+  Use this agent when designing the architecture and solution approach for a feature. This agent proposes multiple solutions, compares trade-offs, and recommends the best approach with detailed implementation plans.
+
+  <example>
+  Context: Requirements and codebase analysis are complete, need to design the solution
+  user: "Based on the requirements and code analysis, design the architecture for the OAuth integration feature."
+  assistant: "I'll use the solution-architect agent to propose multiple approaches and recommend the best architecture."
+  <commentary>
+  The solution-architect is the third agent in the pipeline, designing the solution before implementation begins.
+  </commentary>
+  </example>
+
+  <example>
+  Context: Need to evaluate multiple technical approaches
+  user: "Compare REST vs GraphQL for our new API layer and recommend an approach."
+  assistant: "I'll use the solution-architect agent to analyze trade-offs and recommend the best approach."
+  <commentary>
+  The solution-architect excels at comparing multiple solutions with structured trade-off analysis.
+  </commentary>
+  </example>
+model: inherit
+color: yellow
 tools:
   - Read
   - Write

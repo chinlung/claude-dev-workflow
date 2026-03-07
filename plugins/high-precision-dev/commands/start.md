@@ -8,14 +8,29 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, AskUserQuestion
 
 啟動 4 Phase 高精確度開發流程。透過 5 個專業 agent（implementer-a、implementer-b、critic、adversary、verifier）的認識論分工，將單一 agent 的錯誤率 p 壓縮至 p^4。
 
+## 參數解析
+
+從 `$ARGUMENTS` 中解析：
+- SPEC.md 路徑（第一個非 `--` 開頭的參數，若未指定則在當前目錄尋找）
+- `--phase N`：指定從 Phase N 開始（預設從 Phase 1 開始）
+
 ## 前置檢查
 
-1. 讀取 $ARGUMENTS 指定的 SPEC.md（若未指定，在當前目錄尋找）
+1. 讀取 SPEC.md 路徑指向的檔案
 2. 確認 SPEC.md 存在且所有欄位已填寫（不能有空的佔位符）
 3. 確認 CONSENSUS.md 存在於同一目錄
 4. 記錄 SPEC.md 所在目錄作為所有產出文件的統一存放路徑
 
 如果前置檢查失敗，告知使用者先執行 `/high-precision-dev:init` 並填寫 SPEC.md。
+
+## Phase 跳轉
+
+如果使用者指定了 `--phase N`，檢查前置條件後跳轉：
+- `--phase 2`：需確認 CONSENSUS.md Phase 1 已完成
+- `--phase 3`：需確認 CONSENSUS.md Phase 2 已完成，且兩份 IMPL REPORT 存在
+- `--phase 4`：需確認 CONSENSUS.md Phase 3 已完成，且 CRITIQUE.md 和 ATTACKS.md 存在
+
+如果前置條件不滿足，告知使用者缺少哪些前置產出，建議從正確的 Phase 開始。
 
 ---
 

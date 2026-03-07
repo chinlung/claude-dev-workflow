@@ -1,5 +1,27 @@
 ---
-description: "Use this agent when reviewing code quality, running linters, and verifying builds. This agent ensures code meets project standards before PR submission. Trigger keywords: 'code review', 'quality check', 'lint', 'type check', 'build verification'."
+name: quality-assurance
+description: |
+  Use this agent when reviewing code quality, running linters, and verifying builds. This agent ensures code meets project standards before PR submission.
+
+  <example>
+  Context: Implementation and tests are complete, need quality verification
+  user: "Run quality checks on the OAuth feature implementation before creating a PR."
+  assistant: "I'll use the quality-assurance agent to verify code quality, run linters, and check builds."
+  <commentary>
+  The quality-assurance agent is the sixth agent in the pipeline, performing final quality checks before documentation.
+  </commentary>
+  </example>
+
+  <example>
+  Context: Need to verify code meets project standards
+  user: "Check if the new authentication module follows our coding standards and passes all linters."
+  assistant: "I'll use the quality-assurance agent to run automated checks and manual review."
+  <commentary>
+  This agent combines automated tooling with manual review for comprehensive quality verification.
+  </commentary>
+  </example>
+model: inherit
+color: red
 tools:
   - Read
   - Write
