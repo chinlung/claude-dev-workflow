@@ -1,0 +1,17 @@
+{
+  "description": "在實質工作階段結束時提醒使用者執行 /save-session 保存經驗",
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/save-session-reminder.sh\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

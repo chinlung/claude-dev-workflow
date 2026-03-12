@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-03-12
+
+### Added
+- **Session Learning Plugin**: 經驗學習系統，漸進式保存對話模式
+  - `/save-session` 命令：分析對話並保存有價值的模式為 memory 或 skill
+    - 5 Phase 分析流程：掃描 → 層級判斷 → 去重合併 → 執行 → 報告
+    - 自動區分全域 vs 專案層級保存位置
+    - 更新優先於新建，避免記憶膨脹
+    - 每次最多 1-2 項變更，精簡克制
+  - Stop hook：在實質工作階段結束時輕量提醒執行 `/save-session`
+    - Command 類型（非 prompt），不觸發額外 LLM 呼叫
+    - Flag file 機制防止同一 session 重複提醒
+    - 自動跳過短工作階段（< 10 行 transcript）
+- Updated marketplace version to 1.4.0
+
 ## [1.3.0] - 2026-03-06
 
 ### Added

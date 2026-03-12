@@ -1,0 +1,17 @@
+{
+  "name": "session-learning",
+  "version": "1.0.0",
+  "description": "Session 經驗學習系統 - 漸進式保存對話中的有價值模式為 memory 或 skill",
+  "author": {
+    "name": "scl@hanchih.com"
+  },
+  "license": "MIT",
+  "keywords": [
+    "session",
+    "learning",
+    "memory",
+    "skill",
+    "incremental-improvement",
+    "auto-save"
+  ]
+}

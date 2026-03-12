@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "Claude Code plugins collection by scl",
-    "version": "1.1.0"
+    "version": "1.4.0"
   },
   "plugins": [
     {
@@ -28,6 +28,13 @@
       "description": "高精確度多 Agent 開發模式 - 透過認識論分工將錯誤率從 p 壓縮至 p^4",
       "version": "1.0.0",
       "keywords": ["high-precision", "multi-agent", "adversarial-review", "verification", "safety-critical"]
+    },
+    {
+      "name": "session-learning",
+      "source": "./plugins/session-learning",
+      "description": "Session 經驗學習系統 - 漸進式保存對話中的有價值模式為 memory 或 skill",
+      "version": "1.0.0",
+      "keywords": ["session", "learning", "memory", "skill", "incremental-improvement", "auto-save"]
     }
   ]
 }
