@@ -12,24 +12,15 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, TodoWrite, AskUserQues
 
 需求描述：$ARGUMENTS
 
-## 參數解析
-
-在開始流程前，先解析參數：
-- 從 `$ARGUMENTS` 中提取 `--max-rounds N`（預設 10），作為最大辯論輪數
-- 從 `$ARGUMENTS` 中提取 `--perspectives "角度1,角度2,角度3"`，如有提供則跳過 Orchestrator 的角度配置
-- 移除參數後的剩餘文字作為需求描述
-
 ## 執行流程
 
 ### Phase 0：需求分析與角度配置
 
-**如果使用者提供了 `--perspectives`**：直接使用使用者指定的三個角度，跳過 Orchestrator 呼叫。
-
-**否則**，使用 Task tool 調用 orchestrator agent：
+使用 Task tool 調用 orchestrator agent：
 ```
 Task(
   subagent_type="multi-agent-debate:orchestrator",
-  prompt="需求描述：{需求描述}\n\n請分析需求並決定三個 Agent 的思考角度。"
+  prompt="需求描述：$ARGUMENTS\n\n請分析需求並決定三個 Agent 的思考角度。"
 )
 ```
 
@@ -76,29 +67,18 @@ Task(
 ```
 Task(
   subagent_type="multi-agent-debate:perspective-a",
-  prompt="Critic 對你的挑戰：{對A的挑戰內容}\n\n請回應挑戰並表態。",
+  prompt="Critic 對你的挑戰：{挑戰內容}\n\n請回應挑戰並表態。",
   run_in_background=true
 )
-
-Task(
-  subagent_type="multi-agent-debate:perspective-b",
-  prompt="Critic 對你的挑戰：{對B的挑戰內容}\n\n請回應挑戰並表態。",
-  run_in_background=true
-)
-
-Task(
-  subagent_type="multi-agent-debate:perspective-c",
-  prompt="Critic 對你的挑戰：{對C的挑戰內容}\n\n請回應挑戰並表態。",
-  run_in_background=true
-)
+// ... 對 B 和 C 同樣處理
 ```
 
 ### Phase 4：共識檢查
 
 檢查共識狀態：
 - ≥2 個 Agent 同意某方案 → 達成共識，進入 Phase 5
-- 未達成共識且未達 {max-rounds} 輪 → 回到 Phase 2
-- 達到 {max-rounds} 輪仍未達成 → Critic 最終裁決
+- 未達成共識且 <10 輪 → 回到 Phase 2
+- 達到 10 輪仍未達成 → Critic 最終裁決
 
 ### Phase 5：使用者互動
 

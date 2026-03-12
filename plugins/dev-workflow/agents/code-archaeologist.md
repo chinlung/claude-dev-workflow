@@ -1,32 +1,10 @@
 ---
-name: code-archaeologist
-description: |
-  Use this agent when exploring the codebase to understand existing code, patterns, and architecture before implementing new features. This agent identifies reusable components, analyzes dependencies, and maps out the relevant code structure.
-
-  <example>
-  Context: After requirements analysis, need to understand existing codebase before designing solution
-  user: "Explore the codebase to find existing authentication patterns and reusable components relevant to the new OAuth feature."
-  assistant: "I'll use the code-archaeologist agent to explore the codebase and map out relevant existing code."
-  <commentary>
-  The code-archaeologist is the second agent in the pipeline, exploring existing code to inform architecture decisions.
-  </commentary>
-  </example>
-
-  <example>
-  Context: Need to understand code structure before refactoring
-  user: "Analyze the current API layer to understand routing patterns, middleware, and error handling."
-  assistant: "I'll use the code-archaeologist agent to dig into the API layer and document its structure."
-  <commentary>
-  Useful for understanding existing architecture before any modifications.
-  </commentary>
-  </example>
-model: inherit
-color: blue
+description: "Use this agent when exploring the codebase to understand existing code, patterns, and architecture before implementing new features. This agent identifies reusable components, analyzes dependencies, and maps out the relevant code structure. Trigger keywords: 'explore codebase', 'find existing code', 'code analysis', 'understand architecture'."
 tools:
   - Read
   - Glob
   - Grep
-  - Bash
+  - Task
   - Write
 ---
 

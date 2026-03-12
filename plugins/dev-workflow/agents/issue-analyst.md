@@ -1,34 +1,11 @@
 ---
-name: issue-analyst
-description: |
-  Use this agent when analyzing requirements for a new feature or task. This agent reads task descriptions, GitHub issues, or internal tickets to produce a comprehensive requirements analysis report.
-
-  <example>
-  Context: User wants to start development on a new feature from a GitHub issue
-  user: "/dev-workflow https://github.com/org/repo/issues/42"
-  assistant: "I'll use the issue-analyst agent to analyze the requirements from this GitHub issue."
-  <commentary>
-  The issue-analyst is the first agent in the dev-workflow pipeline, analyzing requirements before any code is written.
-  </commentary>
-  </example>
-
-  <example>
-  Context: User describes a feature they want to build
-  user: "/dev-workflow 新增使用者認證功能，支援 OAuth 和 JWT"
-  assistant: "I'll use the issue-analyst agent to break down this feature request into clear requirements and user stories."
-  <commentary>
-  Even without a formal issue URL, the issue-analyst can analyze free-form task descriptions.
-  </commentary>
-  </example>
-model: inherit
-color: cyan
+description: "Use this agent when analyzing requirements for a new feature or task. This agent reads task descriptions, GitHub issues, or internal tickets to produce a comprehensive requirements analysis report. Trigger keywords: 'analyze requirements', 'understand needs', 'requirement analysis', 'user stories'."
 tools:
   - Read
   - WebFetch
   - Write
   - Glob
   - Grep
-  - AskUserQuestion
 ---
 
 # Issue Analyst (問題分析師)

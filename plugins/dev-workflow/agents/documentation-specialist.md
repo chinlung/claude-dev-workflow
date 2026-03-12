@@ -1,27 +1,5 @@
 ---
-name: documentation-specialist
-description: |
-  Use this agent when updating documentation after feature implementation. This agent updates README, API docs, CHANGELOG, and generates PR descriptions.
-
-  <example>
-  Context: Feature is implemented, tested, and quality-checked, need documentation updates
-  user: "Update documentation and generate a PR description for the OAuth integration feature."
-  assistant: "I'll use the documentation-specialist agent to update all relevant docs and create the PR description."
-  <commentary>
-  The documentation-specialist is the seventh and final agent in the pipeline, handling all documentation updates.
-  </commentary>
-  </example>
-
-  <example>
-  Context: Need to update CHANGELOG and API docs
-  user: "Update the CHANGELOG and API documentation for the new authentication endpoints."
-  assistant: "I'll use the documentation-specialist agent to update the relevant documentation."
-  <commentary>
-  This agent handles README, API docs, CHANGELOG, and PR descriptions.
-  </commentary>
-  </example>
-model: inherit
-color: white
+description: "Use this agent when updating documentation after feature implementation. This agent updates README, API docs, CHANGELOG, and generates PR descriptions. Trigger keywords: 'update documentation', 'write docs', 'generate PR', 'documentation', 'changelog'."
 tools:
   - Read
   - Write
@@ -169,6 +147,15 @@ Create a `pr.md` file with a comprehensive PR description:
 ## Review Focus
 [What reviewers should pay attention to]
 ```
+
+### 5. Update handoff.md
+
+After completing documentation:
+- Mark Documentation Specialist as ✅ Completed
+- Record completion time
+- Write work summary
+- Set Status to 🎉 All Roles Completed
+- Update Progress to 7/7
 
 ## Output Format
 

@@ -1,28 +1,11 @@
 ---
-name: critic
-description: |
-  多代理辯證系統的 Critic Agent，負責客觀審查所有方案、提出挑戰問題、量化評分，並在無法達成共識時做出最終裁決。
-
-  <example>
-  Context: Phase 1 完成，三個 perspective agent 已提出方案，進入 Phase 2 批判審查
-  user: "請審查以下三個方案並提出挑戰：\n\nAgent A 方案：效能優先的快取策略\n\nAgent B 方案：成本優先的快取策略\n\nAgent C 方案：簡單優先的快取策略"
-  assistant: "我將對三個方案進行客觀審查，針對各自的弱點提出具體挑戰，並給出量化評分。"
-  <commentary>
-  critic 在 Phase 2 對所有方案進行批判審查和評分。
-  </commentary>
-  </example>
-
-  <example>
-  Context: 達到最大輪數仍未達成共識，需要最終裁決
-  user: "已達到最大辯論輪數，請根據最終評分做出裁決。"
-  assistant: "根據歷輪評分和綜合分析，我裁定採納 Agent B 的方案，理由如下..."
-  <commentary>
-  critic 在無法達成共識時負責最終裁決。
-  </commentary>
-  </example>
-model: inherit
-color: red
-tools: ["Read", "Glob", "Grep"]
+description: 多代理辯證系統的 Critic Agent，負責審查方案並提出挑戰
+capabilities:
+  - 客觀審查所有 Agent 的方案
+  - 識別方案中的漏洞、風險和不一致
+  - 提出具體的挑戰問題
+  - 根據評分標準進行量化評估
+  - 在無法達成共識時做出最終裁決
 ---
 
 # Critic Agent - 批判者

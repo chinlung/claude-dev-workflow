@@ -1,10 +1,9 @@
 {
   "name": "dev-workflow",
-  "version": "1.1.1",
-  "description": "Complete development workflow system with 7 specialized agents: requirements analysis, code exploration, architecture design, implementation, testing, quality assurance, and documentation.",
+  "version": "1.0.1",
+  "description": "Complete development workflow system with 6 specialized agents: requirements analysis, code exploration, architecture design, implementation, testing, and quality assurance.",
   "author": {
-    "name": "Chin Lung",
-    "email": "scl@hanchih.com"
+    "name": "scl@hanchih.com"
   },
   "license": "MIT",
   "repository": "https://github.com/chinlung/claude-dev-workflow",

@@ -18,7 +18,7 @@ allowed-tools: Read, Write, Bash, AskUserQuestion, Glob
 
 使用 Write 工具在當前目錄建立 `SPEC.md`，內容如下：
 
-````markdown
+```markdown
 # SPEC.md — 功能規格文件
 
 > 填寫說明：在開始任何實作前完成此文件。這是所有 agents 的唯一真相來源。
@@ -167,13 +167,13 @@ public function calculateTax(float $amount, string $region): float|TaxException
 | 日期 | 問題 | 提出者 | 裁決 |
 |------|------|-------|------|
 | | | | |
-````
+```
 
 ### Step 3：建立 CONSENSUS.md
 
 使用 Write 工具在同一目錄建立 `CONSENSUS.md`，內容如下：
 
-````markdown
+```markdown
 # CONSENSUS.md — 收斂協議記錄
 
 > 每個 phase 完成後，所有相關 agents 必須在對應區段簽核。
@@ -271,7 +271,7 @@ public function calculateTax(float $amount, string $region): float|TaxException
 **VERIFICATION.md 位置**：
 **Phase 3 發現的主要問題**：
 **仍存在的已知不確定性**：
-````
+```
 
 ### Step 4：回報
 
