@@ -11,6 +11,7 @@
 | [開發工作流程](#開發工作流程插件) | 從需求分析到品質保證的完整開發流程 | `/dev-workflow` |
 | [多代理辯證系統](#多代理辯證系統插件) | 多角度分析與批判審查 | `/debate` |
 | [高精確度開發](#高精確度開發插件) | 安全關鍵程式碼，錯誤率壓縮至 p^4 | `/init`, `/start` |
+| [OpenSpec + Superpowers 工作流程](#openspec--superpowers-工作流程插件) | 六階段功能開發，強制 OpenSpec / Superpowers 角色分離 | 自動觸發 skill |
 
 ## 安裝方式
 
@@ -22,6 +23,7 @@
 /plugin install dev-workflow@scl-claude-plugins
 /plugin install multi-agent-debate@scl-claude-plugins
 /plugin install high-precision-dev@scl-claude-plugins
+/plugin install openspec-superpowers-workflow@scl-claude-plugins
 ```
 
 或直接安裝：
@@ -348,6 +350,69 @@ docs/task-{YYYYMMDD-HHMM}-{簡短名稱}/
 | 財務計算 | 設計取捨 | config 修改 |
 | 資料驗證 | 重構策略 | 快速原型 |
 | 安全關鍵邏輯 | SPEC.md 驗證 | |
+
+---
+
+# OpenSpec + Superpowers 工作流程插件
+
+強制 **OpenSpec**（規格生命週期，WHAT）與 **Superpowers**（開發紀律，HOW）嚴格角色分離的六階段功能開發工作流程。避免兩種工具互相踩腳，杜絕最常見的反模式：Code review 期間改 spec、Phase 6 reconcile 時用 patch 而非 clean rewrite、把 cross-cutting 規則塞進 feature spec。
+
+這個 plugin 只提供一個自動觸發的 skill（無 slash command）— 當你在已 `openspec init` 的專案中提到提案、brainstorm、規劃任務、PR review、reconcile 或 archive 時會自動啟動。
+
+## 前置需求
+
+- **[OpenSpec CLI](https://github.com/Fission-AI/OpenSpec)** — `npm i -g @fission-ai/openspec`；專案需跑過 `openspec init .`
+- **[Superpowers](https://github.com/anthropic-experimental/claude-code-plugins/tree/main/superpowers)** plugin — 提供 `brainstorming`、`writing-plans`、`subagent-driven-development`、`test-driven-development` 等 skills
+
+## 六階段工作流程
+
+| Phase | 主導工具 | 動作 | 產出 |
+|-------|---------|------|------|
+| 1. Spec Definition | OpenSpec | `openspec new change` + 填入 `proposal.md` / `specs/` | 使用者審核的 proposal + specs |
+| 2. Design Refinement | Superpowers `brainstorming` | Socratic 問答精煉 | **覆寫** `design.md` 原位 |
+| 3. Task Planning | Superpowers `writing-plans` | 切出 2-5 分鐘粒度任務 | **覆寫** `tasks.md` 原位 |
+| 4. Implementation | Superpowers `subagent-driven-development` + TDD | RED → GREEN → REFACTOR | 可運行程式碼 |
+| 5. Review & Feedback | 人類主導 | 分類 `[REQUIREMENT\|DESIGN\|CODE\|CONSTITUTION]` + Y/N | `review-notes.md`；**spec 一律不動** |
+| 6. Reconcile & Archive | OpenSpec | Clean rewrite（非 patch）+ `openspec archive` | 合併至 `openspec/specs/<capability>/spec.md` |
+
+## 不可妥協的六條硬規則
+
+1. **Phase 5 期間絕不修改 spec 檔**。所有審查意見 → `review-notes.md` 加 tag + Y/N
+2. **Superpowers 絕不新建自己的 design / plan 檔**。輸出一律覆寫 OpenSpec 的 `design.md` / `tasks.md` 原位
+3. **Phase 6 reconcile 必須 clean rewrite**。目標是讓 spec 讀起來像「一開始就知道」，而非修訂史
+4. **`tasks.md` 在 reconcile 時凍結** — 它是執行歷史，不是當前規格
+5. **`[CONSTITUTION]` 項目絕不進 feature spec** — 改到 `openspec/config.yaml` 的 `context:` / `rules:`
+6. **Phase 4 TDD 強制**。永遠先寫失敗測試再寫實作
+
+## Skill 結構（Progressive Disclosure）
+
+```
+skills/openspec-superpowers-workflow/
+├── SKILL.md      # 58 行 — trigger map + phase 表 + 6 條硬規則（常駐載入）
+└── phases.md     # 290+ 行 — 完整 playbook、tag 語意、gotcha（需要時才載入）
+```
+
+Skill 啟動時 Claude 先讀 `SKILL.md`，辨認當前 Phase 後再讀 `phases.md` 對應段落，即使有詳細 playbook 也不會爆 context。
+
+## 解決的問題
+
+無此 skill 時：
+- ❌ `brainstorming` 寫到 `docs/superpowers/specs/<date>-<topic>.md`，與 OpenSpec 的 `design.md` 漂移
+- ❌ PR review 意見直接改 spec，破壞可重現性
+- ❌ Phase 6 reconcile 變成 patch 堆疊，半年後沒人看得懂
+- ❌ 「所有 PHP 檔都要 `declare(strict_types=1)`」這種 cross-cutting 規則被寫到每個 feature spec
+
+有此 skill 時：
+- ✅ Claude 自動辨認當前 Phase 並套用對應紀律
+- ✅ 所有工作檔留在 `openspec/changes/<name>/` — 不會散落在其他地方
+- ✅ `review-notes.md` 是唯一的 feedback 通道；reconcile 時有明確的 Y 項清單
+- ✅ Constitution 規則進 `openspec/config.yaml`，未來每次 `openspec instructions` 都會看到
+
+## 不適用情境
+
+- 無規格影響的小型 bug 修復（直接 TDD 修好，跳過六階段）
+- 純原型探索（Phase 1 的正式 spec 會拖慢探索）
+- 不使用 OpenSpec 的專案（skill 偵測不到 `openspec/` 會自動不觸發）
 
 ---
 

@@ -1,0 +1,22 @@
+{
+  "name": "openspec-superpowers-workflow",
+  "version": "1.0.0",
+  "description": "Six-phase feature development workflow that enforces strict role separation between OpenSpec (WHAT to build) and Superpowers (HOW to build). Prevents common anti-patterns like modifying specs during code review, patching specs incrementally instead of clean rewriting, and mixing cross-cutting constitution rules into feature specs.",
+  "author": {
+    "name": "Chin Lung",
+    "email": "scl@hanchih.com"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/chinlung/claude-dev-workflow",
+  "homepage": "https://github.com/chinlung/claude-dev-workflow#readme",
+  "keywords": [
+    "openspec",
+    "superpowers",
+    "workflow",
+    "spec-driven",
+    "tdd",
+    "brainstorming",
+    "code-review",
+    "reconciliation"
+  ]
+}

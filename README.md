@@ -11,6 +11,7 @@ A collection of powerful plugins for Claude Code, featuring automated developmen
 | [Dev Workflow](#dev-workflow-plugin) | Complete development workflow from requirements to QA | `/dev-workflow` |
 | [Multi-Agent Debate](#multi-agent-debate-plugin) | Multi-perspective analysis with critical review | `/debate` |
 | [High-Precision Dev](#high-precision-dev-plugin) | Safety-critical code with p^4 error rate compression | `/init`, `/start` |
+| [OpenSpec + Superpowers Workflow](#openspec--superpowers-workflow-plugin) | Six-phase feature development enforcing OpenSpec/Superpowers role separation | auto-triggered skill |
 
 ## Installation
 
@@ -22,6 +23,7 @@ A collection of powerful plugins for Claude Code, featuring automated developmen
 /plugin install dev-workflow@scl-claude-plugins
 /plugin install multi-agent-debate@scl-claude-plugins
 /plugin install high-precision-dev@scl-claude-plugins
+/plugin install openspec-superpowers-workflow@scl-claude-plugins
 ```
 
 Or install directly:
@@ -350,6 +352,69 @@ This runs the full 4-phase workflow:
 | Financial calculations | Design trade-offs | Config changes |
 | Data validation | Refactoring strategy | Quick prototypes |
 | Security-critical logic | Spec validation | |
+
+---
+
+# OpenSpec + Superpowers Workflow Plugin
+
+A six-phase feature development workflow that enforces strict role separation between **OpenSpec** (spec lifecycle, the WHAT) and **Superpowers** (dev discipline, the HOW). Prevents the two toolkits from stepping on each other and eliminates the most common anti-patterns: modifying specs during code review, patching specs incrementally instead of clean rewriting, and leaking cross-cutting constitution rules into individual feature specs.
+
+This plugin ships a single auto-triggered skill (no slash command) — it activates when you mention feature proposals, brainstorming, task planning, PR review, reconciliation, or archiving work inside an OpenSpec-initialized project.
+
+## Prerequisites
+
+- **[OpenSpec CLI](https://github.com/Fission-AI/OpenSpec)** — `npm i -g @fission-ai/openspec`; run `openspec init .` once per project
+- **[Superpowers](https://github.com/anthropic-experimental/claude-code-plugins/tree/main/superpowers)** plugin — provides `brainstorming`, `writing-plans`, `subagent-driven-development`, `test-driven-development` skills
+
+## Six-Phase Workflow
+
+| Phase | Leader | Action | Output |
+|-------|--------|--------|--------|
+| 1. Spec Definition | OpenSpec | `openspec new change` + fill `proposal.md` / `specs/` | User-reviewed proposal + specs |
+| 2. Design Refinement | Superpowers `brainstorming` | Socratic refinement | **OVERWRITES** `design.md` in place |
+| 3. Task Planning | Superpowers `writing-plans` | 2-5 min granularity tasks | **OVERWRITES** `tasks.md` in place |
+| 4. Implementation | Superpowers `subagent-driven-development` + TDD | RED → GREEN → REFACTOR | Working code |
+| 5. Review & Feedback | Human-driven | Tag feedback `[REQUIREMENT\|DESIGN\|CODE\|CONSTITUTION]` + Y/N | `review-notes.md`; **specs are never touched** |
+| 6. Reconcile & Archive | OpenSpec | Clean rewrite (not patch) + `openspec archive` | Merged into `openspec/specs/<capability>/spec.md` |
+
+## Six Non-Negotiable Rules
+
+1. **Never modify spec files during Phase 5 code review.** All feedback → `review-notes.md` with tag + Y/N.
+2. **Never create separate Superpowers design/plan files.** Outputs OVERWRITE OpenSpec's `design.md` / `tasks.md` in place.
+3. **Phase 6 reconciliation = clean rewrite.** Goal: specs read as if you knew everything from the start, not a changelog.
+4. **`tasks.md` is frozen during reconciliation** — it is execution history, not current spec.
+5. **`[CONSTITUTION]` items never go into the feature's spec** — they update `openspec/config.yaml` `context:` / `rules:`.
+6. **TDD in Phase 4 is mandatory.** Tests before implementation, always.
+
+## Skill Structure (Progressive Disclosure)
+
+```
+skills/openspec-superpowers-workflow/
+├── SKILL.md      # 58 lines — trigger map + phase table + 6 rules (always loaded)
+└── phases.md     # 290+ lines — full playbook, tag semantics, gotchas (loaded on demand)
+```
+
+When the skill activates, Claude first reads `SKILL.md`, identifies which phase applies, then reads the relevant section of `phases.md`. Context budget stays controlled even with a detailed playbook.
+
+## Problems It Solves
+
+Without this skill:
+- ❌ `brainstorming` writes to `docs/superpowers/specs/<date>-<topic>.md`, drifting from OpenSpec's `design.md`
+- ❌ PR review comments are applied to specs directly, breaking reproducibility
+- ❌ Phase 6 reconciliation becomes patch accumulation — nobody can read the spec six months later
+- ❌ Cross-cutting rules like "all PHP files must `declare(strict_types=1)`" get written into every feature spec
+
+With this skill:
+- ✅ Claude recognises which Phase you are in and applies the correct discipline automatically
+- ✅ All working files stay inside `openspec/changes/<name>/` — no scattered sidecars
+- ✅ `review-notes.md` is the single feedback channel; reconciliation has a clean list of Y items
+- ✅ Constitution rules go to `openspec/config.yaml`, visible to every future `openspec instructions` call
+
+## Not For
+
+- Small bug fixes with no spec impact (do it with TDD directly, skip the six phases)
+- Pure prototyping where formal Phase 1 specs would slow exploration
+- Projects that do not use OpenSpec (the skill detects absence of `openspec/` and stays dormant)
 
 ---
 

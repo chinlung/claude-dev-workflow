@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-04-10
+
+### Added
+- **OpenSpec + Superpowers Workflow Plugin**: Six-phase feature development workflow enforcing strict role separation between OpenSpec (spec lifecycle, WHAT) and Superpowers (dev discipline, HOW)
+  - Single skill with progressive disclosure: `SKILL.md` (58 lines, always loaded) + `phases.md` (290+ lines, loaded on demand)
+  - **Phase 1 — Spec Definition** (OpenSpec leads): propose + specs as user-reviewed artifacts; design/tasks as placeholder drafts
+  - **Phase 2 — Design Refinement** (Superpowers `brainstorming` → overwrites `design.md` in place)
+  - **Phase 3 — Task Planning** (Superpowers `writing-plans` → overwrites `tasks.md` in place)
+  - **Phase 4 — Implementation** (Superpowers `subagent-driven-development` + mandatory TDD)
+  - **Phase 5 — Review & Feedback**: `[REQUIREMENT|DESIGN|CODE|CONSTITUTION]` tag taxonomy with Y/N classification, recorded in `review-notes.md`; spec files are never modified during review
+  - **Phase 6 — Reconcile & Archive** (OpenSpec): clean-rewrite discipline (not incremental patches), `tasks.md` frozen as execution history, `[CONSTITUTION]` items routed to `openspec/config.yaml` instead of feature spec
+  - Prerequisites section documenting OpenSpec CLI vs `/opsx:*` slash-command alternatives and the `openspec init .` (no `--here` flag) gotcha
+  - Validator strictness gotcha: every `### Requirement:` block must have `SHALL`/`MUST` in the first paragraph
+  - Archive folder date-prefix behaviour: `openspec/changes/archive/<YYYY-MM-DD>-<name>/`
+  - Decision quick-reference table (13 situations) and 8-item anti-patterns list
+- Updated marketplace version to 1.5.0
+
 ## [1.4.0] - 2026-03-12
 
 ### Added
