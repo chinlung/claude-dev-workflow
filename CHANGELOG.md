@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.1] - 2026-04-10
+
+### Changed
+- **openspec-superpowers-workflow 1.0.0 → 1.0.1**: Strengthen auto-trigger. Rewrite `SKILL.md` frontmatter `description` with imperative "MUST use" wording, expanded trigger list (now matches `openspec` CLI commands and the presence of `openspec/changes/<name>/` folders), and explicit forbidden-behaviour enumeration. Add "Activation reminder" note at the top of `SKILL.md` body anchoring non-negotiable rules before any action. Removes the need for users to maintain a separate "must call this skill" reminder in their own `~/.claude/CLAUDE.md` — the same meta-instruction now ships with the plugin. `phases.md` unchanged.
+
+### Fixed
+- **dev-workflow 1.0.1 → 1.0.2**: Correct `plugin.json` description from "6 specialized agents" to "7 specialized agents: ..., quality assurance, and documentation". The mismatch was a leftover from the 2026-03-12 `35c0a9c` refactor commit that reverted the version string to match `CHANGELOG [1.0.1]` but also reverted the description text to the 1.0.0-era wording, even though the `documentation-specialist` agent file was never removed. No behavioural or file changes — metadata fix only.
+
+### Documentation
+- `README.md` / `README.zh-TW.md`: Add `Session Learning Plugin` table row, install command, and full plugin section (previously missing despite shipping since 1.4.0).
+- `CHANGELOG.zh-TW.md`: Translate `[1.5.0]` and `[1.4.0]` entries from the English changelog (Chinese changelog previously stopped at `[1.3.0]`).
+- `marketplace.json`: Bump `dev-workflow` entry version to `1.0.1` then `1.0.2` to match `plugins/dev-workflow/plugin.json` (leftover drift from the earlier version-alignment refactor).
+
+### Notes
+- Marketplace version bump from 1.5.0 → 1.5.1 reflects that `HEAD` contains multiple plugin-content changes beyond the initial 1.5.0 commit. Users on 1.5.0 who do not update will miss the stronger auto-trigger and the dev-workflow description fix.
+
 ## [1.5.0] - 2026-04-10
 
 ### Added

@@ -5,6 +5,22 @@
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [1.5.1] - 2026-04-10
+
+### 變更
+- **openspec-superpowers-workflow 1.0.0 → 1.0.1**：強化自動觸發機制。重寫 `SKILL.md` frontmatter `description`，改用 imperative「MUST use」語氣、擴充 trigger 清單（現在也比對 `openspec` CLI 指令與 `openspec/changes/<name>/` 資料夾的存在），並明列四條禁止行為。在 `SKILL.md` 本體頂部新增「Activation reminder」段落，在 Claude 採取任何行動前錨定不可妥協的規則。這樣使用者就不需要在自己的 `~/.claude/CLAUDE.md` 維護獨立的「必須呼叫此 skill」提醒 — 同樣的 meta 指令現在隨 plugin 一併發佈。`phases.md` 不變。
+
+### 修正
+- **dev-workflow 1.0.1 → 1.0.2**：修正 `plugin.json` description 從「6 specialized agents」改為「7 specialized agents: ..., quality assurance, and documentation」。這個不一致是 2026-03-12 `35c0a9c` refactor commit 的遺漏 — 當時把版本號 revert 成對應 `CHANGELOG [1.0.1]`，卻也把 description 一併降回 1.0.0 時代的寫法，儘管 `documentation-specialist` agent 檔案從未被移除。僅 metadata 修正，無程式碼變更。
+
+### 文件
+- `README.md` / `README.zh-TW.md`：新增 `Session 經驗學習插件` 表格列、安裝指令、完整章節（自 1.4.0 起就應該要有但先前遺漏）
+- `CHANGELOG.zh-TW.md`：翻譯英文版的 `[1.5.0]` 和 `[1.4.0]` entry（中文 changelog 先前停在 `[1.3.0]`）
+- `marketplace.json`：將 `dev-workflow` entry 的版本從 `1.0.0` → `1.0.1` → `1.0.2` 對齊到 `plugins/dev-workflow/plugin.json`（先前版本對齊 refactor 的漂移修正）
+
+### 備註
+- Marketplace 版本從 1.5.0 → 1.5.1 反映 `HEAD` 相對於初始 1.5.0 commit 多了數個 plugin 內容變更。停留在 1.5.0 的使用者若不更新，會錯過較強的自動觸發機制和 dev-workflow description 修正。
+
 ## [1.5.0] - 2026-04-10
 
 ### 新增
