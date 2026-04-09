@@ -5,6 +5,38 @@
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [1.5.0] - 2026-04-10
+
+### 新增
+- **OpenSpec + Superpowers 工作流程插件**：六階段功能開發工作流程，強制執行 OpenSpec（規格生命週期，WHAT）與 Superpowers（開發紀律，HOW）嚴格角色分離
+  - 單一 skill，採用 progressive disclosure：`SKILL.md`（58 行，常駐載入）+ `phases.md`（290+ 行，需要時才載入）
+  - **Phase 1 — 規格定義**（OpenSpec 主導）：proposal + specs 為使用者審核產物；design / tasks 為草稿佔位
+  - **Phase 2 — 設計精煉**（Superpowers `brainstorming` → 原位覆寫 `design.md`）
+  - **Phase 3 — 任務規劃**（Superpowers `writing-plans` → 原位覆寫 `tasks.md`）
+  - **Phase 4 — 實作**（Superpowers `subagent-driven-development` + 強制 TDD）
+  - **Phase 5 — 審查與回饋**：`[REQUIREMENT|DESIGN|CODE|CONSTITUTION]` tag 分類 + Y/N 標記，記錄到 `review-notes.md`；審查期間絕不修改 spec 檔
+  - **Phase 6 — 調和與歸檔**（OpenSpec）：Clean rewrite 紀律（非增量 patch）、`tasks.md` 凍結為執行歷史、`[CONSTITUTION]` 項目改寫入 `openspec/config.yaml` 而非 feature spec
+  - 前置需求段落記錄 OpenSpec CLI vs `/opsx:*` slash command 的替代選項，以及 `openspec init .`（無 `--here` flag）的 gotcha
+  - Validator 嚴格性 gotcha：每個 `### Requirement:` 區塊必須在第一段出現 `SHALL` / `MUST`
+  - Archive 資料夾日期前綴行為：`openspec/changes/archive/<YYYY-MM-DD>-<name>/`
+  - 決策速查表（13 種情境）和 8 條反模式清單
+- 更新 marketplace 版本至 1.5.0
+
+## [1.4.0] - 2026-03-12
+
+### 新增
+- **Session 經驗學習插件**：漸進式保存對話中的有價值模式為 memory 或 skill
+  - `/save-session` 命令：分析對話並保存有價值的模式為 memory 或 skill
+    - 5 Phase 分析流程：掃描 → 層級判斷 → 去重合併 → 執行 → 報告
+    - 自動區分全域 vs 專案層級保存位置
+    - 更新優先於新建，避免記憶膨脹
+    - 每次最多 1-2 項變更，精簡克制
+  - Stop hook：在實質工作階段結束時輕量提醒執行 `/save-session`
+    - Command 類型（非 prompt），不觸發額外 LLM 呼叫
+    - Flag file 機制防止同一 session 重複提醒
+    - 自動跳過短工作階段（< 10 行 transcript）
+- 更新 marketplace 版本至 1.4.0
+
 ## [1.3.0] - 2026-03-06
 
 ### 新增

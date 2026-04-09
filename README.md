@@ -11,6 +11,7 @@ A collection of powerful plugins for Claude Code, featuring automated developmen
 | [Dev Workflow](#dev-workflow-plugin) | Complete development workflow from requirements to QA | `/dev-workflow` |
 | [Multi-Agent Debate](#multi-agent-debate-plugin) | Multi-perspective analysis with critical review | `/debate` |
 | [High-Precision Dev](#high-precision-dev-plugin) | Safety-critical code with p^4 error rate compression | `/init`, `/start` |
+| [Session Learning](#session-learning-plugin) | Incrementally capture valuable conversation patterns as memory or skills | `/save-session` |
 | [OpenSpec + Superpowers Workflow](#openspec--superpowers-workflow-plugin) | Six-phase feature development enforcing OpenSpec/Superpowers role separation | auto-triggered skill |
 
 ## Installation
@@ -23,6 +24,7 @@ A collection of powerful plugins for Claude Code, featuring automated developmen
 /plugin install dev-workflow@scl-claude-plugins
 /plugin install multi-agent-debate@scl-claude-plugins
 /plugin install high-precision-dev@scl-claude-plugins
+/plugin install session-learning@scl-claude-plugins
 /plugin install openspec-superpowers-workflow@scl-claude-plugins
 ```
 
@@ -352,6 +354,68 @@ This runs the full 4-phase workflow:
 | Financial calculations | Design trade-offs | Config changes |
 | Data validation | Refactoring strategy | Quick prototypes |
 | Security-critical logic | Spec validation | |
+
+---
+
+# Session Learning Plugin
+
+An experience-capture system that incrementally saves valuable conversation patterns as persistent memory or reusable skills, following an **update-first** strategy to prevent memory bloat.
+
+## Features
+
+- **`/save-session` command**: 5-phase analysis pipeline (scan → scope → dedupe → save → report)
+- **Stop hook**: Lightweight reminder at the end of substantial sessions (command-based, no extra LLM call)
+- **Update-first discipline**: Always prefers updating an existing record over creating a new one
+- **Scope awareness**: Auto-distinguishes global (`~/.claude/`) vs project-level (`<project>/.claude/`) storage
+- **Frugal by default**: Maximum 1-2 changes per run — skips saves rather than creating low-value records
+- **Session substantiality filter**: Skips sessions with fewer than ~10 transcript lines
+
+## Usage
+
+### Manual invocation
+
+```bash
+/save-session
+```
+
+Scans the current conversation, identifies candidates across four categories (feedback, skill, project, user), decides whether each belongs in global or project scope, deduplicates against existing records, and saves at most 1-2 items.
+
+### Automatic reminder
+
+The Stop hook runs at the end of every session. If the session was substantial (≥ 10 transcript lines) and no reminder has been issued for this session ID, it suggests running `/save-session`. A flag file prevents duplicate reminders within the same session.
+
+## Analysis Categories
+
+| Category | Triggers on | Saved only if... |
+|---------|------------|------------------|
+| **Feedback** | User corrections ("don't...", "use X instead", "from now on...") | Applies to future conversations, not a one-off instruction |
+| **Skill** | Multi-step workflows (3+ steps) | Likely to be reused later |
+| **Project** | Project facts (decisions, deadlines, architecture) | Not derivable from code or git history |
+| **User** | User role, expertise, preferences | Not already recorded |
+
+## Scope Routing
+
+**Global level** (under `~/.claude/`):
+- Rules or preferences applying to all projects → update `~/.claude/CLAUDE.md`
+- Cross-project workflows → `~/.claude/commands/*.md`
+- User profile → auto-memory system (`user` type)
+
+**Project level** (inside current project):
+- Tech-stack-specific rules or file paths → update project `CLAUDE.md`
+- Project-specific workflows → `.claude/commands/*.md`
+- Project context (decisions, team, timelines) → auto-memory system (`project` type)
+- Behavioural corrections involving project tech → auto-memory (`feedback` type)
+
+## Why "Update First"
+
+Naive session-capture tools accumulate records forever — after 50 sessions you have 50 near-duplicate memory files nobody reads. This plugin:
+
+1. Searches for existing records that could be extended before creating new ones
+2. Merges overlapping observations into a single entry
+3. Caps each run at 1-2 changes (create + update combined)
+4. Refuses to save anything unless it clearly passes the "valuable across future conversations" bar
+
+The Stop hook is deliberately command-based (shell script) rather than prompt-based so it adds zero latency or token cost to the session-end flow.
 
 ---
 
