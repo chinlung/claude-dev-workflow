@@ -1,9 +1,11 @@
 ---
 name: openspec-superpowers-workflow
-description: Use when the user proposes/adds/refines a feature, runs any /opsx command, mentions OpenSpec changes, asks to brainstorm/design/plan-tasks/implement a spec'd feature, handles PR review feedback on a spec'd feature, or asks to reconcile/archive a change. Enforces the strict role separation between OpenSpec (spec lifecycle, the WHAT) and Superpowers (dev discipline, the HOW) across six phases. Read phases.md for the full phase-by-phase playbook before acting.
+description: MUST use whenever the user proposes / adds / refines a feature, runs any /opsx:* or openspec CLI command, mentions OpenSpec changes, asks to brainstorm design / plan tasks / implement a spec'd feature, handles PR review feedback on a spec'd feature, or asks to reconcile / archive a completed change — also trigger whenever an `openspec/changes/<name>/` folder is present in the current conversation. Enforces strict role separation between OpenSpec (spec lifecycle, the WHAT) and Superpowers (dev discipline, the HOW) across six phases. Forbids modifying spec files during code review (Phase 5), forbids Superpowers creating sidecar design/plan files outside OpenSpec's location, forbids incremental spec patching (Phase 6 must be a clean rewrite), and forbids putting [CONSTITUTION] items into a feature's spec. SKIP this skill only for small bug fixes with no spec impact. Read phases.md for the full phase-by-phase playbook before acting.
 ---
 
 # OpenSpec + Superpowers Integration
+
+> **Activation reminder (for Claude):** if you are reading this file, you have already identified a feature-development task that falls under this skill's trigger. Follow the Phase identification and the six non-negotiable rules below before taking any action. Do NOT fall back to "default" behaviour — the whole point of this skill is that OpenSpec and Superpowers have distinct, non-overlapping responsibilities, and mixing them silently is the failure mode this skill exists to prevent.
 
 Two tools, **never overlapping**:
 - **OpenSpec** = spec lifecycle (WHAT to build, source of truth)

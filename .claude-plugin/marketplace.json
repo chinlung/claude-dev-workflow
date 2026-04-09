@@ -40,7 +40,7 @@
       "name": "openspec-superpowers-workflow",
       "source": "./plugins/openspec-superpowers-workflow",
       "description": "OpenSpec + Superpowers 六階段功能開發工作流程 - 強制規格生命週期（WHAT）與開發紀律（HOW）嚴格角色分離，避免規格漂移",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "keywords": ["openspec", "superpowers", "workflow", "spec-driven", "tdd", "code-review", "reconciliation"]
     }
   ]

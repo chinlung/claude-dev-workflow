@@ -1,6 +1,6 @@
 {
   "name": "openspec-superpowers-workflow",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Six-phase feature development workflow that enforces strict role separation between OpenSpec (WHAT to build) and Superpowers (HOW to build). Prevents common anti-patterns like modifying specs during code review, patching specs incrementally instead of clean rewriting, and mixing cross-cutting constitution rules into feature specs.",
   "author": {
     "name": "Chin Lung",
