@@ -13,6 +13,7 @@
 | [高精確度開發](#高精確度開發插件) | 安全關鍵程式碼，錯誤率壓縮至 p^4 | `/init`, `/start` |
 | [Session 經驗學習](#session-經驗學習插件) | 漸進式保存對話中的有價值模式為 memory 或 skill | `/save-session` |
 | [OpenSpec + Superpowers 工作流程](#openspec--superpowers-工作流程插件) | 六階段功能開發，強制 OpenSpec / Superpowers 角色分離 | 自動觸發 skill |
+| [Code Audit Rigor](#code-audit-rigor-插件) | 高風險審查的量化框架（EV、評分校準、STRIDE+CWE） | 自動觸發 skill |
 
 ## 安裝方式
 
@@ -26,6 +27,7 @@
 /plugin install high-precision-dev@scl-claude-plugins
 /plugin install session-learning@scl-claude-plugins
 /plugin install openspec-superpowers-workflow@scl-claude-plugins
+/plugin install code-audit-rigor@scl-claude-plugins
 ```
 
 或直接安裝：
@@ -477,6 +479,59 @@ Skill 啟動時 Claude 先讀 `SKILL.md`，辨認當前 Phase 後再讀 `phases.
 - 無規格影響的小型 bug 修復（直接 TDD 修好，跳過六階段）
 - 純原型探索（Phase 1 的正式 spec 會拖慢探索）
 - 不使用 OpenSpec 的專案（skill 偵測不到 `openspec/` 會自動不觸發）
+
+---
+
+---
+
+# Code Audit Rigor 插件
+
+單一 skill 插件，為「直覺不足以判斷」的高風險程式碼審查提供**量化紀律**。
+
+## 觸發時機
+
+Skill 在以下情境自動啟動：
+
+- 關鍵字：「嚴謹審查」、「深度 audit」、「量化決策」、「security review」、「對抗式 review」、「rigorous review」、「deep audit」
+- 程式碼觸及：secrets 處理、auth 邊界、密碼學原語、金流、IaC / infra glue、不可信輸入解析器、LLM context 組裝
+- 明確呼叫：「use code-audit-rigor」
+
+日常 PR review 直接用 `/review-branch` 即可——這個 skill 在那種情境下是 overkill。
+
+## 五項核心審查紀律原則
+
+1. **先讀完再評分** — 完整讀過每個 in-scope 檔案，才能形成任何意見
+2. **「我真的讀了嗎，還是用猜的？」自我提問** — 在提交任何 finding 前
+3. **驗證原始碼而非依賴 diff** — 任何 critical 聲明都要 `grep` + `Read` 完整定義
+4. **多 agent 共識 ≠ 驗證** — 三個 agent 讀同一份 diff 會同向誤讀，永遠要自己回去驗證原始碼
+5. **漏抓真 bug 比誤判昂貴 2 倍** — 不對稱懲罰，驅動保守的 dismissal 邏輯
+
+## 四個量化框架
+
+| # | Framework | 用途 |
+|---|---|---|
+| 1 | **評分校準** | +10 / +5 / +3 / +1 vs −3 false-positive 懲罰 |
+| 2 | **期望值（EV）閾值** | `EV = confidence% × points − (100 − confidence%) × 2 × points`，≥67% confidence 才動手 |
+| 3 | **STRIDE + CWE 分類** | 每個安全 finding 都要標 — 強制顯式推理，與業界工具對接 |
+| 4 | **強制 crossReferences 契約** | 每個 finding 必含 `file:line` 證據，空陣列直接拒絕 — 對抗 LLM 編造引用 |
+
+## 端到端審查流程
+
+5 個 phase：scope 定義 → 完整閱讀 → findings 草稿 → 對抗式掃描（Phase 4 刻意 steel-man 反方位置，化解原則 4 的 multi-agent false-confidence 放大效應） → 彙整報告。
+
+Output 為結構化 JSON 風格 findings，依 EV 排序，含 dismissed findings 的 rationale（方便老哥質疑反駁），以及明確的 coverage statement。
+
+## 自包含設計
+
+所有規則、框架、reference 表（16 個常用 CWE）、STRIDE 分類對應、worked examples 都在 `SKILL.md` 內。Plugin 可在任何電腦 install 完整運作，不依賴 host 專案的 `CLAUDE.md` 或其他 plugin。
+
+## 靈感來源與刻意排除
+
+蒸餾自 [`codexstar69/bug-hunter`](https://github.com/codexstar69/bug-hunter) 的對抗式 Hunter / Skeptic / Referee 流程，但**刻意排除**：
+
+- **Auto-fix with canary rollout** — 對 production code 太激進
+- **針對「settled false-positive classes」的 hard-exclusion 清單** — 會造成盲點，特別是 prompt-injection 類議題
+- **`SKILL.md` 之外的 LLM-readable 指令檔** — 最小化 prompt-injection 攻擊面
 
 ---
 

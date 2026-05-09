@@ -5,6 +5,21 @@
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [1.6.0] - 2026-05-09
+
+### 新增
+- **Code Audit Rigor 插件**：單一 skill 插件，為「直覺不足以判斷」的高風險程式碼審查提供量化紀律（安全、密碼學、金流、IaC、不可信輸入解析器）。
+  - **五項核心審查紀律原則**：(1) 先讀完再評分；(2)「我真的讀了嗎，還是用猜的？」自我提問；(3) 驗證原始碼而非依賴 diff；(4) 多 agent 共識 ≠ 驗證；(5) 漏抓真 bug 比誤判昂貴 2 倍
+  - **四個量化框架**：
+    1. 評分校準（+10 / +5 / +3 / +1 vs −3 false-positive 懲罰）
+    2. 期望值（EV）決策閾值：`EV = confidence% × points − (100 − confidence%) × 2 × points`，≥67% confidence 才動手
+    3. STRIDE + CWE 分類，內附 16 個常用 CWE 速查表
+    4. 強制 crossReferences 契約（每個 finding 必含 `file:line` 證據，空陣列直接拒絕）
+  - **端到端審查流程**：5 個 phase（scope / 完整閱讀 / findings 草稿 / 對抗式掃描 / 彙整報告），其中 Phase 4 對抗式掃描刻意 steel-man 反方位置，防止多 agent 共識變成 false-confidence 放大器
+  - **自包含設計**：所有規則與 reference 表都在 `SKILL.md` 內，在任何電腦 install 都完整運作，不依賴 host 專案的 CLAUDE.md
+  - **靈感來源** 是 `codexstar69/bug-hunter` 的對抗式 Hunter / Skeptic / Referee 流程，但**刻意排除** auto-fix with canary rollout（對 production code 太激進）、hard-exclusion lists for "settled false-positive classes"（會造成盲點）、以及 `SKILL.md` 之外的 LLM-readable 指令檔（最小化 prompt-injection 攻擊面）
+- 更新 marketplace 版本至 1.6.0
+
 ## [1.5.1] - 2026-04-10
 
 ### 變更

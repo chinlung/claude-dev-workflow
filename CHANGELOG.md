@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-05-09
+
+### Added
+- **Code Audit Rigor Plugin**: Single-skill plugin providing quantitative review discipline for high-stakes audits where intuition is insufficient (security-critical, crypto, payment, IaC, untrusted-input parsers).
+  - **Five core review-discipline principles**: (1) Read first / score later, (2) "Have I actually read this, or am I guessing?" self-check, (3) Verify the source (not the diff), (4) Multi-agent consensus is not verification, (5) Wrongful dismissal costs 2× the score
+  - **Four quantitative frameworks**:
+    1. Score-based calibration (+10 / +5 / +3 / +1 vs −3 false-positive penalty)
+    2. Expected-Value (EV) decision threshold: `EV = confidence% × points − (100 − confidence%) × 2 × points`, ≥67% confidence breakeven
+    3. STRIDE + CWE classification with 16-CWE quick-reference table
+    4. Mandatory cross-reference contract (every finding includes `file:line` evidence; empty array rejected)
+  - **End-to-end audit workflow**: 5 phases (scope, literal pass, findings draft, adversarial sweep, aggregate report) with explicit Phase 4 corrective steel-manning to defuse multi-agent false-confidence amplification
+  - **Self-contained**: All rules and reference tables ship in `SKILL.md`; works on any machine without depending on host project's CLAUDE.md
+  - **Inspired by** `codexstar69/bug-hunter` adversarial Hunter / Skeptic / Referee flow, but **deliberately excludes** auto-fix with canary rollout (too aggressive for production code), hard-exclusion lists for "settled false-positive classes" (creates blind spots), and LLM-readable instruction files outside `SKILL.md` (minimizes prompt-injection surface area)
+- Updated marketplace version to 1.6.0
+
 ## [1.5.1] - 2026-04-10
 
 ### Changed

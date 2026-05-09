@@ -1,0 +1,21 @@
+{
+  "name": "code-audit-rigor",
+  "version": "1.0.0",
+  "description": "Code audit rigor toolkit — quantitative decision frameworks (EV calculation, score-based calibration, STRIDE+CWE classification) for high-stakes review situations where intuition is insufficient.",
+  "author": {
+    "name": "scl@hanchih.com"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/chinlung/claude-dev-workflow",
+  "homepage": "https://github.com/chinlung/claude-dev-workflow#readme",
+  "keywords": [
+    "code-review",
+    "audit",
+    "security-review",
+    "quantitative",
+    "decision-framework",
+    "stride",
+    "cwe",
+    "expected-value"
+  ]
+}

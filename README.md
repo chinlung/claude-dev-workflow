@@ -13,6 +13,7 @@ A collection of powerful plugins for Claude Code, featuring automated developmen
 | [High-Precision Dev](#high-precision-dev-plugin) | Safety-critical code with p^4 error rate compression | `/init`, `/start` |
 | [Session Learning](#session-learning-plugin) | Incrementally capture valuable conversation patterns as memory or skills | `/save-session` |
 | [OpenSpec + Superpowers Workflow](#openspec--superpowers-workflow-plugin) | Six-phase feature development enforcing OpenSpec/Superpowers role separation | auto-triggered skill |
+| [Code Audit Rigor](#code-audit-rigor-plugin) | Quantitative review frameworks (EV, score calibration, STRIDE+CWE) for high-stakes audits | auto-triggered skill |
 
 ## Installation
 
@@ -26,6 +27,7 @@ A collection of powerful plugins for Claude Code, featuring automated developmen
 /plugin install high-precision-dev@scl-claude-plugins
 /plugin install session-learning@scl-claude-plugins
 /plugin install openspec-superpowers-workflow@scl-claude-plugins
+/plugin install code-audit-rigor@scl-claude-plugins
 ```
 
 Or install directly:
@@ -479,6 +481,59 @@ With this skill:
 - Small bug fixes with no spec impact (do it with TDD directly, skip the six phases)
 - Pure prototyping where formal Phase 1 specs would slow exploration
 - Projects that do not use OpenSpec (the skill detects absence of `openspec/` and stays dormant)
+
+---
+
+---
+
+# Code Audit Rigor Plugin
+
+A single-skill plugin that adds **quantitative review discipline** to high-stakes code audits where intuition is insufficient.
+
+## When it triggers
+
+The skill auto-activates when the user signals a non-routine audit:
+
+- Keywords: "rigorous review", "deep audit", "quantified review", "security review", "對抗式 review", "嚴謹審查"
+- Code touches: secrets handling, auth boundary, crypto primitives, payment flows, IaC / infra glue, untrusted-input parsers, LLM context assembly
+- Explicit invocation: "use code-audit-rigor"
+
+For routine PR review, use `/review-branch` directly — this skill is overkill there.
+
+## Five core review-discipline principles
+
+1. **Read first, score later** — literal pass through every file before forming any opinion
+2. **"Have I actually read this, or am I guessing?" self-check** — before submitting any finding
+3. **Verify the source, not the diff** — `grep` + `Read` the full definition for any critical claim
+4. **Multi-agent consensus is not verification** — three agents reading the same diff misread in the same direction; always re-verify against source code yourself
+5. **Wrongful dismissal costs 2× the score** — asymmetric penalty driving conservative dismissal logic
+
+## Four quantitative frameworks
+
+| # | Framework | Purpose |
+|---|---|---|
+| 1 | **Score-based calibration** | +10 / +5 / +3 / +1 vs −3 false-positive penalty |
+| 2 | **Expected-Value (EV) threshold** | `EV = confidence% × points − (100 − confidence%) × 2 × points`; ≥67% confidence breakeven |
+| 3 | **STRIDE + CWE classification** | Every security finding tagged with both — forces explicit reasoning, integrates with industry tooling |
+| 4 | **Mandatory cross-reference contract** | Every finding includes `file:line` evidence; empty array rejected — counter-measure against LLM reference fabrication |
+
+## End-to-end audit workflow
+
+5 phases: scope definition → literal pass → findings draft → adversarial sweep (Phase 4 corrective steel-manning to defuse Principle 4 multi-agent false-confidence) → aggregate report.
+
+Output is structured JSON-style findings sorted by EV, dismissed findings with rationale (so they can be challenged), and an explicit coverage statement.
+
+## Self-contained design
+
+All rules, frameworks, reference tables (16 common CWEs), STRIDE category mapping, and worked examples ship inside `SKILL.md`. The plugin works on any machine without depending on host project's `CLAUDE.md` or other plugins.
+
+## Inspiration & deliberate exclusions
+
+Distilled from the adversarial Hunter / Skeptic / Referee pattern in [`codexstar69/bug-hunter`](https://github.com/codexstar69/bug-hunter), but **deliberately NOT** including:
+
+- **Auto-fix with canary rollout** — too aggressive on production code
+- **Hard-exclusion lists for "settled false-positive classes"** — creates blind spots, especially for prompt-injection-class issues
+- **LLM-readable instruction files outside `SKILL.md`** — minimizes prompt-injection surface area
 
 ---
 
