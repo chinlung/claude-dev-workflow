@@ -241,6 +241,30 @@ COVERAGE:
   - Total score: <sum of confirmed point values>
 ```
 
+**Always save the report to disk** — output to a file path the user can refer to later (e.g. `knowledge/audits/<target>-<YYYY-MM-DD>.md`, `audits/<target>-<YYYY-MM-DD>.md`, or wherever fits the project structure). Never produce only chat output for an audit — the user instruction `產生文件或參考資料時，一律存檔到磁碟` (save artifacts to disk by default) applies here even more strictly because audit reports have value to future reviewers, not just the current session.
+
+### Phase 5b: When CONFIRMED FINDINGS is zero
+
+**A clean audit is a valuable result, not a non-event.** When all candidates were dismissed (typically after Phase 4 corrective steel-manning), you MUST still produce the full report. Do NOT short-cut to "looks fine, no findings." The report serves three concrete purposes:
+
+1. **Reviewer prior** for the next person (or AI) auditing the same code — they don't have to re-do the same Phase 4 steel-manning, they can build on this report's dismissed-findings rationales
+2. **Audit trail** documenting which threats were considered and ruled out, with confidence numbers and steel-manning arguments — auditable by humans, not just trusted by assertion
+3. **Diff baseline** for future change reviews — when the code changes, the next audit can compare against this snapshot ("did the change touch the lines that BUG-D01 identified as the source of `source $ENV_FILE` risk?")
+
+**Required structure when zero confirmed:**
+
+- **Executive summary must explicitly state the negative result.** Phrasing like:
+  - "No confirmed findings. After Phase 4 corrective steel-manning, all N candidate findings were downgraded to DISMISS."
+  - "This is a valuable result, not absence of work — N specific threat vectors were considered and ruled out, with rationales preserved for future reviewers."
+- **DISMISSED FINDINGS section is the body of the report** — every entry must include:
+  - Original confidence vs re-evaluated confidence (shows Phase 4 work happened)
+  - The specific steel-manning argument that led to dismissal
+  - "Future note" describing conditions under which the dismissal would no longer apply (e.g. "Multi-user environments need this re-evaluated")
+- **Total dismissed prior score** — sum the points of all DISMISS entries (as if confirmed). This is the "would-be cost if we had been wrong about every dismissal" — useful as a sanity check that you weren't reflexively dismissing everything.
+- **Skill self-evaluation paragraph** (encouraged) — note any friction points hit during this audit (ambiguous scope, missing context, hard-to-pick CWE, etc.). Feeds back into improving this skill.
+
+The total file length of a zero-findings report is typically not shorter than a findings-present report — it should be longer if anything, because steel-manning rationales are the substance.
+
 ## When NOT to use this skill
 
 - Routine self-audit on small bug fixes — over-engineered
@@ -255,6 +279,7 @@ COVERAGE:
 - **Treating confidence as binary** — "I think there might be a bug" is 50% confidence, not 100%
 - **Auto-fixing findings** — this skill produces analysis, not patches; fixes go through the user's normal review-and-approve workflow
 - **Skipping Principle 4 corrective sweep** — without steel-manning, multi-agent consensus becomes false-confidence amplifier
+- **Treating "zero confirmed findings" as no audit needed** — the steel-manning rationales and dismissed-finding priors are the substance; Phase 5b exists exactly to prevent this anti-pattern
 
 ## Inspiration & deliberate exclusions
 

@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.1] - 2026-05-09
+
+### Changed
+- **code-audit-rigor 1.0.0 → 1.0.1**: Add Phase 5b zero-findings handling guidance to `SKILL.md`. Surfaced during first real-world test on `bin/tg-fallback-send.sh` where 8 candidates → 0 confirmed exposed the absence of explicit instructions for clean-audit reports. New Phase 5b mandates: (1) full report production even with zero confirmed findings, (2) executive-summary phrasing that explicitly states the negative result as valuable, (3) dismissed-findings body with original-vs-re-evaluated confidence and steel-manning rationale, (4) total dismissed prior score sanity check, (5) encouraged skill self-evaluation paragraph. Added explicit "save to disk" requirement to Phase 5 (no chat-only output for audits) and one new anti-pattern.
+
+### Notes
+- Marketplace patch bump 1.6.0 → 1.6.1 reflects the SKILL.md content change. Users on 1.6.0 still have the four quantitative frameworks but lack guidance on the most common outcome (zero confirmed findings) — they should update.
+
 ## [1.6.0] - 2026-05-09
 
 ### Added

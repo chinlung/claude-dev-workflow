@@ -5,6 +5,14 @@
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [1.6.1] - 2026-05-09
+
+### 變更
+- **code-audit-rigor 1.0.0 → 1.0.1**：`SKILL.md` 新增 Phase 5b「零確認 finding」處理指引。在 `bin/tg-fallback-send.sh` 首次實戰測試（8 個 candidate → 0 confirmed）時暴露此空缺——原 workflow 沒有明確指示「乾淨 audit 該怎麼產出 report」。新 Phase 5b 強制：(1) 即便 0 confirmed 仍須產出完整 report；(2) executive summary 必須明確說明 negative result 是 valuable 而非 absence of work；(3) dismissed findings 區塊必須含「原始 vs 重新評估 confidence」+「steel-manning 論述」+「未來條件下何時 re-escalate」的 future note；(4) 「Total dismissed prior score」健全性檢查（如果每個 dismissal 都錯了，整體成本會是多少）；(5) 鼓勵附 skill 自評段落，回饋 friction points。Phase 5 明確要求 audit report 必須存檔到磁碟（不可只在 chat 顯示）。新增一條 anti-pattern。
+
+### 備註
+- Marketplace patch bump 1.6.0 → 1.6.1 反映 `SKILL.md` 內容變更。1.6.0 的使用者仍有四個量化框架，但缺最常見結果（0 confirmed findings）的處理指引——建議更新。
+
 ## [1.6.0] - 2026-05-09
 
 ### 新增
