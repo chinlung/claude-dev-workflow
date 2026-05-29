@@ -1,0 +1,21 @@
+{
+  "name": "codegraph",
+  "version": "1.0.0",
+  "description": "CodeGraph code-intelligence skill — query the tree-sitter knowledge graph (callers, impact, trace, structural context) before grep when editing or reviewing code. Covers the MCP-tool vs Bash-CLI entry-point split and new-project setup.",
+  "author": {
+    "name": "scl@hanchih.com"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/chinlung/claude-dev-workflow",
+  "homepage": "https://github.com/chinlung/claude-dev-workflow#readme",
+  "keywords": [
+    "codegraph",
+    "code-intelligence",
+    "knowledge-graph",
+    "code-navigation",
+    "impact-analysis",
+    "structural-search",
+    "callers",
+    "mcp"
+  ]
+}

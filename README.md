@@ -14,6 +14,7 @@ A collection of powerful plugins for Claude Code, featuring automated developmen
 | [Session Learning](#session-learning-plugin) | Incrementally capture valuable conversation patterns as memory or skills | `/save-session` |
 | [OpenSpec + Superpowers Workflow](#openspec--superpowers-workflow-plugin) | Six-phase feature development enforcing OpenSpec/Superpowers role separation | auto-triggered skill |
 | [Code Audit Rigor](#code-audit-rigor-plugin) | Quantitative review frameworks (EV, score calibration, STRIDE+CWE) for high-stakes audits | auto-triggered skill |
+| [CodeGraph](#codegraph-plugin) | Structural code intelligence (callers, impact, trace) before grep when editing/reviewing | auto-triggered skill |
 
 ## Installation
 
@@ -534,6 +535,52 @@ Distilled from the adversarial Hunter / Skeptic / Referee pattern in [`codexstar
 - **Auto-fix with canary rollout** — too aggressive on production code
 - **Hard-exclusion lists for "settled false-positive classes"** — creates blind spots, especially for prompt-injection-class issues
 - **LLM-readable instruction files outside `SKILL.md`** — minimizes prompt-injection surface area
+
+---
+
+---
+
+# CodeGraph Plugin
+
+A single-skill plugin that teaches Claude to reach for the [codegraph](https://www.npmjs.com/package/codegraph) tree-sitter knowledge graph **before** grep, for **structural** questions about code.
+
+## When it triggers
+
+- A project has a `.codegraph/` index and a structural question arises (who calls X, what breaks if I change Y, how does X reach Y)
+- About to grep for call sites, or edit / rename / remove a symbol
+- A `codegraph_*` MCP tool call failed with "not found" (→ the command is CLI-only)
+- Setting up codegraph in a new project
+
+For literal-text search (string contents, comments, log lines), just use grep — this skill is not for that.
+
+## The entry-point split (the non-obvious part)
+
+`codegraph serve --mcp` exposes only *some* commands as `codegraph_*` MCP tools; the rest are Bash-CLI only. Neither surface is a superset.
+
+| | MCP only | CLI only (`codegraph <cmd>`) | Both |
+|---|---|---|---|
+| | `trace`, `node`, `explore` | `callers`, `callees`, `impact`, `affected`, `status`, `files` | `search`/`query`, `context` |
+
+- **Navigate / understand** (want code bodies, trace X→Y) → MCP `context` / `trace` / `node` / `explore`
+- **Analyze / list** (transitive impact, callers, affected tests) → CLI `impact` / `callers` / `callees` / `affected`
+- **Overlapping `context` / `search` → default MCP** (LLM-tuned output, no ANSI noise, no shell round-trip)
+
+## Proactive triggers
+
+| Action | Tool |
+|---|---|
+| Before edit / rename / remove a symbol | `codegraph impact <symbol>` (CLI) |
+| Before changing a method — who calls it? | `codegraph callers <symbol>` (CLI) or `codegraph_node` (MCP) |
+| Picking up unfamiliar code | `codegraph_context "<task>"` (MCP) |
+| Verify "how does X reach Y" | `codegraph_trace <from> <to>` (MCP) |
+
+## Reliability fallback
+
+When a capability isn't an MCP tool, use the CLI — never silently degrade to a half-grep that misses dynamic-dispatch call sites. PHP DI / facade callee resolution is a known weak spot; supplement with grep only there.
+
+## Prerequisites
+
+The plugin **bundles the codegraph MCP server** (`.mcp.json` → `codegraph serve --mcp`): install once and the MCP tools are available everywhere, so a new project needs only `codegraph init -i` (no per-project `codegraph install`). Requires the [`codegraph`](https://www.npmjs.com/package/codegraph) CLI on `PATH` globally; plugin-provided tools are prefixed `mcp__plugin_codegraph_codegraph__<tool>`. See `skills/codegraph/reference.md` for the allowlist snippet (both prefixes), gitignore notes, and known gotchas (tool-managed `CODEGRAPH_START/END` block overwrites, `daemon.pid` gitignore gap).
 
 ---
 

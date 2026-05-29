@@ -5,6 +5,19 @@
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [1.7.0] - 2026-05-30
+
+### 新增
+- **CodeGraph Plugin**（1.0.0）：單一 skill plugin，教 Claude 在有 `.codegraph/` 索引的專案裡，結構性查詢「先 codegraph 再 grep」。
+  - **夾帶 MCP server**（`.mcp.json` → `codegraph serve --mcp`）：裝一次，MCP 工具在所有專案都可用——新專案只需 `codegraph init -i`，不必逐專案 `codegraph install` 或寫 `.mcp.json`。plugin 提供的工具前綴為 `mcp__plugin_codegraph_codegraph__<tool>`；需 `codegraph` CLI 在全域 PATH。
+  - **兩條入口邊界**：記錄一個不直觀的事實——`codegraph serve --mcp` 只把 `trace`/`node`/`explore`/`search`/`context` 導出成 `codegraph_*` MCP 工具，而 `impact`/`callers`/`callees`/`affected`/`status`/`files` 只在 Bash CLI（實測 codegraph 0.9.7）。誰都不是超集——把 `codegraph_impact` 當 MCP 工具呼叫會失敗。
+  - **動作觸發**：綁定到動作（edit/rename/remove → `impact`；改 method → `callers`/`node`；接手不熟程式碼 → `context`；追流程 → `trace`），而非只在被問問句時才用。
+  - **可靠性 fallback**：某能力不是 MCP 工具時改用 CLI，絕不默默退回會漏掉動態 dispatch 呼叫點的半套 grep。
+  - 漸進揭露的 `reference.md`：新專案 4 步啟用、唯讀 `settings.json` allowlist、已知坑（工具管理的 `CODEGRAPH_START/END` 區塊重新同步會覆寫、該區塊表格把 CLI 命令誤列為 MCP 工具、`daemon.pid` 不在預設 gitignore）。
+
+### 備註
+- Marketplace minor bump 1.6.1 → 1.7.0，反映新增 plugin。
+
 ## [1.6.1] - 2026-05-09
 
 ### 變更

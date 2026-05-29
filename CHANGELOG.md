@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-05-30
+
+### Added
+- **CodeGraph Plugin** (1.0.0): Single-skill plugin teaching structural-code-intelligence-before-grep discipline for projects with a `.codegraph/` index.
+  - **Bundled MCP server** (`.mcp.json` → `codegraph serve --mcp`): install once and the MCP tools are available in every project — a new project then needs only `codegraph init -i`, no per-project `codegraph install` or `.mcp.json`. Plugin-provided tools are prefixed `mcp__plugin_codegraph_codegraph__<tool>`; requires the `codegraph` CLI on `PATH` globally.
+  - **Entry-point split**: documents the non-obvious fact that `codegraph serve --mcp` exposes only `trace`/`node`/`explore`/`search`/`context` as `codegraph_*` MCP tools, while `impact`/`callers`/`callees`/`affected`/`status`/`files` are Bash-CLI only (verified on codegraph 0.9.7). Neither surface is a superset — calling `codegraph_impact` as an MCP tool fails.
+  - **Proactive triggers** tied to actions (edit/rename/remove → `impact`; change a method → `callers`/`node`; unfamiliar code → `context`; flow → `trace`) rather than only phrased questions.
+  - **Reliability fallback**: when a capability isn't an MCP tool, use the CLI — never silently degrade to a half-grep that misses dynamic-dispatch call sites.
+  - Progressive-disclosure `reference.md`: 4-step new-project setup, read-only `settings.json` allowlist, and known gotchas (tool-managed `CODEGRAPH_START/END` block overwrites on re-sync, that block's table over-promising CLI commands as MCP tools, `daemon.pid` absent from the default gitignore).
+
+### Notes
+- Marketplace minor bump 1.6.1 → 1.7.0 for the new plugin.
+
 ## [1.6.1] - 2026-05-09
 
 ### Changed

@@ -14,6 +14,7 @@
 | [Session 經驗學習](#session-經驗學習插件) | 漸進式保存對話中的有價值模式為 memory 或 skill | `/save-session` |
 | [OpenSpec + Superpowers 工作流程](#openspec--superpowers-工作流程插件) | 六階段功能開發，強制 OpenSpec / Superpowers 角色分離 | 自動觸發 skill |
 | [Code Audit Rigor](#code-audit-rigor-插件) | 高風險審查的量化框架（EV、評分校準、STRIDE+CWE） | 自動觸發 skill |
+| [CodeGraph](#codegraph-插件) | 編輯／審查前先查結構（callers、impact、trace）而非 grep | 自動觸發 skill |
 
 ## 安裝方式
 
@@ -532,6 +533,52 @@ Output 為結構化 JSON 風格 findings，依 EV 排序，含 dismissed finding
 - **Auto-fix with canary rollout** — 對 production code 太激進
 - **針對「settled false-positive classes」的 hard-exclusion 清單** — 會造成盲點，特別是 prompt-injection 類議題
 - **`SKILL.md` 之外的 LLM-readable 指令檔** — 最小化 prompt-injection 攻擊面
+
+---
+
+---
+
+# CodeGraph 插件
+
+單一 skill plugin，教 Claude 在結構性問題上**先查 [codegraph](https://www.npmjs.com/package/codegraph) tree-sitter 知識圖譜、再用 grep**。
+
+## 何時觸發
+
+- 專案有 `.codegraph/` 索引，且出現結構性問題（誰呼叫 X、改 Y 會壞什麼、X 怎麼流到 Y）
+- 準備 grep 呼叫點，或 edit / rename / remove 一個符號
+- `codegraph_*` MCP 工具呼叫回 "not found"（→ 該命令只在 CLI）
+- 在新專案啟用 codegraph
+
+純文字搜尋（字串內容、註解、log 訊息）直接用 grep——此 skill 不為此而生。
+
+## 兩條入口邊界（不直觀的重點）
+
+`codegraph serve --mcp` 只把**部分**命令導出成 `codegraph_*` MCP 工具，其餘只在 Bash CLI；誰都不是超集。
+
+| | 只在 MCP | 只在 CLI（`codegraph <cmd>`） | 兩邊都有 |
+|---|---|---|---|
+| | `trace`、`node`、`explore` | `callers`、`callees`、`impact`、`affected`、`status`、`files` | `search`/`query`、`context` |
+
+- **導覽 / 理解**（要看 code body、追 X→Y）→ MCP `context` / `trace` / `node` / `explore`
+- **分析 / 清單**（遞移影響、誰呼叫、受影響測試）→ CLI `impact` / `callers` / `callees` / `affected`
+- **重疊的 `context` / `search` 預設 MCP**（輸出為 LLM 調校、無 ANSI 噪音、免 shell round-trip）
+
+## 動作觸發
+
+| 動作 | 工具 |
+|---|---|
+| edit / rename / remove 符號前 | `codegraph impact <symbol>`（CLI） |
+| 改 method 前，誰呼叫？ | `codegraph callers <symbol>`（CLI）或 `codegraph_node`（MCP） |
+| 接手不熟的程式碼 | `codegraph_context "<task>"`（MCP） |
+| 驗證「X 怎麼流到 Y」 | `codegraph_trace <from> <to>`（MCP） |
+
+## 可靠性 fallback
+
+某能力不是 MCP 工具時改用 CLI，絕不默默退回會漏掉動態 dispatch 呼叫點的半套 grep。PHP DI / facade callee 解析是已知弱項，只有那種情境才補 grep。
+
+## 前置需求
+
+此 plugin **夾帶 codegraph MCP server**（`.mcp.json` → `codegraph serve --mcp`）：裝一次，MCP 工具處處可用，新專案只需 `codegraph init -i`（不必逐專案 `codegraph install`）。需 `codegraph` CLI 在全域 PATH；plugin 提供的工具前綴為 `mcp__plugin_codegraph_codegraph__<tool>`。allowlist snippet（兩種前綴）、gitignore 注意事項、已知坑（`CODEGRAPH_START/END` 區塊覆寫、`daemon.pid` gitignore 缺漏）見 `skills/codegraph/reference.md`。
 
 ---
 

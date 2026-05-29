@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "Claude Code plugins collection by scl",
-    "version": "1.6.1"
+    "version": "1.7.0"
   },
   "plugins": [
     {
@@ -49,6 +49,13 @@
       "description": "高風險程式碼審查的量化決策框架 - EV 計算、評分校準、STRIDE+CWE 分類、強制交叉引用契約。靈感來自 codexstar69/bug-hunter 對抗式 review，蒸餾成 Claude 原生檢查點，刻意排除 auto-fix 與 LLM-readable 注入面。",
       "version": "1.0.1",
       "keywords": ["code-review", "audit", "security-review", "quantitative", "decision-framework", "stride", "cwe", "expected-value"]
+    },
+    {
+      "name": "codegraph",
+      "source": "./plugins/codegraph",
+      "description": "結構化程式碼智能 skill - 編輯或審查程式碼前，先查 tree-sitter 知識圖譜（callers / impact / trace / context）而非 grep。釐清 MCP 工具與 Bash CLI 兩條入口的邊界與新專案啟用方式。",
+      "version": "1.0.0",
+      "keywords": ["codegraph", "code-intelligence", "knowledge-graph", "code-navigation", "impact-analysis", "structural-search", "callers", "mcp"]
     }
   ]
 }
