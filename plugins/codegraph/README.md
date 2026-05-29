@@ -2,6 +2,48 @@
 
 > Structural code intelligence for Claude Code — query a tree-sitter knowledge graph (callers, impact, trace, context) before grep when editing or reviewing code.
 
+## Quick start
+
+```bash
+# 0. Prerequisite — the codegraph CLI on PATH (one-time, global)
+npm i -g codegraph
+
+# 1. Install this plugin (one-time)
+/plugin marketplace add chinlung/claude-dev-workflow
+/plugin install codegraph@scl-claude-plugins
+
+# 2. Index each project you work in
+codegraph init -i
+```
+
+That's it — the MCP tools (`context` / `trace` / `node` / `explore`) and CLI commands (`impact` / `callers` / …) now work in that project. The plugin bundles the MCP server, so there's no per-project `codegraph install` or `.mcp.json`.
+
+### Optional — skip the permission prompts (one-time)
+
+Add these entries to the `permissions.allow` array of your **global** `~/.claude/settings.json`. **Merge — do not overwrite the file** (it may hold other settings). Easiest: run `/permissions` and add them via the UI. Manual JSON:
+
+```json
+"mcp__plugin_codegraph_codegraph__codegraph_search",
+"mcp__plugin_codegraph_codegraph__codegraph_context",
+"mcp__plugin_codegraph_codegraph__codegraph_node",
+"mcp__plugin_codegraph_codegraph__codegraph_trace",
+"mcp__plugin_codegraph_codegraph__codegraph_explore",
+"Bash(codegraph callers:*)",
+"Bash(codegraph callees:*)",
+"Bash(codegraph impact:*)",
+"Bash(codegraph affected:*)",
+"Bash(codegraph status:*)",
+"Bash(codegraph files:*)"
+```
+
+Power-user one-liner (safe merge; requires `jq` and an existing valid `~/.claude/settings.json`):
+
+```bash
+f=~/.claude/settings.json; jq '.permissions.allow = ((.permissions.allow // []) + ["mcp__plugin_codegraph_codegraph__codegraph_search","mcp__plugin_codegraph_codegraph__codegraph_context","mcp__plugin_codegraph_codegraph__codegraph_node","mcp__plugin_codegraph_codegraph__codegraph_trace","mcp__plugin_codegraph_codegraph__codegraph_explore","Bash(codegraph callers:*)","Bash(codegraph callees:*)","Bash(codegraph impact:*)","Bash(codegraph affected:*)","Bash(codegraph status:*)","Bash(codegraph files:*)"] | unique)' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+```
+
+> Only **read-only** tools/commands are allowlisted — `init`/`sync`/`index`/`uninstall` are deliberately omitted so an agent can't rebuild or remove your index unprompted.
+
 ## What it does
 
 `codegraph` is a single-skill plugin that teaches Claude to reach for the [codegraph](https://www.npmjs.com/package/codegraph) knowledge graph **before** falling back to grep for **structural** questions:
