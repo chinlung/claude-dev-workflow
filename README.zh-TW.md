@@ -13,7 +13,7 @@
 | [高精確度開發](#高精確度開發插件) | 安全關鍵程式碼，錯誤率壓縮至 p^4 | `/init`, `/start` |
 | [Session 經驗學習](#session-經驗學習插件) | 漸進式保存對話中的有價值模式為 memory 或 skill | `/save-session` |
 | [OpenSpec + Superpowers 工作流程](#openspec--superpowers-工作流程插件) | 六階段功能開發，強制 OpenSpec / Superpowers 角色分離 | 自動觸發 skill |
-| [Code Audit Rigor](#code-audit-rigor-插件) | 高風險審查的量化框架（EV、評分校準、STRIDE+CWE）+ 工程化保證（語言規則包、coverage 核銷、引用錨定） | 自動觸發 skill |
+| [Code Audit Rigor](#code-audit-rigor-插件) | 審查工具箱：routine 兩輪審查指令 + 量化框架（EV、評分校準、STRIDE+CWE）+ 工程化保證（語言規則包、coverage 核銷、引用錨定） | `/review-branch`、`/review-pr` + 自動觸發 skill |
 | [CodeGraph](#codegraph-插件) | 編輯／審查前先查結構（callers、impact、trace）而非 grep | 自動觸發 skill |
 
 ## 安裝方式
@@ -487,9 +487,18 @@ Skill 啟動時 Claude 先讀 `SKILL.md`，辨認當前 Phase 後再讀 `phases.
 
 # Code Audit Rigor 插件
 
-單一 skill 插件，為「直覺不足以判斷」的高風險程式碼審查提供**量化紀律**。
+審查工具箱：兩個 routine 審查指令 + 一個高風險審查**量化紀律** skill，共用同一套路徑匹配語言規則包。
 
-## 觸發時機
+## 指令（1.2.0 起）
+
+| 指令 | 功能 |
+|---|---|
+| `/review-branch [base-branch]` | 兩輪分支審查：Phase 1 建議清單（注入 per-file-type 規則）→ Phase 2 逐建議子代理驗證（先做 quotedCode grep 錨定）→ Phase 3 報告（必附 coverage 核對表） |
+| `/review-pr <PR號>` | 抓取 GitHub 全部 3 個評論 endpoint（`pulls/comments`、`pulls/reviews`、`issues/comments`），分類、修復安全性/邏輯問題並附驗證測試、commit 並回覆 |
+
+兩者的規則解析鏈：專案 `.reviewrules/` → 使用者 `~/.claude/review-rules/` → plugin 內建 `${CLAUDE_PLUGIN_ROOT}/rules/`（機器無關）。
+
+## Skill 觸發時機
 
 Skill 在以下情境自動啟動：
 

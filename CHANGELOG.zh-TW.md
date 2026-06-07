@@ -5,6 +5,14 @@
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [1.7.2] - 2026-06-08
+
+### 變更
+- **code-audit-rigor 1.1.0 → 1.2.0**：把 `/review-branch` 與 `/review-pr` 從使用者層 `~/.claude/commands/` 遷入 plugin。動機：`/review-branch` 的內建規則層原本 fallback 到只在單一機器有效的硬編碼絕對路徑；進 plugin 後改用 `${CLAUDE_PLUGIN_ROOT}/rules/manifest.json`——機器無關、隨安裝出貨。Plugin 定位擴為「審查工具箱」（routine 指令 + rigor skill 共用同一套規則包）。
+
+### 備註
+- Marketplace patch bump 1.7.1 → 1.7.2。
+
 ## [1.7.1] - 2026-06-07
 
 ### 變更

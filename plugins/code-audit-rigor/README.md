@@ -1,17 +1,23 @@
 # code-audit-rigor
 
-> Quantitative decision frameworks for high-stakes code audits — EV calculation, score-based calibration, STRIDE+CWE classification, mandatory cross-reference contract.
+> Code review & audit toolkit — routine two-round review commands sharing path-matched language rule packs, plus quantitative decision frameworks (EV calculation, score-based calibration, STRIDE+CWE classification, mandatory cross-reference contract) for high-stakes audits.
 
 ## What it does
 
-`code-audit-rigor` is a single-skill plugin that adds a **deep-audit checklist** to your Claude Code workflow for situations where intuition is insufficient:
+`code-audit-rigor` ships two layers that share the same `rules/` packs:
+
+**Routine commands** (since 1.2.0):
+- `/review-branch [base-branch]` — two-round branch review: Phase 1 suggestions (with per-file-type rule injection) → Phase 2 per-suggestion sub-agent verification (quotedCode grep anchoring first) → Phase 3 report with a mandatory coverage reconciliation table
+- `/review-pr <PR#>` — fetch all three GitHub comment endpoints (`pulls/comments`, `pulls/reviews`, `issues/comments`), classify, fix security/logic issues with verification tests, commit and reply
+
+**Deep-audit skill** — a quantitative checklist for situations where intuition is insufficient:
 
 - Security-critical reviews (auth, crypto, payments, PII)
 - Adversarial-input handling (LLM context assembly, parsers, deserializers)
 - Production hot-path / infra-glue changes
 - Any situation where a misjudged false negative is structurally more expensive than a false positive
 
-It does **NOT** replace `/review-branch` or `pr-review-toolkit:review-pr` — it complements them by quantifying which findings to act on when the stakes warrant the extra rigor.
+The skill complements `pr-review-toolkit:review-pr` by quantifying which findings to act on when the stakes warrant the extra rigor; for everyday work use `/review-branch`.
 
 ## The four frameworks
 
@@ -40,7 +46,15 @@ Trigger phrases the skill watches for:
 - "對抗式 review", "嚴謹審查"
 - Any code touching secrets, auth boundary, crypto, payment, IaC, untrusted-input parsers
 
-For routine PR review, just use `/review-branch` directly — this skill is overkill.
+For routine PR review, just use this plugin's `/review-branch` command directly — the skill is overkill.
+
+## Rule resolution layering
+
+Both the commands and the skill resolve per-file review rules through the same chain (first match wins):
+
+1. Project `.reviewrules/manifest.json` (team-shared, committed to git)
+2. User `~/.claude/review-rules/manifest.json` (personal)
+3. Plugin built-in `${CLAUDE_PLUGIN_ROOT}/rules/manifest.json` — machine-independent, ships with the install
 
 ## Output format
 

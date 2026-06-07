@@ -2,6 +2,20 @@
 
 All notable changes to the `code-audit-rigor` plugin will be documented in this file.
 
+## [1.2.0] - 2026-06-08
+
+### Added
+
+- **Two routine review commands migrated from user-level `~/.claude/commands/`** so they version, sync across machines, and resolve the rule packs portably:
+  - `/review-branch [base-branch]` — two-round branch review (Phase 1 suggestions → Phase 2 per-suggestion sub-agent verification with quotedCode grep anchoring → Phase 3 report with mandatory coverage reconciliation table). The built-in rules layer now references `${CLAUDE_PLUGIN_ROOT}/rules/manifest.json` — machine-independent, replacing the previous hardcoded local marketplace-repo path that only worked on one machine.
+  - `/review-pr <PR号>` — fetches all three GitHub comment endpoints (`pulls/comments`, `pulls/reviews`, `issues/comments`), classifies, fixes security/logic issues with verification tests, commits and replies.
+- Rule resolution layering in `/review-branch` is now: project `.reviewrules/` → user `~/.claude/review-rules/` → `${CLAUDE_PLUGIN_ROOT}/rules/` (was: plugin-cache glob with a hardcoded absolute fallback).
+
+### Changed
+
+- Plugin scope widened from "high-stakes audit skill" to "review & audit toolkit": routine commands and the rigor skill share the same rule packs. `plugin.json` description updated accordingly.
+- Version bumped 1.1.0 → 1.2.0 (minor — new commands, no breaking change).
+
 ## [1.1.0] - 2026-06-07
 
 ### Added

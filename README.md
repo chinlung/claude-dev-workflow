@@ -13,7 +13,7 @@ A collection of powerful plugins for Claude Code, featuring automated developmen
 | [High-Precision Dev](#high-precision-dev-plugin) | Safety-critical code with p^4 error rate compression | `/init`, `/start` |
 | [Session Learning](#session-learning-plugin) | Incrementally capture valuable conversation patterns as memory or skills | `/save-session` |
 | [OpenSpec + Superpowers Workflow](#openspec--superpowers-workflow-plugin) | Six-phase feature development enforcing OpenSpec/Superpowers role separation | auto-triggered skill |
-| [Code Audit Rigor](#code-audit-rigor-plugin) | Quantitative review frameworks (EV, score calibration, STRIDE+CWE) + engineering guarantees (language rule packs, coverage reconciliation, quote anchoring) for high-stakes audits | auto-triggered skill |
+| [Code Audit Rigor](#code-audit-rigor-plugin) | Review & audit toolkit: routine two-round review commands + quantitative frameworks (EV, score calibration, STRIDE+CWE) + engineering guarantees (language rule packs, coverage reconciliation, quote anchoring) | `/review-branch`, `/review-pr` + auto-triggered skill |
 | [CodeGraph](#codegraph-plugin) | Structural code intelligence (callers, impact, trace) before grep when editing/reviewing | auto-triggered skill |
 
 ## Installation
@@ -489,9 +489,18 @@ With this skill:
 
 # Code Audit Rigor Plugin
 
-A single-skill plugin that adds **quantitative review discipline** to high-stakes code audits where intuition is insufficient.
+A review & audit toolkit: two routine review commands and a **quantitative review discipline** skill for high-stakes audits, all sharing the same path-matched language rule packs.
 
-## When it triggers
+## Commands (since 1.2.0)
+
+| Command | What it does |
+|---|---|
+| `/review-branch [base-branch]` | Two-round branch review: Phase 1 suggestions (per-file-type rule injection) → Phase 2 per-suggestion sub-agent verification (quotedCode grep anchoring first) → Phase 3 report with mandatory coverage reconciliation table |
+| `/review-pr <PR#>` | Fetch all three GitHub comment endpoints (`pulls/comments`, `pulls/reviews`, `issues/comments`), classify, fix security/logic issues with verification tests, commit and reply |
+
+Both resolve rules via project `.reviewrules/` → user `~/.claude/review-rules/` → plugin built-in `${CLAUDE_PLUGIN_ROOT}/rules/` (machine-independent).
+
+## When the skill triggers
 
 The skill auto-activates when the user signals a non-routine audit:
 

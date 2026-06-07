@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.2] - 2026-06-08
+
+### Changed
+- **code-audit-rigor 1.1.0 → 1.2.0**: Migrated `/review-branch` and `/review-pr` from user-level `~/.claude/commands/` into the plugin. Motivation: `/review-branch`'s built-in rules layer previously fell back to a hardcoded absolute path that only resolved on one machine; inside the plugin it now uses `${CLAUDE_PLUGIN_ROOT}/rules/manifest.json`, which is machine-independent and ships with every install. Plugin scope widened to "review & audit toolkit" (routine commands + rigor skill sharing the same rule packs).
+
+### Notes
+- Marketplace patch bump 1.7.1 → 1.7.2.
+
 ## [1.7.1] - 2026-06-07
 
 ### Changed
