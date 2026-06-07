@@ -5,6 +5,14 @@
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [1.7.3] - 2026-06-08
+
+### 變更
+- **code-audit-rigor 1.2.0 → 1.2.1**：調用鏈追蹤改為 codegraph-aware。Review 子代理只看派發 prompt，而 prompt 原本硬寫「使用 Grep」——即使專案有 codegraph 索引也不會用，漏掉 dynamic-dispatch 呼叫點（callback、DI、event handler）。`/review-branch` Phase 2 與 `SKILL.md` Principle 3 現在在 `.codegraph/` 存在時優先用 `codegraph_callers`/`codegraph_impact`，無索引 fallback Grep。quotedCode 錨定刻意維持 Grep（逐字文字比對，非結構查詢）。無硬依賴——沒裝 codegraph 行為不變。
+
+### 備註
+- Marketplace patch bump 1.7.2 → 1.7.3。
+
 ## [1.7.2] - 2026-06-08
 
 ### 變更

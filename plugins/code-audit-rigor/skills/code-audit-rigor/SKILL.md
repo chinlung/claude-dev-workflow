@@ -56,6 +56,8 @@ Diff-only review is unreliable because:
 
 For any critical or high-severity claim, you MUST `grep` for the symbol and `Read` the full definition before adopting the finding.
 
+**Tool selection note:** when the project has a `.codegraph/` index, prefer codegraph for *structural* queries — `codegraph_callers` for call-chain tracing, `codegraph_impact` for blast radius, `codegraph_explore` for unfamiliar architecture — because grep misses dynamic-dispatch call sites (callbacks, DI containers, event handlers). Grep remains the correct tool for *literal-text* work: the Phase 4 quoted-code anchoring check is verbatim string matching, not a structural query — keep using Grep there.
+
 ### Principle 4 — Multi-agent consensus is not verification
 
 If three independent agents (or three review tools, or three reviewers) all flag the same issue, that is **not evidence the issue is real**. They are reading the same diff through similar reasoning paths — misreads amplify in the same direction, not orthogonally.

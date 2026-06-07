@@ -2,6 +2,15 @@
 
 All notable changes to the `code-audit-rigor` plugin will be documented in this file.
 
+## [1.2.1] - 2026-06-08
+
+### Changed
+
+- **Codegraph-aware call-chain tracing.** Review flows previously hardcoded "use Grep" for caller tracing — sub-agents follow the dispatch prompt literally, so they never reached for the codegraph index even when one existed, missing dynamic-dispatch call sites (callbacks, DI, event handlers). Now:
+  - `/review-branch` Phase 2 step 3: prefer `codegraph_callers` / `codegraph_impact` when the project has a `.codegraph/` index; fall back to Grep otherwise
+  - `SKILL.md` Principle 3: tool-selection note — codegraph for *structural* queries (callers/impact/explore), Grep stays correct for *literal-text* work (Phase 4 quoted-code anchoring is verbatim string matching, deliberately unchanged)
+- Graceful degradation: projects without codegraph behave exactly as before. No dependency added — codegraph plugin is optional.
+
 ## [1.2.0] - 2026-06-08
 
 ### Added
