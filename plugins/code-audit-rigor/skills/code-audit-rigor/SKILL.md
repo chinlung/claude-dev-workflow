@@ -1,6 +1,6 @@
 ---
 name: code-audit-rigor
-description: Use when conducting high-stakes code audits where intuition alone is insufficient — security-critical reviews, financial / cryptographic / safety-critical code, or any deep dive triggered by user keywords like "rigorous review" / "deep audit" / "quantified decision" / "security review" / "對抗式 review" / "嚴謹審查". Provides five core review-discipline principles plus four quantitative frameworks (Expected-Value decision threshold, score-based calibration, STRIDE+CWE classification, mandatory cross-reference contract). This skill is fully self-contained — it does not depend on the host project's CLAUDE.md to function. SKIP for routine PR review or simple bug fixes where standard review flows are adequate. Inspired by adversarial multi-agent review patterns (e.g. codexstar69/bug-hunter), distilled into Claude-native checkpoints without auto-fix or LLM-readable injection vectors.
+description: Use when conducting high-stakes code audits where intuition alone is insufficient — security-critical reviews, financial / cryptographic / safety-critical code, or any deep dive triggered by user keywords like "rigorous review" / "deep audit" / "quantified decision" / "security review" / "對抗式 review" / "嚴謹審查". Provides five core review-discipline principles, four quantitative frameworks (Expected-Value decision threshold, score-based calibration, STRIDE+CWE classification, mandatory cross-reference contract with quoted-code anchoring), plus three engineering guarantees adapted from alibaba/open-code-review (path-matched language rule packs with suppression lists, deterministic scope/coverage checklist, reference-anchoring verification). This skill is fully self-contained — it does not depend on the host project's CLAUDE.md to function. SKIP for routine PR review or simple bug fixes where standard review flows are adequate. Inspired by adversarial multi-agent review patterns (e.g. codexstar69/bug-hunter) and alibaba/open-code-review's deterministic-engineering layer, distilled into Claude-native checkpoints without auto-fix or LLM-readable injection vectors.
 ---
 
 # Code Audit Rigor
@@ -154,9 +154,9 @@ If you cannot pick a CWE, the finding is probably too vague — refine it until 
 - STRIDE: **E** (Elevation of Privilege)
 - CWE: **CWE-863** (Incorrect Authorization)
 
-### Framework 4 — Mandatory cross-reference contract
+### Framework 4 — Mandatory cross-reference contract (with quoted-code anchoring)
 
-Every finding output MUST include a `crossReferences` array citing specific `file:line` evidence. **Empty array is rejected.**
+Every finding output MUST include a `crossReferences` array citing specific `file:line` evidence **plus a verbatim `quotedCode` anchor**. **Empty array is rejected. A crossReference without `quotedCode` is rejected.**
 
 **Required schema for each finding:**
 ```json
@@ -170,8 +170,8 @@ Every finding output MUST include a `crossReferences` array citing specific `fil
   "claim": "What is wrong, in one sentence",
   "evidence": "Why I believe it is wrong, in 1-3 sentences",
   "crossReferences": [
-    {"file": "src/auth/middleware.ts", "lines": "42-58", "note": "isAdmin check after stale fetch"},
-    {"file": "src/auth/cache.ts", "lines": "15-30", "note": "TTL 30 min, role changes immediate"}
+    {"file": "src/auth/middleware.ts", "lines": "42-58", "quotedCode": "if (user.isAdmin) {", "note": "isAdmin check after stale fetch"},
+    {"file": "src/auth/cache.ts", "lines": "15-30", "quotedCode": "const ROLE_TTL = 30 * 60", "note": "TTL 30 min, role changes immediate"}
   ],
   "ev": 8.0,
   "decision": "ACT | DISMISS | INVESTIGATE_FURTHER"
@@ -180,20 +180,54 @@ Every finding output MUST include a `crossReferences` array citing specific `fil
 
 The `stride` and `cwe` fields are required for security findings, optional otherwise.
 
+**`quotedCode` rules** (adapted from alibaba/open-code-review's external re-location module):
+1. Copy the relevant line(s) **verbatim** from the file you read — no paraphrasing, no reconstruction from memory
+2. Strip any leading diff markers (`+`, `-`, ` `) if quoting from a diff
+3. Include ONLY the line(s) directly relevant to the issue, not surrounding context
+4. If multiple disjoint locations apply, pick the single most relevant one per crossReference entry
+
+`quotedCode` exists so the reference can be **mechanically verified** (Phase 4 anchoring check below). A reference whose quote cannot be found in the file is the signature of an LLM reconstructing plausible code from memory — exactly the failure mode this contract exists to catch.
+
 **Self-check before submitting any finding:**
 > "Have I actually read every file:line in `crossReferences`, or am I guessing?"
 > If the answer is "guessing", re-read the files now (Principle 2).
 
 ## Part C — End-to-end audit workflow
 
-### Phase 1: Scope definition
-Set the file list explicitly before starting. State which files are in scope, which are explicitly excluded and why. Output:
+### Phase 1: Scope definition (mechanical, not from memory)
+Set the file list explicitly before starting. **The in-scope file list MUST come from a mechanical source** — never reconstructed from memory or inferred from the conversation:
+- Diff-based audit: `git diff --name-only <base>...HEAD` (plus `git diff --name-only HEAD` for working-tree changes)
+- Commit-based audit: `git show --name-only <sha>`
+- Module-based audit: `Glob` over the stated directories, or an explicit user-provided list
+
+Record which command produced the list — it becomes the coverage checklist that Phase 5 must reconcile against, file by file. State which files are in scope, which are explicitly excluded and why. Output:
 ```
 SCOPE:
+  source: git diff --name-only origin/main...HEAD
   in: src/auth/**, src/api/auth-routes.ts
   out: tests/**, docs/**, third-party/**
   reason for exclusions: <one line>
 ```
+
+### Phase 1b: Rule resolution (path-matched rule packs)
+
+For each in-scope file, resolve the applicable review rule pack. Resolution walks three layers in priority order — **first layer that matches wins for that file**:
+
+1. **Project layer** — `<repo>/.reviewrules/manifest.json` (team-shared, committed to git), if it exists
+2. **User layer** — `~/.claude/review-rules/manifest.json` (personal preferences), if it exists
+3. **Built-in layer** — `rules/manifest.json` shipped with this plugin, located at `<plugin-root>/rules/` (two directories above this SKILL.md: `../../rules/manifest.json` relative to this file)
+
+Each manifest maps glob patterns to rule docs; within a layer, entries are evaluated top-to-bottom and the **first matching pattern wins** (patterns support `**` and `{a,b}` expansion). Read the matched rule docs — each contains a **Review focus** section (what to hunt for in this file type) and a **Do NOT report** suppression list (known false-positive classes for this file type).
+
+Output a short resolution table so the user can audit which rules were applied:
+```
+RULES:
+  src/auth/middleware.ts → ts_js_tsx_jsx.md (built-in)
+  config/deploy.yml      → yaml_iac.md (built-in)
+  app/Models/Order.php   → .reviewrules/laravel-payment.md (project)
+```
+
+This layering is adapted from alibaba/open-code-review's four-tier priority chain. The suppression lists are scoped per file type and reviewed content — they are NOT the global "settled false-positive class" hard-exclusions this skill deliberately rejects (see Inspiration section): a suppression entry only ever lowers priority for a *named, file-type-specific* pattern, and Phase 4 steel-manning still applies to everything.
 
 ### Phase 2: Literal pass (Principle 1)
 Read every in-scope file end to end. Take notes on:
@@ -208,15 +242,25 @@ Do not produce findings yet.
 ### Phase 3: Findings draft
 For each candidate issue:
 1. Write `claim` and `evidence` in plain language
-2. Populate `crossReferences` (Framework 4)
+2. Populate `crossReferences` with `quotedCode` anchors (Framework 4)
 3. Self-check Principle 2 ("have I actually read the cross-references?")
-4. Apply Framework 3 (STRIDE+CWE) if security-relevant
-5. Assign severity and confidence
-6. Compute EV per Framework 2
-7. Set `decision` field
+4. Check the file's resolved rule pack (Phase 1b): if the candidate matches a **Do NOT report** suppression entry, either drop it or explicitly state why the suppression does not apply here (e.g. "suppression covers test files; this is production code")
+5. Apply Framework 3 (STRIDE+CWE) if security-relevant
+6. Assign severity and confidence — a finding that matches a rule pack's **Review focus** entry may start at higher confidence; one that fights a suppression entry must justify it
+7. Compute EV per Framework 2
+8. Set `decision` field
 
-### Phase 4: Adversarial sweep (Principle 4 corrective)
-For each finding marked ACT or INVESTIGATE_FURTHER, deliberately steel-man the **opposite** position:
+### Phase 4: Adversarial sweep (Principle 4 corrective) + anchoring check
+
+**Step 1 — Reference anchoring check (mechanical).** For each finding marked ACT or INVESTIGATE_FURTHER, verify every crossReference with Grep before any reasoning:
+1. `Grep` the `quotedCode` (or its most distinctive substring) in the claimed `file`
+2. **Found within the claimed `lines` range (±10 lines)** → anchored; proceed
+3. **Found elsewhere in the file** → re-locate: correct the `lines` field to the actual location, re-check that the claim still holds at the real location
+4. **Not found in the file at all** → re-read the file once and re-quote from what is actually there; if the code supporting the claim genuinely does not exist, mark the finding `UNVERIFIED_REFERENCE`, reduce confidence by 30 points, and recompute EV — this usually drops it below the 67% threshold, which is the intended outcome for memory-reconstructed references
+
+This is the deterministic counterpart to Principle 2: the self-check catches guessing you notice; the grep catches guessing you don't. (Adapted from alibaba/open-code-review's external positioning module: resolve mechanically first, fall back to re-location, never trust unanchored line numbers.)
+
+**Step 2 — Steel-man the opposite.** For each finding that survives anchoring, deliberately steel-man the **opposite** position:
 - Could the framework / runtime already prevent this?
 - Is there a guard further up the call chain you missed?
 - Is the input you assumed adversarial actually validated upstream?
@@ -235,11 +279,15 @@ CONFIRMED FINDINGS (sorted by EV descending):
 DISMISSED FINDINGS (with rationale):
   - [Med, conf 30, EV -1.8] BUG-D01: dismissed because <reason>
 
-COVERAGE:
+COVERAGE (reconciled against the Phase 1 mechanical list):
+  - scope source: <the command from Phase 1, e.g. git diff --name-only origin/main...HEAD>
   - Read in full: <list of files>
-  - Skipped: <list with reason>
+  - Skipped: <list, each with reason>
+  - Unaccounted: <files from the mechanical list in neither column — MUST be empty; if not, the audit is incomplete and you must go back and read them>
   - Total score: <sum of confirmed point values>
 ```
+
+The coverage section is a **checklist reconciliation, not a recollection**: every file in the Phase 1 mechanical list must appear in exactly one of Read / Skipped. A file you cannot place means you lost track of it — that is a structural coverage gap (the exact failure alibaba/open-code-review's deterministic file selection exists to prevent), not a formatting issue.
 
 **Always save the report to disk** — output to a file path the user can refer to later (e.g. `knowledge/audits/<target>-<YYYY-MM-DD>.md`, `audits/<target>-<YYYY-MM-DD>.md`, or wherever fits the project structure). Never produce only chat output for an audit — the user instruction `產生文件或參考資料時，一律存檔到磁碟` (save artifacts to disk by default) applies here even more strictly because audit reports have value to future reviewers, not just the current session.
 
@@ -283,9 +331,13 @@ The total file length of a zero-findings report is typically not shorter than a 
 
 ## Inspiration & deliberate exclusions
 
-This skill distills the quantitative review patterns from `codexstar69/bug-hunter` (Hunter / Skeptic / Referee adversarial flow) into Claude-native checkpoints.
+This skill distills the quantitative review patterns from `codexstar69/bug-hunter` (Hunter / Skeptic / Referee adversarial flow) into Claude-native checkpoints, plus three engineering guarantees from `alibaba/open-code-review`'s deterministic-engineering layer (Apache-2.0):
+- **Path-matched rule packs with layered overrides** (Phase 1b) — from its four-tier rule priority chain and per-language `rule_docs`
+- **Mechanical scope + coverage reconciliation** (Phase 1 / Phase 5) — from its deterministic file selection that makes missed files structurally impossible
+- **Quoted-code reference anchoring** (Framework 4 / Phase 4) — from its external positioning module that resolves comment locations mechanically before trusting them
 
 **Deliberately NOT included:**
 - **Auto-fix with canary rollout** — too aggressive on production code; fixes belong to the user's review workflow
-- **Hard-exclusion lists for "settled false-positive classes"** — creates blind spots, especially for prompt-injection-class issues that vendor exclusion lists ignore
-- **LLM-readable instruction files outside this `SKILL.md`** — minimizes the prompt-injection surface area; everything Claude needs is in this single file
+- **Global hard-exclusion lists for "settled false-positive classes"** — creates blind spots, especially for prompt-injection-class issues that vendor exclusion lists ignore. Note the distinction: Phase 1b suppression lists are *file-type-scoped, named patterns* that still pass through Phase 4 steel-manning; they tune precision per language, they never globally settle a class of finding
+- **LLM-readable instruction files outside this plugin** — minimizes the prompt-injection surface area. The `rules/` docs are part of this plugin's reviewed, versioned content (same trust domain as `SKILL.md`); project-level `.reviewrules/` is user-controlled and team-reviewed by definition. Treat rule docs from an *unfamiliar repo* with the same suspicion as any repo content
+- **Three-zone memory compression** — alibaba/open-code-review needs it for raw-API context management; the Claude Code harness already handles context compaction natively

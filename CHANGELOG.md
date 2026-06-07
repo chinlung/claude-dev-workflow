@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.1] - 2026-06-07
+
+### Changed
+- **code-audit-rigor 1.0.1 → 1.1.0**: Added three deterministic engineering guarantees adapted from [alibaba/open-code-review](https://github.com/alibaba/open-code-review)'s "deterministic engineering + LLM" hybrid design (Apache-2.0). Gap analysis: the skill was strong on depth rigor (EV math, steel-manning, STRIDE+CWE) but coverage, rule specificity, and reference accuracy relied on LLM self-discipline — exactly the three things OCR solves with engineering.
+  - **Phase 1b path-matched rule packs**: new `rules/manifest.json` (glob → doc, first-match) + 8 `rule_docs/*.md` (TS/JS/React, PHP/Laravel, Python, Go, SQL/mapper, YAML/IaC/Dockerfile, package.json, default), each with a Review-focus hunt list and a file-type-scoped "Do NOT report" suppression list. Layered overrides: project `.reviewrules/` → user `~/.claude/review-rules/` → plugin built-in.
+  - **Mechanical scope + coverage reconciliation**: Phase 1 scope must come from `git diff --name-only` / `git show` / Glob output; Phase 5 reconciles every scope file into Read or Skipped with a mandatory `Unaccounted` row that invalidates the audit if non-empty.
+  - **Quoted-code reference anchoring**: Framework 4 crossReferences now require a verbatim `quotedCode` field; Phase 4 Step 1 greps it mechanically before steel-manning (found at claimed lines ±10 → anchored; elsewhere → re-locate; absent → `UNVERIFIED_REFERENCE`, confidence −30).
+  - Deliberate exclusions documented: no three-zone memory compression (harness compacts natively); suppression lists are file-type-scoped, not the global hard-exclusion lists the skill rejects.
+
+### Notes
+- Marketplace patch bump 1.7.0 → 1.7.1 reflects the existing-plugin content change.
+
 ## [1.7.0] - 2026-05-30
 
 ### Added

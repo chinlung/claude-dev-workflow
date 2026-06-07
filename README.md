@@ -13,7 +13,7 @@ A collection of powerful plugins for Claude Code, featuring automated developmen
 | [High-Precision Dev](#high-precision-dev-plugin) | Safety-critical code with p^4 error rate compression | `/init`, `/start` |
 | [Session Learning](#session-learning-plugin) | Incrementally capture valuable conversation patterns as memory or skills | `/save-session` |
 | [OpenSpec + Superpowers Workflow](#openspec--superpowers-workflow-plugin) | Six-phase feature development enforcing OpenSpec/Superpowers role separation | auto-triggered skill |
-| [Code Audit Rigor](#code-audit-rigor-plugin) | Quantitative review frameworks (EV, score calibration, STRIDE+CWE) for high-stakes audits | auto-triggered skill |
+| [Code Audit Rigor](#code-audit-rigor-plugin) | Quantitative review frameworks (EV, score calibration, STRIDE+CWE) + engineering guarantees (language rule packs, coverage reconciliation, quote anchoring) for high-stakes audits | auto-triggered skill |
 | [CodeGraph](#codegraph-plugin) | Structural code intelligence (callers, impact, trace) before grep when editing/reviewing | auto-triggered skill |
 
 ## Installation
@@ -516,25 +516,36 @@ For routine PR review, use `/review-branch` directly — this skill is overkill 
 | 1 | **Score-based calibration** | +10 / +5 / +3 / +1 vs −3 false-positive penalty |
 | 2 | **Expected-Value (EV) threshold** | `EV = confidence% × points − (100 − confidence%) × 2 × points`; ≥67% confidence breakeven |
 | 3 | **STRIDE + CWE classification** | Every security finding tagged with both — forces explicit reasoning, integrates with industry tooling |
-| 4 | **Mandatory cross-reference contract** | Every finding includes `file:line` evidence; empty array rejected — counter-measure against LLM reference fabrication |
+| 4 | **Mandatory cross-reference contract** | Every finding includes `file:line` evidence plus a verbatim `quotedCode` anchor; empty array rejected, unanchored quote rejected — counter-measure against LLM reference fabrication |
+
+## Three engineering guarantees (since 1.1.0)
+
+Adapted from [`alibaba/open-code-review`](https://github.com/alibaba/open-code-review)'s deterministic-engineering layer — turning coverage, rule specificity, and reference accuracy from LLM self-discipline into mechanical checks:
+
+| # | Guarantee | Mechanism |
+|---|---|---|
+| 1 | **Path-matched language rule packs** (Phase 1b) | `rules/manifest.json` maps globs to 8 per-language `rule_docs/*.md` (TS/JS/React, PHP/Laravel, Python, Go, SQL, YAML/IaC, package.json, default), each with a hunt list and a file-type-scoped "Do NOT report" suppression list. Layered overrides: project `.reviewrules/` → user `~/.claude/review-rules/` → built-in; first match wins |
+| 2 | **Mechanical scope + coverage reconciliation** (Phase 1/5) | Scope list must come from `git diff --name-only` / `git show` / Glob output, never memory. Phase 5 reconciles every file into Read or Skipped; `Unaccounted` files invalidate the audit |
+| 3 | **Quoted-code reference anchoring** (Phase 4 Step 1) | Grep each finding's `quotedCode` before steel-manning: at claimed lines ±10 → anchored; elsewhere → re-locate; absent → `UNVERIFIED_REFERENCE`, confidence −30, EV recomputed |
 
 ## End-to-end audit workflow
 
-5 phases: scope definition → literal pass → findings draft → adversarial sweep (Phase 4 corrective steel-manning to defuse Principle 4 multi-agent false-confidence) → aggregate report.
+6 phases: mechanical scope definition → rule resolution (Phase 1b) → literal pass → findings draft (with suppression-list filtering) → adversarial sweep (anchoring check + Phase 4 corrective steel-manning to defuse Principle 4 multi-agent false-confidence) → aggregate report with coverage reconciliation.
 
-Output is structured JSON-style findings sorted by EV, dismissed findings with rationale (so they can be challenged), and an explicit coverage statement.
+Output is structured JSON-style findings sorted by EV, dismissed findings with rationale (so they can be challenged), and a coverage checklist reconciled against the mechanical scope list.
 
 ## Self-contained design
 
-All rules, frameworks, reference tables (16 common CWEs), STRIDE category mapping, and worked examples ship inside `SKILL.md`. The plugin works on any machine without depending on host project's `CLAUDE.md` or other plugins.
+All rules, frameworks, reference tables (16 common CWEs), STRIDE category mapping, worked examples, and the built-in rule packs ship inside this plugin's reviewed, versioned content (`SKILL.md` + `rules/`). The plugin works on any machine without depending on host project's `CLAUDE.md` or other plugins.
 
 ## Inspiration & deliberate exclusions
 
-Distilled from the adversarial Hunter / Skeptic / Referee pattern in [`codexstar69/bug-hunter`](https://github.com/codexstar69/bug-hunter), but **deliberately NOT** including:
+Distilled from the adversarial Hunter / Skeptic / Referee pattern in [`codexstar69/bug-hunter`](https://github.com/codexstar69/bug-hunter) and the deterministic-engineering layer of [`alibaba/open-code-review`](https://github.com/alibaba/open-code-review) (Apache-2.0; rule docs rewritten, not copied), but **deliberately NOT** including:
 
 - **Auto-fix with canary rollout** — too aggressive on production code
-- **Hard-exclusion lists for "settled false-positive classes"** — creates blind spots, especially for prompt-injection-class issues
-- **LLM-readable instruction files outside `SKILL.md`** — minimizes prompt-injection surface area
+- ***Global* hard-exclusion lists for "settled false-positive classes"** — creates blind spots, especially for prompt-injection-class issues; the rule packs' suppression lists are file-type-scoped named patterns that still pass Phase 4 steel-manning
+- **LLM-readable instruction files outside this plugin's versioned content** — minimizes prompt-injection surface area
+- **Three-zone memory compression** — the Claude Code harness already compacts context natively
 
 ---
 

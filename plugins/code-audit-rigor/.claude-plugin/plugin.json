@@ -1,7 +1,7 @@
 {
   "name": "code-audit-rigor",
-  "version": "1.0.1",
-  "description": "Code audit rigor toolkit — quantitative decision frameworks (EV calculation, score-based calibration, STRIDE+CWE classification) for high-stakes review situations where intuition is insufficient.",
+  "version": "1.1.0",
+  "description": "Code audit rigor toolkit — quantitative decision frameworks (EV calculation, score-based calibration, STRIDE+CWE classification) plus deterministic engineering guarantees (path-matched language rule packs, mechanical scope/coverage reconciliation, quoted-code reference anchoring) for high-stakes review situations where intuition is insufficient.",
   "author": {
     "name": "scl@hanchih.com"
   },

@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "Claude Code plugins collection by scl",
-    "version": "1.7.0"
+    "version": "1.7.1"
   },
   "plugins": [
     {
@@ -46,8 +46,8 @@
     {
       "name": "code-audit-rigor",
       "source": "./plugins/code-audit-rigor",
-      "description": "高風險程式碼審查的量化決策框架 - EV 計算、評分校準、STRIDE+CWE 分類、強制交叉引用契約。靈感來自 codexstar69/bug-hunter 對抗式 review，蒸餾成 Claude 原生檢查點，刻意排除 auto-fix 與 LLM-readable 注入面。",
-      "version": "1.0.1",
+      "description": "高風險程式碼審查的量化決策框架 - EV 計算、評分校準、STRIDE+CWE 分類、強制交叉引用契約，加上工程化保證（語言規則包分層匹配、機械化 scope/coverage 核銷、引用程式碼 grep 錨定）。靈感來自 codexstar69/bug-hunter 對抗式 review 與 alibaba/open-code-review 決定性工程層，蒸餾成 Claude 原生檢查點，刻意排除 auto-fix 與 LLM-readable 注入面。",
+      "version": "1.1.0",
       "keywords": ["code-review", "audit", "security-review", "quantitative", "decision-framework", "stride", "cwe", "expected-value"]
     },
     {

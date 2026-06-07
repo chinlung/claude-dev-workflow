@@ -20,7 +20,17 @@ It does **NOT** replace `/review-branch` or `pr-review-toolkit:review-pr` — it
 | 1 | **Score-based calibration** | Align findings with severity, penalize false positives (+10 / +5 / +3 / +1 vs −3) |
 | 2 | **Expected-Value (EV) threshold** | `EV = confidence% × points − (100 − confidence%) × 2 × points`; ≥67% confidence to act |
 | 3 | **STRIDE + CWE classification** | Every security finding tagged with both — forces explicit reasoning, integrates with industry tooling |
-| 4 | **Mandatory cross-reference contract** | Every finding includes `file:line` evidence; empty array rejected — counter-measure against LLM reference fabrication |
+| 4 | **Mandatory cross-reference contract** | Every finding includes `file:line` evidence **plus a verbatim `quotedCode` anchor**; empty array rejected, unanchored quote rejected — counter-measure against LLM reference fabrication |
+
+## The three engineering guarantees (since 1.1.0)
+
+Adapted from [alibaba/open-code-review](https://github.com/alibaba/open-code-review)'s deterministic-engineering layer — they turn three things that previously relied on LLM self-discipline into mechanical checks:
+
+| # | Guarantee | Mechanism |
+|---|---|---|
+| 1 | **Path-matched rule packs** (Phase 1b) | `rules/manifest.json` maps globs to per-language docs (`rule_docs/*.md`), each with a hunt list **and** a "Do NOT report" suppression list. Layered overrides: project `.reviewrules/` → user `~/.claude/review-rules/` → plugin built-in; first match wins |
+| 2 | **Mechanical scope + coverage reconciliation** (Phase 1/5) | Scope list must come from `git diff --name-only` / `git show` / Glob output. Phase 5 reconciles every file into Read or Skipped; an `Unaccounted` file invalidates the audit |
+| 3 | **Quoted-code anchoring** (Phase 4 Step 1) | Grep each finding's `quotedCode` in the claimed file before steel-manning: hit at claimed lines ±10 → anchored; elsewhere → re-locate; absent → `UNVERIFIED_REFERENCE`, confidence −30 |
 
 ## When to invoke
 
@@ -56,12 +66,13 @@ Plus an executive summary, dismissed findings (with rationale so they can be cha
 
 ## Inspiration
 
-The four frameworks distill the quantitative review patterns from [`codexstar69/bug-hunter`](https://github.com/codexstar69/bug-hunter)'s Hunter / Skeptic / Referee adversarial flow into Claude-native checkpoints.
+The four frameworks distill the quantitative review patterns from [`codexstar69/bug-hunter`](https://github.com/codexstar69/bug-hunter)'s Hunter / Skeptic / Referee adversarial flow into Claude-native checkpoints. The three engineering guarantees (1.1.0) adapt [`alibaba/open-code-review`](https://github.com/alibaba/open-code-review)'s deterministic file selection, four-tier rule priority chain, and external positioning module (Apache-2.0; rule docs rewritten, not copied).
 
-**Deliberately excluded** from the inspiration:
+**Deliberately excluded** from the inspirations:
 - Auto-fix with canary rollout (too aggressive for production code)
-- Hard-exclusion lists for "settled false-positive classes" (creates blind spots)
-- LLM-readable instruction files beyond `SKILL.md` (minimizes prompt-injection surface)
+- *Global* hard-exclusion lists for "settled false-positive classes" (creates blind spots) — the rule packs' suppression lists are file-type-scoped named patterns that still pass Phase 4 steel-manning, not global exclusions
+- LLM-readable instruction files beyond this plugin's reviewed, versioned content (minimizes prompt-injection surface)
+- Three-zone memory compression (the Claude Code harness already compacts context natively)
 
 ## Relationship to other plugins
 

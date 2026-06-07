@@ -5,6 +5,18 @@
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [1.7.1] - 2026-06-07
+
+### 變更
+- **code-audit-rigor 1.0.1 → 1.1.0**：新增三項決定性工程化保證，改編自 [alibaba/open-code-review](https://github.com/alibaba/open-code-review) 的「決定性工程 + LLM」混合設計（Apache-2.0）。差距分析：本 skill 強在深度嚴謹（EV 數學、steel-manning、STRIDE+CWE），但覆蓋率、規則特化、引用準確性原本依賴 LLM 自律——正是 OCR 用工程邏輯解決的三件事。
+  - **Phase 1b 路徑匹配規則包**：新增 `rules/manifest.json`（glob → doc、first-match）+ 8 份 `rule_docs/*.md`（TS/JS/React、PHP/Laravel、Python、Go、SQL/mapper、YAML/IaC/Dockerfile、package.json、default），每份含 Review-focus 獵取清單 + 檔案類型限定的「不要報」suppression list。分層覆寫：專案 `.reviewrules/` → 使用者 `~/.claude/review-rules/` → plugin 內建。
+  - **機械化 scope + coverage 核銷**：Phase 1 scope 必須來自 `git diff --name-only` / `git show` / Glob 輸出；Phase 5 將每個 scope 檔案核銷進 Read 或 Skipped，新增強制 `Unaccounted` 欄——非空即審查無效。
+  - **引用程式碼 grep 錨定**：Framework 4 crossReferences 新增必填逐字 `quotedCode` 欄位；Phase 4 Step 1 在 steel-manning 前先機械 grep（宣稱行號 ±10 內找到 → 錨定；別處找到 → re-locate；整檔不存在 → 標 `UNVERIFIED_REFERENCE`、confidence −30）。
+  - 文件化刻意排除：不採三區記憶體壓縮（harness 原生 compact）；suppression list 為檔案類型限定，非本 skill 拒絕的全域 hard-exclusion 清單。
+
+### 備註
+- Marketplace patch bump 1.7.0 → 1.7.1，反映既有 plugin 內容變更。
+
 ## [1.7.0] - 2026-05-30
 
 ### 新增

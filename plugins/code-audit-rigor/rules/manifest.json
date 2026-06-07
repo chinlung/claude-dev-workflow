@@ -1,0 +1,15 @@
+{
+  "$comment": "Path-matched review rule packs, inspired by alibaba/open-code-review system_rules.json (Apache-2.0). Resolution: for each in-scope file, walk layers in priority order — (1) project <repo>/.reviewrules/manifest.json, (2) user ~/.claude/review-rules/manifest.json, (3) this built-in manifest. Within a layer, entries are evaluated top-to-bottom and the FIRST matching glob wins; once a layer matches, lower layers are not consulted for that file. Patterns support ** recursive match and {a,b} brace expansion. Doc paths are relative to the manifest's own directory.",
+  "rules": [
+    { "pattern": "**/package.json", "doc": "rule_docs/package_json.md" },
+    { "pattern": "**/*.{ts,tsx,js,jsx,mjs,cjs,vue,svelte}", "doc": "rule_docs/ts_js_tsx_jsx.md" },
+    { "pattern": "**/*.php", "doc": "rule_docs/php.md" },
+    { "pattern": "**/*.py", "doc": "rule_docs/python.md" },
+    { "pattern": "**/*.go", "doc": "rule_docs/go.md" },
+    { "pattern": "**/*.sql", "doc": "rule_docs/sql.md" },
+    { "pattern": "**/*{mapper,dao}*.xml", "doc": "rule_docs/sql.md" },
+    { "pattern": "**/*.{yml,yaml,tf,tfvars}", "doc": "rule_docs/yaml_iac.md" },
+    { "pattern": "**/Dockerfile*", "doc": "rule_docs/yaml_iac.md" },
+    { "pattern": "**/*", "doc": "rule_docs/default.md" }
+  ]
+}
