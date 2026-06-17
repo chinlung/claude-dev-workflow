@@ -121,7 +121,7 @@ After brainstorming completes, OVERWRITE `openspec/changes/<feature-name>/design
 
 **Actions**:
 1. Activate `/subagent-driven-development` or `/executing-plans`
-2. Create a git worktree for isolated development. Superpowers >= 6.0.0 keeps it in the project — it reuses an existing `.worktrees/` or `worktrees/` if present, otherwise defaults to `.worktrees/` at the project root (the legacy global `~/.config/superpowers/worktrees/` was removed) — ensure that path is git-ignored.
+2. Create a git worktree for isolated development. Superpowers >= 6.0.0 keeps worktrees in the project under a local worktree *root* — it reuses an existing `.worktrees/` or `worktrees/` if present, otherwise defaults to a `.worktrees/` root at the project top level. Each worktree is created under that root at `<root>/<branch>` (e.g. `.worktrees/<branch>/`), not at the root itself. The legacy global `~/.config/superpowers/worktrees/` was removed; ensure the root is git-ignored.
 3. For each task:
    - Write test first (RED)
    - Implement to pass test (GREEN)
