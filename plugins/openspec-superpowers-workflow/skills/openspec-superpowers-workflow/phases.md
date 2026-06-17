@@ -121,12 +121,12 @@ After brainstorming completes, OVERWRITE `openspec/changes/<feature-name>/design
 
 **Actions**:
 1. Activate `/subagent-driven-development` or `/executing-plans`
-2. Create a git worktree for isolated development. Superpowers >= 6.0 keeps it in the project — it reuses an existing `.worktrees/` or `worktrees/` if present, otherwise defaults to `.worktrees/` at the project root (the legacy global `~/.config/superpowers/worktrees/` was removed) — ensure that path is git-ignored.
+2. Create a git worktree for isolated development. Superpowers >= 6.0.0 keeps it in the project — it reuses an existing `.worktrees/` or `worktrees/` if present, otherwise defaults to `.worktrees/` at the project root (the legacy global `~/.config/superpowers/worktrees/` was removed) — ensure that path is git-ignored.
 3. For each task:
    - Write test first (RED)
    - Implement to pass test (GREEN)
    - Refactor (REFACTOR)
-4. Review per task (Superpowers >= 6.0 flow): a single task-reviewer reads the task's diff once and returns BOTH a spec-compliance verdict and a quality verdict, so one fix pass clears both. A "can't verify from the diff" verdict flags requirements that live in untouched code, for you to check directly. One broad whole-branch review runs once at the end on the most capable model — not task-by-task.
+4. Review per task (Superpowers >= 6.0.0 flow): a single task-reviewer reads the task's diff once and returns BOTH a spec-compliance verdict and a quality verdict, so one fix pass clears both. A "can't verify from the diff" verdict flags requirements that live in untouched code, for you to check directly. One broad whole-branch review runs once at the end on the most capable model — not task-by-task.
 
 **Rules**:
 - TDD is mandatory. Never write implementation before tests.
