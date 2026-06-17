@@ -70,3 +70,14 @@ find plugins/<name> -type f | sort
 ```
 
 裝起來實測：`/plugin marketplace add ...`（或 update）→ `/plugin install <name>@scl-claude-plugins` → `/reload-plugins` → 確認 skill 出現在清單、（若有）MCP 工具以 `mcp__plugin_<name>_<server>__*` 出現。
+
+## 7. 維護「wrapper 型」plugin 的上游相依
+
+`openspec-superpowers-workflow` 以**概念名稱**引用 superpowers skills（如 `/subagent-driven-development`、`/brainstorming`、`/writing-plans`），不綁特定 prompt 檔。好處是執行行為自動跟著上游走；風險是**上游出 major 版時，wrapper 的 `phases.md` 描述會悄悄過時**——文件與實際脫節，形成「comment 寫願景非事實」的信任陷阱（reviewer 讀文件就以為流程如此）。
+
+維護觸發點與方法：
+
+- **每當 superpowers（或任何被 wrapper 引用的上游）出 major 版**，逐項比對 wrapper `phases.md` 的流程描述 vs 上游實際行為，過時就更新並 bump wrapper 版本。
+- **比對靠 diff 兩版而非讀 changelog**：plugin cache 會保留新舊版本目錄（`~/.claude/plugins/cache/claude-plugins-official/superpowers/<old>` 與 `<new>`），`diff -rq` 兩版可抓出 skill 改名 / 移除 / prompt 檔合併 / 流程重寫。
+- **對 critical 聲明，請直接閱讀上游 `SKILL.md` 原始碼驗證**，不要只信 release notes 的轉述（轉述會簡化或漏掉邊界）。
+- 案例：superpowers `6.0.0` 把 SDD 的雙 reviewer（spec + quality）併成單一 `task-reviewer`（一次兩 verdict）+ 結尾一次 whole-branch review，並把 worktree 落點從全域 `~/.config/superpowers/worktrees/` 改為專案內 `.worktrees/` root（worktree 建在 `<root>/<branch>`）→ `openspec-superpowers-workflow` `1.1.0` 對齊（見該 plugin `CHANGELOG.md`）。
