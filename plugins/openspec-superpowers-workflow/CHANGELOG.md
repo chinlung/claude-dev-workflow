@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-06-17
+
+### Changed
+- **Phase 4 playbook realigned to Superpowers 6.0.0.** `phases.md` Phase 4 previously documented a per-task *two-stage* review (Stage 1 spec compliance, Stage 2 code quality). Superpowers 6.0 merged these into a single `task-reviewer` that returns both verdicts in one pass — plus a "can't verify from the diff" verdict — followed by one whole-branch review at the end on the most capable model. The playbook now matches the actual `subagent-driven-development` flow instead of describing the retired two-reviewer design.
+- **Worktree location note added to Phase 4.** Superpowers 6.0 removed the legacy global `~/.config/superpowers/worktrees/`; worktrees now land in the project at `.worktrees/`. Phase 4 now reminds you to keep that path git-ignored.
+- **Reviewer-integrity rules added to Phase 4.** Findings may not be suppressed and severity may not be pre-rated, mirroring Superpowers 6.0's guard against a controller coaching the reviewer; a plan-mandated defect is surfaced for the human to decide on.
+
+### Notes
+- Requires **Superpowers >= 6.0.0** for the Phase 4 behaviour described above. Earlier Superpowers still works but runs the legacy two-reviewer, task-by-task flow.
+- No behavioural change to Phases 1-3, 5, 6. This release only realigns documentation with the upstream SDD rewrite.
+
 ## [1.0.1] - 2026-04-10
 
 ### Changed
