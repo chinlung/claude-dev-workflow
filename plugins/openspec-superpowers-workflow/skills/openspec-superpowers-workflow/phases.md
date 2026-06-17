@@ -121,18 +121,17 @@ After brainstorming completes, OVERWRITE `openspec/changes/<feature-name>/design
 
 **Actions**:
 1. Activate `/subagent-driven-development` or `/executing-plans`
-2. Create git worktree for isolated development
+2. Create a git worktree for isolated development. Superpowers >= 6.0.0 keeps worktrees in the project under a local worktree *root* — it reuses an existing `.worktrees/` or `worktrees/` if present, otherwise defaults to a `.worktrees/` root at the project top level. Each worktree is created under that root at `<root>/<branch>` (e.g. `.worktrees/<branch>/`), not at the root itself. The legacy global `~/.config/superpowers/worktrees/` was removed; ensure the root is git-ignored.
 3. For each task:
    - Write test first (RED)
    - Implement to pass test (GREEN)
    - Refactor (REFACTOR)
-4. Two-stage review per task:
-   - Stage 1: Spec compliance — does it match design.md?
-   - Stage 2: Code quality — is it well-written?
+4. Review per task (Superpowers >= 6.0.0 flow): a single task-reviewer reads the task's diff once and returns BOTH a spec-compliance verdict and a quality verdict, so one fix pass clears both. A "can't verify from the diff" verdict flags requirements that live in untouched code, for you to check directly. One broad whole-branch review runs once at the end on the most capable model — not task-by-task.
 
 **Rules**:
 - TDD is mandatory. Never write implementation before tests.
-- If a task fails two-stage review, fix it before moving to the next task.
+- If a task fails its reviewer (spec or quality verdict), fix it before moving to the next task.
+- Never suppress reviewer findings or pre-rate severity. A defect the plan itself mandates is reported for you to decide on, not waved through.
 - Do NOT modify any spec files during implementation.
 
 ---
