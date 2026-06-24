@@ -2,6 +2,19 @@
 
 All notable changes to the `code-audit-rigor` plugin will be documented in this file.
 
+## [1.3.0] - 2026-06-24
+
+### Added
+
+- **`/audit-review-fix` — automated adversarial batch audit-and-fix workflow, migrated from user-level `~/.claude/`** (same portability pattern as the 1.2.0 command migration). It is the non-interactive batch counterpart to the `code-audit-rigor` skill: one run fans out ~86 sub-agents (~400k tokens) across a 9-angle review, EV-based triage, multi-vote adversarial verification, safety-gated auto-fix, test verification, and a written report under `audits/`.
+  - Ships as bundled assets under `workflow/`: the Workflow script (`audit-review-fix-workflow.js`) and the detailed usage reference (`audit-review-fix.md`). The command reads the script via `${CLAUDE_PLUGIN_ROOT}/workflow/audit-review-fix-workflow.js` — machine-independent, no hardcoded home path.
+  - Flags: `[base-ref] [dry] [--profile cheap|thorough|ci] [--votes N] [--focus <glob>] [--angles N] [--no-sweep] [--keep-all] [--max-fix-loc N] [--test-cmd <cmd>] [--model <tier>] [--yes]`.
+  - The bundled script carries the `A0` args-normalization guard (tolerates runtimes that deliver `args` as a JSON string rather than a parsed object), so every flag is honored regardless of Workflow-runtime delivery quirks.
+
+### Changed
+
+- Plugin scope widened to include safety-gated auto-fix. The **rigor skill itself stays auto-fix-free and injection-safe** by design; auto-fix is provided *only* by the separate `/audit-review-fix` workflow, gated behind adversarial verification and a test pass. `plugin.json` / `marketplace.json` descriptions and keywords updated to reflect the new command (`auto-fix`, `workflow`, `adversarial-verification`) without contradicting the skill's no-auto-fix positioning.
+
 ## [1.2.1] - 2026-06-08
 
 ### Changed
