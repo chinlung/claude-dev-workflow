@@ -6,6 +6,8 @@
     "name": "scl@hanchih.com"
   },
   "license": "MIT",
+  "repository": "https://github.com/chinlung/claude-dev-workflow",
+  "homepage": "https://github.com/chinlung/claude-dev-workflow#readme",
   "keywords": [
     "session",
     "learning",

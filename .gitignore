@@ -1,0 +1,18 @@
+# Dependencies
+node_modules/
+
+# Environment / secrets
+.env
+.env.*
+*.pem
+*.key
+
+# Local plugin settings (per the plugin-settings .local.md pattern — may hold config/secrets)
+*.local.md
+
+# Logs
+*.log
+
+# OS junk
+.DS_Store
+Thumbs.db
