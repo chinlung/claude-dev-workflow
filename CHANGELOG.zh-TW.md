@@ -5,6 +5,18 @@
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [1.8.2] - 2026-06-29
+
+### 修正
+
+- **code-audit-rigor 1.3.1 → 1.3.2** — `/audit-review-fix` workflow 三個安全閘修復（fail-open → fail-closed），由自我 `security-audit` 稽核（run-2）發現並經對抗式 review，以 56 條斷言的單元測試 harness 覆蓋：
+  - （HIGH）Verify-Fix 對「build 壞掉」的 compile/collection/fatal 狀態（無 `failed`/`FAIL ` token）誤報 `testsPass=true` → 無法編譯的程式樹被回報 `READY_FOR_COMMIT`。現偵測 error/no-run 狀態 + exit-code 哨符，並 fail-closed。
+  - （MEDIUM）clean baseline 使 count 回歸後備失效（`baselineFailCount=null`）；現歸零為 `0`。
+  - （MEDIUM）非數值／非物件 args 被 coerce 成 NaN 或讓 flag 退回 → 靜默丟棄 finding／不跑 review／移除 LOC 上限／假 `CLEAN`；現以 finiteness／object-shape 守衛驗證。
+
+### 備註
+- Marketplace patch bump 1.8.1 → 1.8.2（一個 plugin patch release）。
+
 ## [1.8.1] - 2026-06-29
 
 ### 安全性

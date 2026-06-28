@@ -103,11 +103,116 @@ const FIX_SCHEMA = {
   required: ['applied', 'filesModified', 'summary'],
 }
 
+// === PURE HELPERS START (self-contained, no runtime-hook deps — unit-tested via test harness) ===
+
 // args 正規化：部分 Workflow runtime 把 args 以 JSON 字串送達（已實測 typeof args==='string'），
-// 而非 tool 文件承諾的 parsed object。直接讀 args.baseRef 會在字串上得 undefined → 所有旗標
-// 靜默吃預設值（baseRef/model/votes/angles/focus/sweep 全失效）。此層統一轉成 object，parse 失敗
-// 退回 {}（零退化：等同沒傳 args）。下方所有參數讀取一律走 A0，不再直接碰全域 args。
-const A0 = typeof args === 'string' ? (() => { try { return JSON.parse(args || '{}') } catch (e) { return {} } })() : (args || {})
+// 而非 tool 文件承諾的 parsed object。直接讀 args.baseRef 會在字串/陣列/primitive 上得 undefined →
+// 所有旗標靜默吃預設值（含 autoFix=ON、maxFixLoc=無上限 等不安全方向）。此層統一轉成 plain object；
+// parse 失敗、或 parse 成非物件（JSON 字串 "[1,2]"/"42"/"null" 等）一律退回 {}（零退化：等同沒傳
+// args，且修掉 "null" → JSON.parse 得 null → 後續讀屬性 crash 的 asymmetry）。
+function normalizeArgs(rawArgs) {
+  const parsed = typeof rawArgs === 'string'
+    ? (() => { try { return JSON.parse(rawArgs || '{}') } catch (e) { return {} } })()
+    : rawArgs
+  return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
+}
+
+// 數值旗標強制轉型：非有限數（NaN / 非數字字串 / undefined）→ 退回 fallback。修掉「非數字字串
+// → NaN → 比較全 false → finding 從 apply/userReview 兩桶同時消失 → 假 CLEAN」與「votes/angles
+// NaN → 全部 finding 當 REFUTED 丟棄 / 0 個 review 角度」的靜默崩潰。
+function num(v, fallback) {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : fallback
+  if (typeof v === 'string' && v.trim() !== '') { const n = Number(v); return Number.isFinite(n) ? n : fallback }
+  return fallback // null / undefined / '' / boolean / object → fallback（防 Number(null)===0、Number('')===0 footgun，使 estimatedLoc=null 退回 fallback 而非 0）
+}
+
+// 從測試輸出解析「失敗數」摘要（framework-agnostic）。jest/pest/phpunit/pytest 皆吻合。
+function parseFailCount(text) {
+  if (!text) return null
+  const m = text.match(/(\d+)\s+failed/i) || text.match(/Failures:\s*(\d+)/i)
+  return m ? parseInt(m[1], 10) : null
+}
+
+// 從一段測試輸出抽出所有判定訊號（baseline 與 verify 共用，確保兩側對稱）。
+// exitCode 來自測試 prompt 要求 agent 附加的 WF_TEST_EXIT=<code> 哨符（0=全通過）。
+// errored 偵測「套件根本沒乾淨跑起來」（編譯/收集/fatal）——正是只認 FAIL/"N failed" 的舊邏輯
+// 會漏掉、把壞掉的 build 當 pass 的 fail-open 破口。
+function extractTestSignals(text) {
+  if (!text || !String(text).trim()) {
+    return { empty: true, failureKeys: [], failCount: null, exitCode: null, errored: false, sawPass: false }
+  }
+  const matches = text.match(/FAIL(ED)?[ \t]+[^\n]+/gi) || [] // [ \t] 不含 \n：避免 "N failed\n<下一行>" 被跨行誤抓成 FAIL key（real reporter 的 FAIL <name> 都同行）
+  const failureKeys = [...new Set(matches.map((s) => s.trim()))]
+  const failCount = parseFailCount(text)
+  const exitMatch = text.match(/WF_TEST_EXIT=(-?\d+)/)
+  const exitCode = exitMatch ? parseInt(exitMatch[1], 10) : null
+  const errored =
+    /\b[1-9]\d*\s+errors?\b/i.test(text) ||          // pytest "1 error" / tsc "Found 2 errors"（排除 "0 errors"）
+    /\berror\s+TS\d+/i.test(text) ||                 // tsc "error TS2304"
+    /Fatal error/i.test(text) ||                     // PHP fatal
+    /Test suite failed to run/i.test(text) ||        // jest 編譯失敗
+    /errors? during collection/i.test(text) ||       // pytest 收集錯誤
+    /\bERROR collecting\b/.test(text) ||
+    /\b(cannot find module|module not found|modulenotfounderror|importerror)\b/i.test(text) ||
+    /\b(no tests? ran|no tests? found|collected 0 items)\b/i.test(text)
+  const sawPass =
+    /\b[1-9]\d*\s+pass(ed|ing)?\b/i.test(text) ||    // "50 passed" / "3 passing"（排除 "0 passed"）
+    /\bOK\b\s*\(\d+/.test(text) ||                    // phpunit "OK (50 tests, ...)"
+    /^OK\s*$/m.test(text) ||                          // python unittest 結尾單行 "OK"
+    /\bRan \d+ tests?\b/i.test(text) ||               // python unittest "Ran 5 tests"
+    /\bPASS\b/.test(text) ||                          // jest "PASS src/.."
+    /\ball tests?\s+pass(ed)?\b/i.test(text)
+  return { empty: false, failureKeys, failCount, exitCode, errored, sawPass }
+}
+
+// 比較 baseline 與 verify 訊號，判斷自動修是否造成「相對 baseline 變差」。
+// fail-closed：empty / 無任何可解析訊號 → 一律當失敗（送 REQUIRES_USER_REVIEW，不放行）。
+function computeTestsPass(baselineSig, currentSig) {
+  if (!currentSig || currentSig.empty) {
+    return { testsPass: false, regressed: false, reason: 'empty test output — cannot confirm pass (fail closed)' }
+  }
+  const newFailures = currentSig.failureKeys.filter((k) => !baselineSig.failureKeys.includes(k))
+  const countRegressed = baselineSig.failCount != null && currentSig.failCount != null && currentSig.failCount > baselineSig.failCount
+  const baselineGreen = baselineSig.exitCode === 0 ||
+    (baselineSig.exitCode == null && baselineSig.failureKeys.length === 0 && !baselineSig.errored)
+  const exitRegressed = baselineGreen && currentSig.exitCode != null && currentSig.exitCode !== 0
+  // 明確 exit 0 → 信任 exit code（套件已乾淨通過），不讓「測試名稱/formatter 輸出含 'error'/'N
+  // errors'/'Fatal error' 字樣」誤判成新錯誤（false-closed）；exit 缺(null)或非 0 才採信 errored
+  // 文字（real 編譯/收集/fatal 一定非 0 exit，故零 fail-open；無哨符時退回文字偵測 fail-closed）。
+  const newlyErrored = !baselineSig.errored && currentSig.errored && currentSig.exitCode !== 0
+  const regressed = newFailures.length > 0 || countRegressed || exitRegressed || newlyErrored
+  // 至少要有「一個可解析的測試結果訊號」才敢判斷；全無（exit 哨符缺 + 無 pass marker + 無
+  // failure 訊號）= 輸出無法解讀 → fail closed（舊邏輯在此會誤判 pass）。
+  const parseable = currentSig.exitCode != null || currentSig.sawPass ||
+    currentSig.failureKeys.length > 0 || currentSig.failCount != null || currentSig.errored
+  const testsPass = parseable && !regressed
+  let reason
+  if (regressed) {
+    reason = [
+      newFailures.length > 0 ? newFailures.length + ' new failure key(s)' : null,
+      countRegressed ? 'fail count ' + baselineSig.failCount + '→' + currentSig.failCount : null,
+      exitRegressed ? 'exit 0→' + currentSig.exitCode : null,
+      newlyErrored ? 'newly errored (compile/collection/fatal)' : null,
+    ].filter(Boolean).join('; ')
+  } else if (!parseable) {
+    reason = 'no parseable test-result signal (no exit sentinel, pass marker, or failure token) — fail closed'
+  } else {
+    reason = 'no regression vs baseline; pass confirmed'
+  }
+  return { testsPass, regressed, newFailures, countRegressed, exitRegressed, newlyErrored, reason }
+}
+
+// === PURE HELPERS END ===
+
+const A0 = normalizeArgs(args)
+
+// 數值旗標解析：非數值 → 安全預設 + 一次性 warn（避免靜默吃預設）。
+const numFlag = (raw, fallback, label) => {
+  if (raw == null) return fallback
+  const n = num(raw, null)
+  if (n === null) { log('⚠ ' + label + ' 非數值，已忽略並改用安全預設。'); return fallback }
+  return n
+}
 
 const baseRef = A0.baseRef || 'origin/main'
 const allowAutoFix = A0.autoFix !== false
@@ -118,7 +223,7 @@ const testCmdDirective = testCmd ? 'IMPORTANT: run this EXACT test command, do N
 // 成本/嚴格度旗標（皆有零退化預設）：
 const doSweep = A0.sweep !== false // --no-sweep → false：跳過 Sweep 階段
 const keepAll = !!A0.keepAll // --keep-all → true：關閉 EV 自動 dismiss（low-EV 仍進 triage agent）
-const maxFixLoc = A0.maxFixLoc != null ? A0.maxFixLoc : Infinity // --max-fix-loc N：自動修 LOC 上限。用 !=null 而非 `||Infinity`：後者會把 0（最緊上限）當 falsy → Infinity（無上限），危險反轉
+const maxFixLoc = numFlag(A0.maxFixLoc, Infinity, '--max-fix-loc') // 自動修 LOC 上限；非數值→無上限預設（仍受 mustFix<100 / boyScout<50 內建上限），0 保留為最緊上限
 // （--angles N 對應的 activeAngles 定義在 ANGLES 之後）
 
 // 統一模型覆寫：傳了 args.model（如 'haiku' / 'sonnet'）→ 所有 agent 降階壓成本；
@@ -127,14 +232,7 @@ const maxFixLoc = A0.maxFixLoc != null ? A0.maxFixLoc : Infinity // --max-fix-lo
 const agentModel = A0.model || undefined
 const A = (prompt, opts) => agent(prompt, agentModel ? { ...opts, model: agentModel } : opts)
 
-// 從測試輸出解析「失敗數」摘要（framework-agnostic）。用於 Verify Fix 在
-// 失敗鍵（FAIL <file>）粒度太粗時（如 jest 檔案級）仍能抓出「同檔新增 failure」
-// 這種 key 不變但數量上升的 regression。解析不到回 null（呼叫端跳過數量比對）。
-function parseFailCount(text) {
-  if (!text) return null
-  const m = text.match(/(\d+)\s+failed/i) || text.match(/Failures:\s*(\d+)/i)
-  return m ? parseInt(m[1], 10) : null
-}
+// (parseFailCount / extractTestSignals / computeTestsPass / normalizeArgs / num 定義於上方 PURE HELPERS 區塊)
 
 phase('Scope')
 
@@ -160,24 +258,28 @@ log('Diff gathered (' + Math.round(scopeText.length / 1000) + 'k chars).')
 // 只在 allowAutoFix=true 時跑（若不打算改 code 就不需要 baseline，節省 token）。
 let baselineFailureKeys = []
 let baselineFailCount = null
+let baselineExitCode = null
+let baselineErrored = false
 let hasBaseline = false
 
 if (allowAutoFix) {
   phase('Baseline')
-  const baselinePrompt = 'Run the project test suite ONCE to capture pre-existing test failures. Do NOT modify any files.\n\n' + testCmdDirective + 'Laravel/PHP: php artisan test 2>&1 | tail -80\nNode/TS: npm test 2>&1 | tail -80\nPython: pytest 2>&1 | tail -80\n\nReturn the LAST ~80 lines of output verbatim, including the phpunit/jest/pytest summary line and any FAILED markers. Do not summarize.'
+  const baselinePrompt = 'Run the project test suite ONCE to capture pre-existing test failures. Do NOT modify any files.\n\n' + testCmdDirective + 'Run the suite capturing FULL output to a temp file, record the test command\'s EXACT exit code, then show the tail. Examples:\n  Laravel/PHP: php artisan test > /tmp/wf_base.log 2>&1; echo "WF_TEST_EXIT=$?"; tail -80 /tmp/wf_base.log\n  Node/TS:     npm test > /tmp/wf_base.log 2>&1; echo "WF_TEST_EXIT=$?"; tail -80 /tmp/wf_base.log\n  Python:      pytest > /tmp/wf_base.log 2>&1; echo "WF_TEST_EXIT=$?"; tail -80 /tmp/wf_base.log\n\nReturn the WF_TEST_EXIT=<code> line AND the LAST ~80 lines verbatim (phpunit/jest/pytest summary + any FAILED markers). 0 = all passed; non-zero includes compile/collection/fatal errors. Do not summarize.'
   const baselineText = await A(baselinePrompt, { label: 'baseline-tests', phase: 'Baseline' })
 
   if (baselineText) {
-    // 抓 FAILED test names。phpunit/pest 格式：「FAILED  Tests\Feature\X > it does Y」
-    // npm test/jest：「FAIL  src/foo.test.ts > test name」
-    // pytest：「FAILED tests/test_foo.py::test_bar」
-    const failureMatches = baselineText.match(/FAIL(ED)?\s+[^\n]+/gi) || []
-    baselineFailureKeys = [...new Set(failureMatches.map((s) => s.trim()))]
-    baselineFailCount = parseFailCount(baselineText)
+    // 共用 extractTestSignals（與 Verify Fix 對稱）：抓 FAIL key、失敗數、WF_TEST_EXIT、errored。
+    const b = extractTestSignals(baselineText)
+    baselineFailureKeys = b.failureKeys
+    // clean baseline（無 FAIL key）→ count 視為 0，讓「數量回歸」在建議的乾淨 baseline 也能運作
+    // （舊版設 null 使 countRegressed 永遠 false）；有 key 但解析不到數 → null（退回純鍵比對）。
+    baselineFailCount = b.failCount != null ? b.failCount : (b.failureKeys.length === 0 ? 0 : null)
+    baselineExitCode = b.exitCode
+    baselineErrored = b.errored
     hasBaseline = true
-    log('Baseline captured: ' + baselineFailureKeys.length + ' pre-existing failure key(s)' + (baselineFailCount != null ? ', ' + baselineFailCount + ' reported failed' : '') + '.')
+    log('Baseline captured: ' + baselineFailureKeys.length + ' pre-existing failure key(s)' + (baselineFailCount != null ? ', ' + baselineFailCount + ' failed' : '') + (b.exitCode != null ? ', exit ' + b.exitCode : '') + (b.errored ? ', errored' : '') + '.')
   } else {
-    log('Baseline run returned empty output — Verify Fix will fall back to strict regex.')
+    log('Baseline run returned empty output — Verify Fix will treat baseline as green (strict, fail-closed).')
   }
 }
 
@@ -193,19 +295,18 @@ const ANGLES = [
   { id: 'I', name: 'altitude', focus: 'Each change implemented at right depth? Special cases layered on shared infra = wrong altitude. Prefer generalizing underlying mechanism over special cases. Check if a model-layer or framework-layer fix would close more bugs than the patch under review.' },
 ]
 
-// --angles N：取前 N 個角度（A-I 已按 recall 價值排序，前段是核心 bug 角度，
-// 後段偏 quality/refactor）。clamp 到 [1, 全部]；不傳 → 全 9 角，零退化。
-// 用 !=null 而非 `|| ANGLES.length`：後者把 A0.angles===0 當 falsy → 回全 9 角
-// （與「最少」意圖相反）。!=null 讓 0 進下方 clamp（→ 1），且與 maxFixLoc 解析一致、
-// 容忍 numeric-string（下方 Math.min/max 會強制轉型）。
-const reqAngles = A0.angles != null ? A0.angles : ANGLES.length
+// --angles N：取前 N 個角度（A-I 已按 recall 價值排序，前段核心 bug、後段偏 quality）。
+// numFlag：非數值 → 全 9 角預設 + warn（修掉 angles='all' → NaN → slice(0,NaN) → 0 個角度）；
+// 0 與其他值交給下方 clamp [1, 全部]。
+const reqAngles = numFlag(A0.angles, ANGLES.length, '--angles')
 const activeAngles = ANGLES.slice(0, Math.max(1, Math.min(ANGLES.length, reqAngles)))
 
 // 對抗式驗證：每個 finding 跑 verifyVotes 個獨立 verifier，recall mode——只有
 // 「多數票 REFUTED」才 drop。votes=1（預設）與單票完全相同：不加 lens、label
 // 不加 -vN、prompt 不變 → agent 簽名一致、resume 快取照命中、EV/triage 零退化。
 // votes>1 時每票套不同 lens（perspective-diverse 勝過 N 個一樣的 refuter）。
-const verifyVotes = Math.max(1, Math.floor(A0.votes || 1))
+// numFlag：非數值 → 預設 1 票 + warn（修掉 votes='abc' → NaN → 全 finding 被當 REFUTED 丟棄）。
+const verifyVotes = Math.max(1, Math.floor(numFlag(A0.votes, 1, '--votes')))
 const VERIFY_LENSES = [
   'correctness — 具體輸入/狀態是否真能到達錯誤輸出？',
   'guard-chain — 呼叫鏈上游或 framework/runtime 是否已防護？',
@@ -314,7 +415,10 @@ for (const f of verifiedFindings) {
   const triageResp = await A(triagePrompt, { label: 'triage:' + f.id, phase: 'Triage', schema: TRIAGE_SCHEMA })
 
   if (triageResp) {
-    triaged.push({ ...f, triage: { ...triageResp, autoDismissed: false }, ev })
+    // 防禦：estimatedLoc 萬一非有限數（schema 理論上擋住，fail-safe）→ Infinity，使其落入
+    // userReviewRequired（>=100）而非從 apply/userReview 兩桶同時消失（finding 3 partition-drop）。
+    const safeLoc = num(triageResp.estimatedLoc, Infinity)
+    triaged.push({ ...f, triage: { ...triageResp, estimatedLoc: safeLoc, autoDismissed: false }, ev })
   }
 }
 
@@ -392,41 +496,21 @@ let testsPass = true
 let testsOutput = ''
 
 if (applied.length > 0) {
-  const testPrompt = 'Run the test suite to confirm the fixes do not regress anything.\n\n' + testCmdDirective + 'If this is a Laravel/PHP project: run php artisan test 2>&1 | tail -50.\nIf Node/TS: run npm test 2>&1 | tail -50 or detect from package.json.\nIf Python: run pytest 2>&1 | tail -50 or detect from pyproject.toml.\n\nReturn the LAST ~50 lines of output verbatim. Do not summarize — the workflow needs raw output to detect failures.\n\nThen also run the formatter (if applicable):\n- Laravel: vendor/bin/pint --dirty 2>&1 | tail -10\n- JS: npx prettier --write on changed files\n- Python: ruff format on changed files\n\nReturn both outputs concatenated.'
+  const testPrompt = 'Run the test suite to confirm the fixes do not regress anything.\n\n' + testCmdDirective + 'Run the suite capturing FULL output to a temp file, record the test command\'s EXACT exit code (0 = all passed; non-zero includes compile/collection/fatal errors), then show the tail. Examples:\n- Laravel/PHP: php artisan test > /tmp/wf_verify.log 2>&1; echo "WF_TEST_EXIT=$?"; tail -50 /tmp/wf_verify.log\n- Node/TS:     npm test > /tmp/wf_verify.log 2>&1; echo "WF_TEST_EXIT=$?"; tail -50 /tmp/wf_verify.log   (or detect from package.json)\n- Python:      pytest > /tmp/wf_verify.log 2>&1; echo "WF_TEST_EXIT=$?"; tail -50 /tmp/wf_verify.log   (or detect from pyproject.toml)\n\nReturn the WF_TEST_EXIT=<code> line AND the LAST ~50 lines verbatim. Do not summarize — the workflow parses the raw output + exit code to detect failures.\n\nThen also run the formatter (if applicable):\n- Laravel: vendor/bin/pint --dirty 2>&1 | tail -10\n- JS: npx prettier --write on changed files\n- Python: ruff format on changed files\n\nReturn both outputs concatenated (keep the WF_TEST_EXIT line from the TEST run, not the formatter).'
   testsOutput = await A(testPrompt, { label: 'run-tests-and-format', phase: 'Verify Fix' })
 
-  if (hasBaseline) {
-    // 比對 baseline：只有「不在 baseline 裡的 failure」才算本次 workflow 造成的 regression。
-    // 避免 pre-existing failure（例：先前 PR 引入但未修的 ExampleTest 殘留）被誤判成本次破壞。
-    const currentMatches = testsOutput ? testsOutput.match(/FAIL(ED)?\s+[^\n]+/gi) || [] : []
-    const currentFailureKeys = [...new Set(currentMatches.map((s) => s.trim()))]
-    const newFailures = currentFailureKeys.filter((k) => !baselineFailureKeys.includes(k))
-
-    // 失敗鍵新增 → 一定 regression。鍵不變但「失敗數」上升 → 仍是 regression
-    // （cover jest 檔案級 FAIL <file>：同檔多一個 failing test，key 不變但 count +1，
-    //  純比鍵會漏抓 → false negative，正是 asymmetric-cost 最該防的方向）。
-    const currentFailCount = parseFailCount(testsOutput)
-    const countRegressed = baselineFailCount != null && currentFailCount != null && currentFailCount > baselineFailCount
-
-    testsPass = newFailures.length === 0 && !countRegressed
-    log('Verify Fix: ' + currentFailureKeys.length + ' failure key(s), ' + newFailures.length + ' NEW key(s)' + (currentFailCount != null ? ', ' + currentFailCount + ' reported failed (baseline ' + (baselineFailCount != null ? baselineFailCount : 'n/a') + ')' : '') + '.')
-
-    if (newFailures.length > 0) {
-      log('NEW failure keys (not in baseline):\n  ' + newFailures.slice(0, 10).join('\n  '))
-    }
-    if (countRegressed) {
-      log('Failure COUNT rose ' + baselineFailCount + ' → ' + currentFailCount + ' with no new key — likely same-file regression (jest granularity).')
-    }
-  } else {
-    // Fallback：無 baseline 時用嚴格 regex。注意此模式會把 pre-existing failure
-    // 一併視為 regression，導致 false positive。修法：跑前確保 clean baseline。
-    testsPass = !!testsOutput &&
-      !/Tests:\s+\d+\s+failed/i.test(testsOutput) &&
-      !/FAIL(ED)?\s*\n/i.test(testsOutput) &&
-      !/^FAILED\s/m.test(testsOutput)
-
-    log('Verify Fix (no baseline): tests ' + (testsPass ? 'PASS' : 'FAIL') + ' after ' + applied.length + ' fixes.')
-  }
+  // 統一判定（baseline 與 verify 共用 extractTestSignals + computeTestsPass）：
+  // 只把「相對 baseline 變差」算 regression（新 FAIL key / 失敗數上升 / exit 0→非0 / 新增
+  // 編譯-收集-fatal 錯誤），且 fail-closed（輸出空或無任何可解析訊號 → 當失敗）。
+  // 修掉舊版兩個 fail-open：① error/no-run 狀態無 FAIL token → 誤判 pass；
+  // ② clean baseline 使 count 後備失效。無 baseline → 視 baseline 為綠做嚴格比較。
+  const cur = extractTestSignals(testsOutput)
+  const baseSig = hasBaseline
+    ? { failureKeys: baselineFailureKeys, failCount: baselineFailCount, exitCode: baselineExitCode, errored: baselineErrored }
+    : { failureKeys: [], failCount: 0, exitCode: 0, errored: false }
+  const res = computeTestsPass(baseSig, cur)
+  testsPass = res.testsPass
+  log('Verify Fix' + (hasBaseline ? '' : ' (no baseline, strict)') + ': ' + cur.failureKeys.length + ' failure key(s)' + (cur.failCount != null ? ', ' + cur.failCount + ' failed (baseline ' + (baselineFailCount != null ? baselineFailCount : 'n/a') + ')' : '') + (cur.exitCode != null ? ', exit ' + cur.exitCode : '') + (cur.errored ? ', errored' : '') + ' → ' + (testsPass ? 'PASS' : 'FAIL') + ' [' + res.reason + '].')
 
   if (!testsPass) {
     log('TESTS FAILED — workflow will mark fixes as REQUIRES_USER_REVIEW, no auto-commit.')

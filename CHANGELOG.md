@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.2] - 2026-06-29
+
+### Fixed
+
+- **code-audit-rigor 1.3.1 → 1.3.2** — three safety-gate fixes in the `/audit-review-fix` workflow (fail-open → fail-closed), found by a self `security-audit` run (run-2) and adversarially reviewed, covered by a 56-assertion unit harness:
+  - (HIGH) Verify-Fix reported `testsPass=true` for compile/collection/fatal "build broke" states (no `failed`/`FAIL ` token) → an unbuildable tree was reported `READY_FOR_COMMIT`. Now detects error/no-run states + an exit-code sentinel and fails closed.
+  - (MEDIUM) A clean baseline disabled the count-regression backstop (`baselineFailCount=null`); now coerced to `0`.
+  - (MEDIUM) Non-numeric/non-object args coerced to NaN or reverted safety flags → silent dropped findings / no review / no LOC cap / false `CLEAN`; now validated with finiteness/object-shape guards.
+
+### Notes
+- Marketplace patch bump 1.8.1 → 1.8.2 (one plugin patch release).
+
 ## [1.8.1] - 2026-06-29
 
 ### Security

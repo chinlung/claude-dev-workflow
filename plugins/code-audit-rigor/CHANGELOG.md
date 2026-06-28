@@ -2,6 +2,16 @@
 
 All notable changes to the `code-audit-rigor` plugin will be documented in this file.
 
+## [1.3.2] - 2026-06-29
+
+### Fixed
+
+- **`/audit-review-fix` workflow — three safety-gate fixes (fail-open → fail-closed), found by a self `security-audit` run (run-2) and adversarially reviewed.** The deterministic logic was refactored into pure, extractable helpers (`normalizeArgs`, `num`, `parseFailCount`, `extractTestSignals`, `computeTestsPass`) covered by a 56-assertion unit harness.
+  - **(HIGH) Verify-Fix reported `testsPass=true` for error / no-run states.** It only matched `FAIL <x>` lines and `N failed` counts, so an auto-fix that broke the build (`tsc` `error TS…`, pytest collection error, PHP fatal) was reported `READY_FOR_COMMIT`. Now `extractTestSignals` detects compile/collection/fatal states and a `WF_TEST_EXIT=<code>` exit-code sentinel (added to the baseline + verify test prompts), and `computeTestsPass` fails closed unless the output is parseable and shows no regression vs baseline. `newlyErrored` is gated on `exitCode !== 0` so an explicit exit 0 is trusted (avoids false-closed when a test name/formatter output contains "error").
+  - **(MEDIUM) A clean baseline disabled the count-regression backstop.** `baselineFailCount` was `null` on a clean baseline (the recommended state), so `countRegressed` could never fire. A clean baseline now yields `0`.
+  - **(MEDIUM) Unvalidated args coerced to NaN / reverted safety flags.** A non-numeric `maxFixLoc`/`votes`/`angles`, or an `args` JSON-string that parsed to a non-object, silently dropped findings / skipped review / removed the LOC cap and reported a false `CLEAN`. `normalizeArgs` + `num`/`numFlag` now coerce with finiteness guards (non-numeric → safe default + a one-time warn), and triage `estimatedLoc` is routed through `num` so a malformed value goes to user-review instead of vanishing from both partition buckets.
+  - Also tightened the FAIL-key regex (`\s+` → `[ \t]+`) so a `N failed` summary line cannot be mis-captured as a cross-newline failure key.
+
 ## [1.3.1] - 2026-06-29
 
 ### Security
