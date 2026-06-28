@@ -15,6 +15,7 @@ A collection of powerful plugins for Claude Code, featuring automated developmen
 | [OpenSpec + Superpowers Workflow](#openspec--superpowers-workflow-plugin) | Six-phase feature development enforcing OpenSpec/Superpowers role separation | auto-triggered skill |
 | [Code Audit Rigor](#code-audit-rigor-plugin) | Review & audit toolkit: routine two-round review commands + quantitative frameworks (EV, score calibration, STRIDE+CWE) + engineering guarantees (language rule packs, coverage reconciliation, quote anchoring) | `/review-branch`, `/review-pr` + auto-triggered skill |
 | [CodeGraph](#codegraph-plugin) | Structural code intelligence (callers, impact, trace) before grep when editing/reviewing | auto-triggered skill |
+| [Security Audit](#security-audit-plugin) | Six-phase multi-agent pipeline that actively hunts exploitable vulnerabilities (vendored from cloudflare/security-audit-skill) | auto-triggered skill |
 
 ## Installation
 
@@ -29,6 +30,8 @@ A collection of powerful plugins for Claude Code, featuring automated developmen
 /plugin install session-learning@scl-claude-plugins
 /plugin install openspec-superpowers-workflow@scl-claude-plugins
 /plugin install code-audit-rigor@scl-claude-plugins
+/plugin install codegraph@scl-claude-plugins
+/plugin install security-audit@scl-claude-plugins
 ```
 
 Or install directly:
@@ -601,6 +604,44 @@ When a capability isn't an MCP tool, use the CLI — never silently degrade to a
 ## Prerequisites
 
 The plugin **bundles the codegraph MCP server** (`.mcp.json` → `codegraph serve --mcp`): install once and the MCP tools are available everywhere, so a new project needs only `codegraph init -i` (no per-project `codegraph install`). Requires the [`codegraph`](https://www.npmjs.com/package/codegraph) CLI on `PATH` globally; plugin-provided tools are prefixed `mcp__plugin_codegraph_codegraph__<tool>`. See `skills/codegraph/reference.md` for the allowlist snippet (both prefixes), gitignore notes, and known gotchas (tool-managed `CODEGRAPH_START/END` block overwrites, `daemon.pid` gitignore gap).
+
+---
+
+# Security Audit Plugin
+
+A single-skill plugin that turns Claude into a security auditor, running a six-phase pipeline with parallel sub-agents to find **exploitable vulnerabilities with real impact** — not checklist deviations. Vendored from [cloudflare/security-audit-skill](https://github.com/cloudflare/security-audit-skill) (MIT).
+
+## When it triggers
+
+Auto-activates on requests like "security audit this codebase", "find vulnerabilities in ./src", "do a security review", or "pen-test the code".
+
+## The six phases
+
+1. **Recon** — parallel research agents map architecture, trust boundaries, and input surfaces → `architecture.md`
+2. **Hunt** — parallel general agents attack from different angles (injection, access control, business logic, crypto, feature abuse, chained attacks, wildcard); each can spawn sub-agents
+3. **Validate** — separate agents try to *disprove* each finding; adversarial review kills false positives
+4. **Report** — `REPORT.md` (human-readable) + `FINDINGS-DETAIL.md` (traces for MEDIUM+ findings)
+5. **Structured output** — `findings.json` validated against `report-schema.json` by `validate-findings.cjs`
+6. **Independent verification** — fresh agents verify every factual claim against the source
+
+Multiple runs against the same repo are additive: each reads prior `findings.json` to skip known issues and target gaps. Output defaults to `~/security-audit-skill/<repo-name>/run-<N>`.
+
+## security-audit vs code-audit-rigor
+
+The two security plugins are complementary:
+
+- **security-audit** — *active hunting*: surface unknown exploitable bugs across a whole codebase.
+- **code-audit-rigor** — *review discipline*: judge a known change (PR/branch) with quantitative frameworks (EV, STRIDE+CWE, cross-reference contract).
+
+Use the former to attack a codebase, the latter to review a diff.
+
+## Claude Code platform mapping
+
+The vendored skill is agent-neutral: its `research` agent maps to Claude Code's `Explore`, its `general` agent to `general-purpose`, and the Task tool to the `Agent` tool. See the plugin [README](plugins/security-audit/README.md) for the full mapping and upstream-sync notes (vendored at upstream commit `4de1ac8`).
+
+## Requirements
+
+Node.js — for the Phase 5 `validate-findings.cjs` schema validator.
 
 ---
 

@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-06-29
+
+### Added
+- **New plugin: security-audit 1.0.0**. Vendored the `security-audit` skill from [cloudflare/security-audit-skill](https://github.com/cloudflare/security-audit-skill) (MIT, © Cloudflare, Inc.) at upstream commit `4de1ac8`. A six-phase multi-agent pipeline (recon → hunt → validate → report → structured output → independent verification) that actively hunts exploitable vulnerabilities with real impact, complementing `code-audit-rigor`'s review-discipline frameworks. Vendored files are copied verbatim; the wrapper adds only `plugin.json` + `README.md`, which document the Claude Code platform mapping (research → `Explore`, general → `general-purpose`) and the upstream-sync procedure (see CONTRIBUTING §7).
+
+### Notes
+- Marketplace minor bump 1.7.5 → 1.8.0 (new plugin added).
+
+## [1.7.5] - 2026-06-24
+
+### Added
+- **code-audit-rigor 1.2.1 → 1.3.0**: Added `/audit-review-fix`, an automated adversarial batch audit-and-fix Workflow folded in as the plugin's third layer (migrated from user-level `~/.claude/`, same portability pattern as the 1.2.0 command migration). The command reads its script via `${CLAUDE_PLUGIN_ROOT}/workflow/audit-review-fix-workflow.js` (no hardcoded home path): 9-angle review + EV triage + safety-gated auto-fix + test verification + report. The "auto-fix-free" positioning is now scoped to the rigor skill only — auto-fix is provided solely by `/audit-review-fix` under safety gates and adversarial verification.
+
+### Notes
+- Marketplace patch bump 1.7.4 → 1.7.5.
+
+## [1.7.4] - 2026-06-17
+
+### Changed
+- **openspec-superpowers-workflow 1.0.1 → 1.1.0**: Aligned Phase 4 with superpowers v6.0.0, which rewrote subagent-driven-development's per-task review. The two-stage review (separate spec + quality reviewers) became a single `task-reviewer` returning both verdicts at once, plus one end-of-branch whole-branch review using the strongest model. Documented the v6 worktree relocation: the global `~/.config/superpowers/worktrees/` was removed in favor of an in-project `.worktrees/` root (must be git-ignored). Added a reviewer-integrity rule (no suppressing findings, no defaulting severity) and a dependency note: superpowers >= 6.0.0.
+
+### Notes
+- Marketplace patch bump 1.7.3 → 1.7.4.
+
 ## [1.7.3] - 2026-06-08
 
 ### Changed

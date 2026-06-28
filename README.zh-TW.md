@@ -15,6 +15,7 @@
 | [OpenSpec + Superpowers 工作流程](#openspec--superpowers-工作流程插件) | 六階段功能開發，強制 OpenSpec / Superpowers 角色分離 | 自動觸發 skill |
 | [Code Audit Rigor](#code-audit-rigor-插件) | 審查工具箱：routine 兩輪審查指令 + 量化框架（EV、評分校準、STRIDE+CWE）+ 工程化保證（語言規則包、coverage 核銷、引用錨定） | `/review-branch`、`/review-pr` + 自動觸發 skill |
 | [CodeGraph](#codegraph-插件) | 編輯／審查前先查結構（callers、impact、trace）而非 grep | 自動觸發 skill |
+| [Security Audit](#security-audit-插件) | 六階段多代理流程，主動獵捕可被利用的漏洞（vendored 自 cloudflare/security-audit-skill） | 自動觸發 skill |
 
 ## 安裝方式
 
@@ -29,6 +30,8 @@
 /plugin install session-learning@scl-claude-plugins
 /plugin install openspec-superpowers-workflow@scl-claude-plugins
 /plugin install code-audit-rigor@scl-claude-plugins
+/plugin install codegraph@scl-claude-plugins
+/plugin install security-audit@scl-claude-plugins
 ```
 
 或直接安裝：
@@ -599,6 +602,44 @@ Output 為結構化 JSON 風格 findings，依 EV 排序，含 dismissed finding
 ## 前置需求
 
 此 plugin **夾帶 codegraph MCP server**（`.mcp.json` → `codegraph serve --mcp`）：裝一次，MCP 工具處處可用，新專案只需 `codegraph init -i`（不必逐專案 `codegraph install`）。需 `codegraph` CLI 在全域 PATH；plugin 提供的工具前綴為 `mcp__plugin_codegraph_codegraph__<tool>`。allowlist snippet（兩種前綴）、gitignore 注意事項、已知坑（`CODEGRAPH_START/END` 區塊覆寫、`daemon.pid` gitignore 缺漏）見 `skills/codegraph/reference.md`。
+
+---
+
+# Security Audit 插件
+
+單一 skill plugin，將 Claude 化為安全稽核員，以六階段流程搭配平行 sub-agent 找出**可被利用、有實際影響的漏洞**——而非偏離 checklist 的理論性問題。Vendored 自 [cloudflare/security-audit-skill](https://github.com/cloudflare/security-audit-skill)（MIT）。
+
+## 何時觸發
+
+收到「security audit this codebase」、「find vulnerabilities in ./src」、「做安全審查」、「pen-test 這段程式碼」等請求時自動啟用。
+
+## 六個階段
+
+1. **Recon（偵查）** — 平行 research agent 描繪架構、信任邊界、輸入面 → `architecture.md`
+2. **Hunt（獵捕）** — 平行 general agent 從不同角度攻擊（injection、存取控制、業務邏輯、加密、功能濫用、串連攻擊、wildcard），每個可再派 sub-agent
+3. **Validate（驗證）** — 由另一組 agent 嘗試**推翻**每個 finding；對抗式審查殺掉 false positive
+4. **Report（報告）** — `REPORT.md`（人類可讀）+ `FINDINGS-DETAIL.md`（MEDIUM+ finding 的資料流追蹤）
+5. **Structured output（結構化輸出）** — `findings.json`，由 `validate-findings.cjs` 對 `report-schema.json` 驗證
+6. **Independent verification（獨立驗證）** — 全新 agent 對照原始碼逐一驗證每項事實聲明
+
+對同一 repo 多次執行是疊加的：每次讀取先前的 `findings.json` 以跳過已知問題、針對缺口加強。輸出預設到 `~/security-audit-skill/<repo-name>/run-<N>`。
+
+## security-audit vs code-audit-rigor
+
+兩個 security plugin 互補：
+
+- **security-audit** — *主動獵捕*：在整個 codebase 中找出未知的可利用漏洞。
+- **code-audit-rigor** — *審查紀律*：以量化框架（EV、STRIDE+CWE、強制交叉引用契約）審判一個已知變更（PR/branch）。
+
+前者用來攻擊一個 codebase，後者用來審查一份 diff。
+
+## Claude Code 平台對應
+
+vendored skill 寫成 agent-neutral：其 `research` agent 對應 Claude Code 的 `Explore`，`general` agent 對應 `general-purpose`，Task tool 對應 `Agent` 工具。完整對應與上游同步說明（vendored 自 upstream commit `4de1ac8`）見 plugin [README](plugins/security-audit/README.md)。
+
+## 前置需求
+
+Node.js — 供第 5 階段 `validate-findings.cjs` schema 驗證。
 
 ---
 

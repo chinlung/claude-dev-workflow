@@ -5,6 +5,30 @@
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [1.8.0] - 2026-06-29
+
+### 新增
+- **新 plugin：security-audit 1.0.0**。Vendored `security-audit` skill，源自 [cloudflare/security-audit-skill](https://github.com/cloudflare/security-audit-skill)（MIT，© Cloudflare, Inc.），upstream commit `4de1ac8`。六階段多代理流程（recon → hunt → validate → report → structured output → independent verification），主動獵捕可被利用、有實際影響的漏洞，與 `code-audit-rigor` 的審查紀律框架互補。Vendored 檔案逐字複製；wrapper 僅加 `plugin.json` + `README.md`，記錄 Claude Code 平台對應（research → `Explore`、general → `general-purpose`）與上游同步程序（見 CONTRIBUTING §7）。
+
+### 備註
+- Marketplace minor bump 1.7.5 → 1.8.0（新增 plugin）。
+
+## [1.7.5] - 2026-06-24
+
+### 新增
+- **code-audit-rigor 1.2.1 → 1.3.0**：新增 `/audit-review-fix`——自動化對抗式批次審查自動修 Workflow，作為 plugin 第三層併入（從使用者層 `~/.claude/` 遷入，與 1.2.0 command 遷移同一可攜性模式）。command 透過 `${CLAUDE_PLUGIN_ROOT}/workflow/audit-review-fix-workflow.js` 讀取腳本（無硬編碼 home 路徑）：9-angle review + EV triage + 安全閘門自動修 + 測試驗證 + 報告。「排除 auto-fix」的定位現在僅限量化框架 skill 本身——auto-fix 由獨立的 `/audit-review-fix` 在安全閘門 + 對抗式驗證下提供。
+
+### 備註
+- Marketplace patch bump 1.7.4 → 1.7.5。
+
+## [1.7.4] - 2026-06-17
+
+### 變更
+- **openspec-superpowers-workflow 1.0.1 → 1.1.0**：Phase 4 對齊 superpowers v6.0.0。superpowers 6.0.0 重寫了 subagent-driven-development 的 per-task review：雙階段 review（spec / quality 兩個 reviewer）→ 單一 `task-reviewer` 一次回兩個 verdict + 結尾一次 whole-branch review（用最強 model）。新增 worktree 落點說明：v6 移除全域 `~/.config/superpowers/worktrees/`，改落專案內 `.worktrees/` root（需 git-ignore）。新增 reviewer-integrity 紀律（禁止壓制 finding、禁止預設 severity），並標註相依 superpowers >= 6.0.0。
+
+### 備註
+- Marketplace patch bump 1.7.3 → 1.7.4。
+
 ## [1.7.3] - 2026-06-08
 
 ### 變更
