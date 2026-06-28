@@ -6,7 +6,7 @@
 
 ```bash
 # 0. Prerequisite — the codegraph CLI on PATH (one-time, global)
-npm i -g codegraph
+npm i -g @colbymchenry/codegraph
 
 # 1. Install this plugin (one-time)
 /plugin marketplace add chinlung/claude-dev-workflow
@@ -46,7 +46,7 @@ f=~/.claude/settings.json; jq '.permissions.allow = ((.permissions.allow // []) 
 
 ## What it does
 
-`codegraph` is a single-skill plugin that teaches Claude to reach for the [codegraph](https://www.npmjs.com/package/codegraph) knowledge graph **before** falling back to grep for **structural** questions:
+`codegraph` is a single-skill plugin that teaches Claude to reach for the [codegraph](https://www.npmjs.com/package/@colbymchenry/codegraph) knowledge graph **before** falling back to grep for **structural** questions:
 
 - Who calls this symbol? What breaks if I change it?
 - Where is this defined? What does it call?
@@ -89,7 +89,7 @@ codegraph init -i   # build the .codegraph/ index; that's it
 
 No per-project `codegraph install` and no per-project `.mcp.json`.
 
-- **Prerequisite**: the [`codegraph`](https://www.npmjs.com/package/codegraph) CLI on `PATH` globally (`npm i -g codegraph`) — the plugin references the binary, it doesn't bundle it.
+- **Prerequisite**: the [`@colbymchenry/codegraph`](https://www.npmjs.com/package/@colbymchenry/codegraph) CLI on `PATH` globally (`npm i -g @colbymchenry/codegraph`; it installs a `codegraph` binary) — the plugin references the binary, it doesn't bundle it.
 - **Tool prefix**: plugin-provided MCP tools are named `mcp__plugin_codegraph_codegraph__<tool>` (vs `mcp__codegraph__<tool>` when wired via a project `.mcp.json`). Put the plugin-prefixed allowlist entries in your **global** `~/.claude/settings.json` once.
 - **Trade-off**: the MCP server launches in every project the plugin is active in, including un-indexed ones (there it returns "not initialized" until `codegraph init -i`).
 

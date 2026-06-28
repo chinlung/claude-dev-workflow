@@ -12,7 +12,7 @@ That's it — no per-project `codegraph install` and no per-project `.mcp.json`.
 
 > **Trade-off of bundling**: the MCP server launches in *every* project the plugin is active in, including un-indexed ones — there it returns "not initialized" until you run `codegraph init -i` (graceful, but it's a spawned process). After creating a fresh `.codegraph/`, restart the session if the MCP tools don't pick it up.
 
-**Prerequisite**: the `codegraph` CLI must be on `PATH` globally (`npm i -g codegraph`) — the plugin references the `codegraph` binary, it does not bundle it.
+**Prerequisite**: the `codegraph` CLI must be on `PATH` globally (`npm i -g @colbymchenry/codegraph`, which installs a `codegraph` binary) — the plugin references the `codegraph` binary, it does not bundle it.
 
 **Not using this plugin?** Then wire MCP per-project instead: add `{ "mcpServers": { "codegraph": { "type": "stdio", "command": "codegraph", "args": ["serve", "--mcp"] } } }` to the project `.mcp.json`, or run `codegraph install`. Do **not** add codegraph to `~/.claude.json` global mcpServers (un-indexed projects no-op/error).
 
