@@ -5,6 +5,21 @@
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [1.8.1] - 2026-06-29
+
+### 安全性
+
+- **codegraph 1.0.0 → 1.0.1** — 修正前置 npm 套件名：從無人擁有的 unscoped `codegraph`（第三方的 469-byte 空殼、無 `bin`）改為真正的 scoped `@colbymchenry/codegraph`。消除 dependency-confusion 風險與功能性損壞（照舊文件安裝的人，bundled MCP server 從未啟動）。由 `security-audit` 稽核發現，並以維護者實際安裝環境實證確認。
+- **code-audit-rigor 1.3.0 → 1.3.1** — `/review-pr` 現在將抓取的 PR 評論（公開 PR 上任何人皆可張貼）標示為不可信資料，僅供分析、不可當指令執行，且 Phase 4 推送前要求檢視實際 diff。Defense-in-depth（`security-audit` Finding 2，LOW）。
+
+### 修正
+
+- 對齊 `repository`/`homepage`：`multi-agent-debate`（原指向不存在的 `chinlung/multi-agent-debate`）與 `session-learning`（原缺漏）皆改為 `chinlung/claude-dev-workflow`。純 metadata，未變動 plugin 版本。
+- 新增根目錄 `.gitignore`（`node_modules/`、`.env*`、`*.pem`/`*.key`、`*.local.md`、`*.log`、OS 垃圾檔），避免貢獻者／fork 者誤提交本地設定或機密。
+
+### 備註
+- Marketplace patch bump 1.8.0 → 1.8.1（兩個 plugin patch release + repo 衛生）。
+
 ## [1.8.0] - 2026-06-29
 
 ### 新增

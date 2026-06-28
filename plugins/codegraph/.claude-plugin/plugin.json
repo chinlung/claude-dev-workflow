@@ -1,6 +1,6 @@
 {
   "name": "codegraph",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "CodeGraph code-intelligence skill — query the tree-sitter knowledge graph (callers, impact, trace, structural context) before grep when editing or reviewing code. Covers the MCP-tool vs Bash-CLI entry-point split and new-project setup.",
   "author": {
     "name": "scl@hanchih.com"

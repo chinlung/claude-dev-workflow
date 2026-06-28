@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.1] - 2026-06-29
+
+### Security
+
+- **codegraph 1.0.0 → 1.0.1** — fixed the prerequisite npm package name from the unowned unscoped `codegraph` (a third-party 469-byte placeholder with no `bin`) to the real scoped `@colbymchenry/codegraph`. Removes a dependency-confusion exposure and a functional break (the bundled MCP server never started for anyone who followed the docs). Found by a `security-audit` run; confirmed against the maintainer's working install.
+- **code-audit-rigor 1.3.0 → 1.3.1** — `/review-pr` now labels fetched PR comments (anyone can post on a public PR) as untrusted data to analyze, not instructions to execute, and requires a diff review before the Phase 4 commit/push. Defense-in-depth (`security-audit` Finding 2, LOW).
+
+### Fixed
+
+- Aligned `repository`/`homepage` in `multi-agent-debate` (was the non-existent `chinlung/multi-agent-debate`) and added them to `session-learning`, both now pointing at `chinlung/claude-dev-workflow`. Metadata-only; plugin versions unchanged.
+- Added a root `.gitignore` (`node_modules/`, `.env*`, `*.pem`/`*.key`, `*.local.md`, `*.log`, OS junk) to guard contributors/forkers against committing local config or secrets.
+
+### Notes
+- Marketplace patch bump 1.8.0 → 1.8.1 (two plugin patch releases + repo hygiene).
+
 ## [1.8.0] - 2026-06-29
 
 ### Added

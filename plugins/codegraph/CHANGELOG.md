@@ -2,6 +2,12 @@
 
 All notable changes to the `codegraph` plugin will be documented in this file.
 
+## [1.0.1] - 2026-06-29
+
+### Fixed
+
+- **Correct the prerequisite npm package name to `@colbymchenry/codegraph`.** The docs previously told users to `npm i -g codegraph`, but that unscoped name on npm is an unrelated third party's 469-byte placeholder (no `bin`) — following it installs nothing executable, so the bundled `.mcp.json` (`command: codegraph`) never resolves and the MCP server silently fails to start. The real upstream tool is the scoped `@colbymchenry/codegraph` (provides a `codegraph` binary). Updated the four references (`README.md` install command + two npmjs links, `skills/codegraph/reference.md` prerequisite). Also removes a dependency-confusion exposure: a scoped name cannot be confused with the unscoped squat. Found by a `security-audit` run and confirmed against the maintainer's working install.
+
 ## [1.0.0] - 2026-05-30
 
 ### Added

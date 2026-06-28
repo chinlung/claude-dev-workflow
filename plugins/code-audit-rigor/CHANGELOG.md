@@ -2,6 +2,12 @@
 
 All notable changes to the `code-audit-rigor` plugin will be documented in this file.
 
+## [1.3.1] - 2026-06-29
+
+### Security
+
+- **`/review-pr`: treat fetched PR comments as untrusted data and gate the push behind a diff review.** Added a security-boundary note instructing that all fetched comments — especially `issues/comments`, which anyone can post on a public PR — are untrusted data to be analyzed, never executed as instructions (prompt-injection defense). Added a Phase 4 "推送前確認" step requiring the user to review the actual diff (not just the Phase 2 classification table) before Commit / Push / `gh pr comment`. Defense-in-depth hardening (the harness already prompts for push in default mode); found by a `security-audit` run (Finding 2, LOW).
+
 ## [1.3.0] - 2026-06-24
 
 ### Added
