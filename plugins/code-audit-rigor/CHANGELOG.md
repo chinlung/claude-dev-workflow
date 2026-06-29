@@ -2,6 +2,12 @@
 
 All notable changes to the `code-audit-rigor` plugin will be documented in this file.
 
+## [1.3.4] - 2026-06-29
+
+### Fixed
+
+- **`/audit-review-fix` Verify-Fix no longer green-lights a build that is broken at both baseline and verify** (the run-2 review's "2b" residual; unit harness now 76 assertions). When the test suite was already failing to compile/run at baseline (`errored`, non-zero exit) and is *still* broken after fixes, the old logic masked it (`newlyErrored` needs `!baselineErrored`) and reported `testsPass=true` / "pass confirmed". A new orthogonal `currentlyBroken` check (`errored` AND an explicit non-zero exit) now fails closed regardless of the baseline — "no regression vs an already-broken baseline" is not the same as "the build is OK". It requires an explicit non-zero exit (same exit-trust principle as the 1.3.2 fix) so a passing run whose output merely contains "error" text is not false-failed; assertion-only dirty baselines (not `errored`) are unaffected.
+
 ## [1.3.3] - 2026-06-29
 
 ### Fixed

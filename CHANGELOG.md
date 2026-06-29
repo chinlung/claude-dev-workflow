@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.4] - 2026-06-29
+
+### Fixed
+
+- **code-audit-rigor 1.3.3 → 1.3.4** — `/audit-review-fix` Verify-Fix no longer reports a build that is broken at *both* baseline and verify as `testsPass`/`READY_FOR_COMMIT` (the run-2 review's "2b" residual). A new orthogonal `currentlyBroken` check (`errored` + explicit non-zero exit) fails closed regardless of baseline — committing a non-building tree is never OK. Requires an explicit non-zero exit so a passing run containing "error" text is not false-failed; assertion-only dirty baselines are unaffected. Unit harness now 76 assertions.
+
+### Notes
+- Marketplace patch bump 1.8.3 → 1.8.4.
+
 ## [1.8.3] - 2026-06-29
 
 ### Fixed

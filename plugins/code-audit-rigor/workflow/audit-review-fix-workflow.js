@@ -180,26 +180,29 @@ function computeTestsPass(baselineSig, currentSig) {
   // errors'/'Fatal error' 字樣」誤判成新錯誤（false-closed）；exit 缺(null)或非 0 才採信 errored
   // 文字（real 編譯/收集/fatal 一定非 0 exit，故零 fail-open；無哨符時退回文字偵測 fail-closed）。
   const newlyErrored = !baselineSig.errored && currentSig.errored && currentSig.exitCode !== 0
-  const regressed = newFailures.length > 0 || countRegressed || exitRegressed || newlyErrored
+  // build 現在就是壞的（errored + 明確 non-zero exit）→ 絕不放行，即使 baseline 當初就壞
+  // （否則「仍無法編譯的樹」會被回報 pass confirmed / READY，即 2b 殘留）。要求明確 exit≠0：
+  // 與 newlyErrored 同一原則——信任 exit 0，避免「通過(exit 0)但輸出含 error 字樣」被誤殺。
+  // 與 regression 正交：「相對 baseline 沒變差」≠「現在是好的」，一棵壞 build 不該 green-light。
+  const currentlyBroken = currentSig.errored && currentSig.exitCode != null && currentSig.exitCode !== 0
+  const failReasons = [
+    newFailures.length > 0 ? newFailures.length + ' new failure key(s)' : null,
+    countRegressed ? 'fail count ' + baselineSig.failCount + '→' + currentSig.failCount : null,
+    exitRegressed ? 'exit 0→' + currentSig.exitCode : null,
+    newlyErrored ? 'newly errored (compile/collection/fatal)' : null,
+    currentlyBroken && !newlyErrored && !exitRegressed ? 'build currently broken (errored, exit ' + currentSig.exitCode + ') — not committable even if baseline was already broken' : null,
+  ].filter(Boolean)
   // 至少要有「一個可解析的測試結果訊號」才敢判斷；全無（exit 哨符缺 + 無 pass marker + 無
   // failure 訊號）= 輸出無法解讀 → fail closed（舊邏輯在此會誤判 pass）。
   const parseable = currentSig.exitCode != null || currentSig.sawPass ||
     currentSig.failureKeys.length > 0 || currentSig.failCount != null || currentSig.errored
-  const testsPass = parseable && !regressed
-  let reason
-  if (regressed) {
-    reason = [
-      newFailures.length > 0 ? newFailures.length + ' new failure key(s)' : null,
-      countRegressed ? 'fail count ' + baselineSig.failCount + '→' + currentSig.failCount : null,
-      exitRegressed ? 'exit 0→' + currentSig.exitCode : null,
-      newlyErrored ? 'newly errored (compile/collection/fatal)' : null,
-    ].filter(Boolean).join('; ')
-  } else if (!parseable) {
-    reason = 'no parseable test-result signal (no exit sentinel, pass marker, or failure token) — fail closed'
-  } else {
-    reason = 'no regression vs baseline; pass confirmed'
-  }
-  return { testsPass, regressed, newFailures, countRegressed, exitRegressed, newlyErrored, reason }
+  const testsPass = parseable && failReasons.length === 0
+  const reason = failReasons.length > 0
+    ? failReasons.join('; ')
+    : !parseable
+      ? 'no parseable test-result signal (no exit sentinel, pass marker, or failure token) — fail closed'
+      : 'no regression vs baseline; pass confirmed'
+  return { testsPass, regressed: failReasons.length > 0, newFailures, countRegressed, exitRegressed, newlyErrored, currentlyBroken, reason }
 }
 
 // 依各桶數量與測試結果決定回傳 status（純函式，單元測試覆蓋）。deferred：純 DEFER（其餘皆 0）

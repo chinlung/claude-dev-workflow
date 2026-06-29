@@ -5,6 +5,15 @@
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [1.8.4] - 2026-06-29
+
+### 修正
+
+- **code-audit-rigor 1.3.3 → 1.3.4** — `/audit-review-fix` Verify-Fix 不再把「baseline 與 verify 兩端都壞掉」的 build 回報為 `testsPass`/`READY_FOR_COMMIT`（run-2 review 的「2b」殘留）。新增正交的 `currentlyBroken` 判斷（`errored` + 明確非零 exit），不論 baseline 如何一律 fail-closed——commit 一棵無法 build 的樹永遠不該被放行。要求明確非零 exit，故「通過但輸出含 error 字樣」不會被誤殺；純 assertion 失敗的 dirty baseline 不受影響。單元 harness 現 76 條斷言。
+
+### 備註
+- Marketplace patch bump 1.8.3 → 1.8.4。
+
 ## [1.8.3] - 2026-06-29
 
 ### 修正
