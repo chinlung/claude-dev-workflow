@@ -5,6 +5,21 @@
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [1.8.3] - 2026-06-29
+
+### 修正
+
+- **code-audit-rigor 1.3.2 → 1.3.3** — run-2 自我稽核中 `/audit-review-fix` workflow 剩餘的 LOW/NOTE 健壯性項目（單元 harness 現 71 條斷言）：
+  - `status` 不再把單獨的 `DEFER_OUT_OF_SCOPE` finding 誤報為 `CLEAN`——新增 `REQUIRES_FOLLOW_UP` status（文件已更新）。
+  - fix agent 改了檔卻回 `applied=false` 時，浮出留在 tree 的未測檔案（不再被靜默標為「declined」）。
+  - 組報告路徑前消毒 `today`（不可 `../` 穿越）。
+  - Scope-abort 強化：「no changes」判斷加上 real-diff 守衛；bad `--focus` pathspec 現會明確中止，而非靜默審查空 diff。
+  - Fix-agent prompt 強化抗 indirect prompt injection（把 diff/finding 文字當資料）。
+  - EV 67% 損益平衡點經審查後刻意保留不變（忠實實作 skill 文件化的 Framework 2）。
+
+### 備註
+- Marketplace patch bump 1.8.2 → 1.8.3。
+
 ## [1.8.2] - 2026-06-29
 
 ### 修正

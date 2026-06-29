@@ -2,6 +2,18 @@
 
 All notable changes to the `code-audit-rigor` plugin will be documented in this file.
 
+## [1.3.3] - 2026-06-29
+
+### Fixed
+
+- **`/audit-review-fix` workflow — remaining LOW/NOTE robustness items from the run-2 self-audit** (unit-tested: harness now at 71 assertions over the pure helpers).
+  - **`status` no longer mis-reports a lone DEFER as `CLEAN`.** A finding triaged `DEFER_OUT_OF_SCOPE` (a real bug too large for this PR) with nothing else now returns the new `REQUIRES_FOLLOW_UP` status (documented in `workflow/audit-review-fix.md` and `commands/audit-review-fix.md`) instead of `CLEAN`/"commit directly". Status logic extracted to a pure `computeStatus()`.
+  - **Declined-with-edits are surfaced.** If a fix agent returns `applied=false` but reported `filesModified`, those untested edits left in the tree are now named in the skip reason and logged (previously they were silently labelled "declined").
+  - **`today` is path-sanitised** before building the report path (`audits/workflow-audit-<today>.md`), so a `today` arg containing `../` or control chars can no longer write the report outside `audits/`.
+  - **Scope-abort hardened** (pure `scopeAbortReason()`): the "no changes" check is now guarded by the real-diff check (a diff whose tail merely contains "no changes" no longer false-aborts), and the git-error allowlist now also catches a bad `--focus` pathspec (`error: pathspec … did not match`) so a scoping typo aborts loudly instead of silently reviewing an empty diff → false `CLEAN`.
+  - **Fix-agent prompt hardened** against indirect prompt injection: the agent is told to treat all finding/diff text as untrusted data and to only modify the cited file.
+- Note: the EV auto-dismiss 67% breakeven was reviewed and left unchanged — it faithfully implements the `code-audit-rigor` skill's documented Framework 2 (the asymmetry is encoded in the severity points, not a per-severity threshold); changing it would diverge from the skill.
+
 ## [1.3.2] - 2026-06-29
 
 ### Fixed

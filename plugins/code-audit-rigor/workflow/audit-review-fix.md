@@ -185,7 +185,7 @@ Workflow({
 
 ```js
 {
-  status: 'CLEAN' | 'READY_FOR_COMMIT' | 'REQUIRES_USER_REVIEW' | 'TESTS_FAILED' | 'EMPTY_DIFF',
+  status: 'CLEAN' | 'READY_FOR_COMMIT' | 'REQUIRES_USER_REVIEW' | 'REQUIRES_FOLLOW_UP' | 'TESTS_FAILED' | 'EMPTY_DIFF',
   reportPath: 'audits/workflow-audit-YYYY-MM-DD.md',
   testsPass: boolean,
   counts: { totalReviewed, applied, skipped, userReviewRequired, deferred, dismissed },
@@ -201,6 +201,7 @@ Workflow({
 | `CLEAN` | 找不到應修項目 | 直接 commit |
 | `READY_FOR_COMMIT` | 修復完成、測試通過、無人類待辦 | review applied 後 commit |
 | `REQUIRES_USER_REVIEW` | 有 MUST_FIX 觸及 public API / schema / 多種可行解法，**或**有 skipped（agent 判定不安全拒修 / dry-run 未修）| 逐項人工決策 |
+| `REQUIRES_FOLLOW_UP` | 僅有 DEFER_OUT_OF_SCOPE（真 bug 但結構性大，不屬本次 PR），無待修/待審項 | 將 deferred 項目開成後續 PR/issue |
 | `TESTS_FAILED` | 修復後測試失敗 | 不可 commit；檢查 applied 並決定 rollback 或進一步修 |
 | `EMPTY_DIFF` | 沒有變動 | 無事可做 |
 

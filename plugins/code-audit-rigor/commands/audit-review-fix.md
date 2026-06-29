@@ -47,6 +47,7 @@ Workflow({
 ### 4. 回報結果（依回傳 `status`）
 - `READY_FOR_COMMIT` → 摘要 Applied 修復；提醒人工 review 後**自行 `/commit`**（workflow 不自動 commit，commit message 該由人寫「為什麼」）
 - `REQUIRES_USER_REVIEW` → 逐項列出 User Review Required + **Skipped**（agent 判定不安全拒修 / dry-run 未修）待人類決策
+- `REQUIRES_FOLLOW_UP` → 列出 Deferred 項目（真 bug 但結構性大），建議開成後續 PR/issue
 - `TESTS_FAILED` → 警告**不可 commit**，列出 applied 供決定 rollback 或續修
 - `CLEAN` / `EMPTY_DIFF` → 告知無應修項 / 無變更
 一律附上報告路徑 `audits/workflow-audit-<date>.md`。

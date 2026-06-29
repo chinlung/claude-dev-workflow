@@ -1,6 +1,6 @@
 {
   "name": "code-audit-rigor",
-  "version": "1.3.2",
+  "version": "1.3.3",
   "description": "Code review & audit toolkit — routine two-round review commands (/review-branch, /review-pr) sharing path-matched language rule packs, an automated adversarial batch audit-and-fix workflow (/audit-review-fix: 9-angle review + EV triage + safety-gated auto-fix + test verification + report), plus quantitative decision frameworks (EV calculation, score-based calibration, STRIDE+CWE classification) and deterministic engineering guarantees (mechanical scope/coverage reconciliation, quoted-code reference anchoring) for high-stakes audits where intuition is insufficient. The rigor skill itself stays auto-fix-free and injection-safe; auto-fix is provided only by the separate /audit-review-fix workflow under safety gates and adversarial verification.",
   "author": {
     "name": "scl@hanchih.com"

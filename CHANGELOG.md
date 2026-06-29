@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.3] - 2026-06-29
+
+### Fixed
+
+- **code-audit-rigor 1.3.2 → 1.3.3** — remaining LOW/NOTE robustness items from the run-2 self-audit of the `/audit-review-fix` workflow (unit harness now 71 assertions):
+  - `status` no longer reports a lone `DEFER_OUT_OF_SCOPE` finding as `CLEAN` — new `REQUIRES_FOLLOW_UP` status (docs updated).
+  - Fix agents that edit then return `applied=false` now surface the untested files left in the tree (no longer silently "declined").
+  - `today` is path-sanitised before building the report path (no `../` traversal).
+  - Scope-abort hardened: real-diff guard on the "no changes" check, and a bad `--focus` pathspec now aborts loudly instead of silently reviewing an empty diff.
+  - Fix-agent prompt hardened against indirect prompt injection (treat diff/finding text as data).
+  - EV 67% breakeven reviewed and intentionally left unchanged (faithful to the skill's documented Framework 2).
+
+### Notes
+- Marketplace patch bump 1.8.2 → 1.8.3.
+
 ## [1.8.2] - 2026-06-29
 
 ### Fixed
