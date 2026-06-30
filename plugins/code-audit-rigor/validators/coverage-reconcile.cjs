@@ -86,7 +86,7 @@ function reconcile(data) {
       }
     }
     for (const f of unaccountedFiles) {
-      errors.push(`Unaccounted scoped file: "${f}" appears in suggestions but is not listed in scopedFiles — add it with status 'reviewed' or 'skipped' (with reason)`);
+      errors.push(`Unaccounted suggestion file: "${f}" appears in suggestions but is not listed in scopedFiles — add it with status 'reviewed' or 'skipped' (with reason)`);
     }
   }
 

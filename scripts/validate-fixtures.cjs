@@ -35,6 +35,15 @@ function run(validator, fixture, expectValid) {
     failures.push(label);
     return;
   }
+  // Fail fast on a missing fixture regardless of expectValid. Without this, an
+  // expected-invalid case would pass spuriously: the validator exits non-zero
+  // simply because it cannot read the fixture, masking the missing test case.
+  if (!fs.existsSync(fixture)) {
+    console.error(`  ✗  ${label}: fixture not found`);
+    failed++;
+    failures.push(label);
+    return;
+  }
   let exitCode = 0;
   try {
     execFileSync(process.execPath, [validator, fixture], { stdio: 'pipe' });

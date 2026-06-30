@@ -36,7 +36,7 @@ function validateProposal(p, idx) {
 
 function validateCritiqueRound(r, idx) {
   const prefix = `critiqueRounds[${idx}]`;
-  if (typeof r.round !== 'number' || r.round < 1) return err(`${prefix}.round must be integer >= 1`);
+  if (typeof r.round !== 'number' || !Number.isInteger(r.round) || r.round < 1) return err(`${prefix}.round must be integer >= 1`);
   if (!Array.isArray(r.criticisms)) return err(`${prefix}.criticisms must be an array`);
   for (let i = 0; i < r.criticisms.length; i++) {
     const c = r.criticisms[i];
