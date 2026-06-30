@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "review-branch-results",
+  "title": "Review Branch Results",
+  "description": "Results from a code review of a branch, ensuring all scoped files are accounted for.",
+  "type": "object",
+  "required": ["branch", "scopedFiles", "suggestions", "verifications"],
+  "properties": {
+    "branch": { "type": "string", "minLength": 1 },
+    "scopedFiles": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["file", "status"],
+        "properties": {
+          "file": { "type": "string", "minLength": 1 },
+          "status": { "type": "string", "enum": ["reviewed", "skipped"] },
+          "skipReason": { "type": "string", "minLength": 1 }
+        },
+        "if": { "properties": { "status": { "const": "skipped" } }, "required": ["status"] },
+        "then": { "required": ["skipReason"] }
+      }
+    },
+    "suggestions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["file", "line", "quotedCode", "description", "severity"],
+        "properties": {
+          "file": { "type": "string", "minLength": 1 },
+          "line": { "type": "integer", "minimum": 1 },
+          "quotedCode": { "type": "string", "minLength": 1 },
+          "description": { "type": "string", "minLength": 1 },
+          "severity": { "type": "string", "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"] }
+        }
+      }
+    },
+    "verifications": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "verdict"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "verdict": { "type": "string", "enum": ["PASS", "FAIL", "SKIP"] },
+          "notes": { "type": "string" }
+        }
+      }
+    }
+  }
+}

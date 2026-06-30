@@ -1,0 +1,145 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "prior-debate",
+  "title": "Multi-Agent Debate Prior-Run Artifact",
+  "description": "Durable local artifact summarizing a prior debate run for optional reuse. This artifact changes focus and documents known context — it NEVER suppresses new findings or decisions. All fields are informational; the consuming debate run MUST generate its own independent analysis.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "topic",
+    "artifactRef",
+    "priorDecision",
+    "rejectedAlternatives",
+    "unresolvedRisks",
+    "coverage",
+    "validatorVerdict",
+    "reuseConstraint"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "enum": ["1.0"],
+      "description": "Schema version for forward-compatibility checks."
+    },
+    "topic": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The original question or requirement that was debated. Must match (or be closely related to) the current debate topic for this artifact to be considered applicable."
+    },
+    "artifactRef": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Local path or session-relative reference to the prior debate output (e.g. 'debate-output-2026-06-30.json'). Must be a local/run-directory artifact; global memory references are not valid here."
+    },
+    "sessionId": {
+      "type": "string",
+      "description": "Optional: sessionId from the prior debate metadata for traceability."
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the prior debate was conducted."
+    },
+    "priorDecision": {
+      "type": "object",
+      "required": ["selectedProposal", "reasoning", "confidenceLevel"],
+      "description": "Summary of the prior final decision. Non-binding — the current debate MUST independently reach its own decision.",
+      "properties": {
+        "selectedProposal": { "type": "string", "minLength": 1 },
+        "reasoning": { "type": "string", "minLength": 1 },
+        "confidenceLevel": {
+          "type": "string",
+          "enum": ["HIGH", "MEDIUM", "LOW"],
+          "description": "Prior validator's confidence in the decision. LOW means the current debate should treat it with extra skepticism."
+        }
+      }
+    },
+    "rejectedAlternatives": {
+      "type": "array",
+      "description": "Alternatives that were debated and rejected in the prior run. Provides starting context, not restrictions.",
+      "items": {
+        "type": "object",
+        "required": ["proposal", "rejectionReason"],
+        "properties": {
+          "proposal": { "type": "string", "minLength": 1 },
+          "rejectionReason": { "type": "string", "minLength": 1 },
+          "critiques": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Specific critique points that led to rejection."
+          }
+        }
+      }
+    },
+    "unresolvedRisks": {
+      "type": "array",
+      "description": "Risks that were identified but not resolved in the prior run. These MUST be re-examined — they are not automatically resolved by documenting them here.",
+      "items": {
+        "type": "object",
+        "required": ["description", "severity"],
+        "properties": {
+          "description": { "type": "string", "minLength": 1 },
+          "severity": { "type": "string", "enum": ["critical", "high", "medium", "low"] }
+        }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "required": ["covered", "notCovered"],
+      "description": "Coverage summary for this prior debate artifact.",
+      "properties": {
+        "covered": {
+          "type": "array",
+          "description": "Aspects of the topic that were substantively addressed.",
+          "items": {
+            "type": "object",
+            "required": ["aspect", "summary"],
+            "properties": {
+              "aspect": { "type": "string", "minLength": 1 },
+              "summary": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "notCovered": {
+          "type": "array",
+          "description": "Aspects explicitly NOT covered in the prior debate (required; must not be empty if full coverage was impossible).",
+          "items": {
+            "type": "object",
+            "required": ["aspect", "reason"],
+            "properties": {
+              "aspect": { "type": "string", "minLength": 1 },
+              "reason": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
+    "validatorVerdict": {
+      "type": "string",
+      "enum": ["APPROVED", "REJECTED", "NEEDS_REVISION", "NOT_VALIDATED"],
+      "description": "The validator verdict from the prior debate. NOT_VALIDATED means the validator gate was skipped or unavailable."
+    },
+    "reuseConstraint": {
+      "type": "object",
+      "required": ["suppressNewFindings", "suppressNewDecisions", "applicabilityNote"],
+      "description": "Explicit reuse contract. These fields MUST have the values specified below.",
+      "properties": {
+        "suppressNewFindings": {
+          "type": "boolean",
+          "enum": [false],
+          "description": "MUST be false. Prior run data NEVER suppresses new findings in the current debate."
+        },
+        "suppressNewDecisions": {
+          "type": "boolean",
+          "enum": [false],
+          "description": "MUST be false. The current debate MUST independently reach its own decision."
+        },
+        "applicabilityNote": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Human-readable note explaining how this prior artifact is applicable and what changed since then."
+        }
+      }
+    }
+  }
+}

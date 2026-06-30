@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "review-pr-comments",
+  "title": "Review PR Comments",
+  "description": "Fetched and classified PR review comments with decisions and evidence.",
+  "type": "object",
+  "required": ["prNumber", "comments"],
+  "properties": {
+    "prNumber": { "type": "integer", "minimum": 1 },
+    "comments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["endpoint", "id", "author", "body", "classification", "decision"],
+        "properties": {
+          "endpoint": { "type": "string", "minLength": 1 },
+          "id": {},
+          "author": { "type": "string", "minLength": 1 },
+          "body": { "type": "string", "minLength": 1 },
+          "classification": {
+            "type": "string",
+            "enum": ["bug", "security", "style", "test", "question", "other"]
+          },
+          "decision": { "type": "string", "enum": ["fix", "skip", "block"] },
+          "fix": {
+            "type": "object",
+            "required": ["evidence"],
+            "properties": {
+              "evidence": { "type": "string", "minLength": 1 },
+              "testEvidence": { "type": "string" }
+            }
+          },
+          "skip": {
+            "type": "object",
+            "required": ["rationale"],
+            "properties": {
+              "rationale": { "type": "string", "minLength": 1 },
+              "blocker": { "type": "boolean" }
+            }
+          },
+          "block": {
+            "type": "object",
+            "required": ["rationale"],
+            "properties": {
+              "rationale": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    }
+  }
+}

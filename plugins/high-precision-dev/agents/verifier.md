@@ -26,7 +26,8 @@ capabilities:
 
 1. **CRITIQUE.md**：確認所有 severity >= 2 的問題都已被修復，逐一核對修復是否正確
 2. **ATTACKS.md**：確認所有成功的攻擊都已被緩解，逐一驗證緩解措施的有效性
-3. **IMPL_A_REPORT.md** 和 **IMPL_B_REPORT.md**：閱讀 implementers 自己揭露的「已知風險」和「沒有處理的情況」
+3. **DISPROOF.md**（若 Phase 3.5 執行）：確認 `rejected` 發現已記錄於 CONSENSUS.md 且未進入修復循環；確認 `verified`/`corrected` 發現的修復均已通過 critic 重新審查。若 DISPROOF.md 不存在，確認 CONSENSUS.md 中有 Phase 3.5 合法跳過原因與使用者確認記錄
+4. **IMPL_A_REPORT.md** 和 **IMPL_B_REPORT.md**：閱讀 implementers 自己揭露的「已知風險」和「沒有處理的情況」
 
 如果發現任何未解決的問題，停止並回報，說明具體問題。
 

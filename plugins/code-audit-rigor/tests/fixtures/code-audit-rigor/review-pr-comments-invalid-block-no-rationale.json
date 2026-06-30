@@ -1,0 +1,14 @@
+{
+  "prNumber": 46,
+  "comments": [
+    {
+      "endpoint": "pulls/reviews",
+      "id": "r-401",
+      "author": "human-reviewer",
+      "body": "This stale review comment may still apply after refactor.",
+      "classification": "question",
+      "decision": "block",
+      "block": {}
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "status": "READY_FOR_COMMIT",
+  "summary": {
+    "total": 2,
+    "fixed": 2,
+    "skipped": 0,
+    "userReviewRequired": 0,
+    "deferred": 0,
+    "testsPass": false
+  },
+  "items": [
+    { "id": "F-001", "status": "fixed", "notes": "Patch applied." },
+    { "id": "F-002", "status": "fixed", "notes": "Auth added." }
+  ]
+}

@@ -183,6 +183,14 @@ Workflow({
 
 ## 5. 回傳結構與 status 對應
 
+Workflow 回傳物件；workflow 本身只寫 Markdown 報告到 `audits/`，不會自動寫 JSON。若需要可驗證 artifact，將下方 raw Workflow return 原樣寫入 `audit-review-fix-result.json`（schema: `${CLAUDE_PLUGIN_ROOT}/schema/audit-review-fix-result.schema.json` 同時支援 raw return 與 normalized `summary/items` 形狀）。驗證方式：
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/validators/validate-audit-review-fix-result.cjs audit-review-fix-result.json
+```
+
+`status` 枚舉與 workflow 狀態來源嚴格對齊——`computeStatus()` 產生前五種狀態，`EMPTY_DIFF` 由 Scope 中止路徑直接回傳；validator 會把 raw return 正規化成 `summary/items` 後檢查 status/count 組合：
+
 ```js
 {
   status: 'CLEAN' | 'READY_FOR_COMMIT' | 'REQUIRES_USER_REVIEW' | 'REQUIRES_FOLLOW_UP' | 'TESTS_FAILED' | 'EMPTY_DIFF',

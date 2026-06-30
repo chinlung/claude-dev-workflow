@@ -61,9 +61,67 @@ argument-hint: "[base-branch]"
 - **已驗證** — 確認問題存在且建議修復正確，附上具體證據（調用者程式碼、測試缺失、依賴衝突等）
 - **誤報** — 經查驗問題不存在或建議不正確，附上反駁證據（含「引用錨定失敗」這一類）
 
-## Phase 3：最終報告
+## Phase 3：結構化輸出與最終報告
 
-僅呈現「已驗證」的建議，格式為 markdown 表格：
+### 結構化輸出：`review-branch-results.json`
+
+Phase 2 完成後，將審查結果寫入 `review-branch-results.json`，須符合以下合約（schema: `${CLAUDE_PLUGIN_ROOT}/schema/review-branch-results.schema.json`）：
+
+```json
+{
+  "branch": "<branch-name>",
+  "scopedFiles": [
+    { "file": "src/foo.ts", "status": "reviewed" },
+    { "file": "docs/bar.md", "status": "skipped", "skipReason": "純文件，無程式邏輯" }
+  ],
+  "suggestions": [
+    {
+      "file": "src/foo.ts",
+      "line": 42,
+      "quotedCode": "逐字引用的問題程式碼",
+      "description": "問題描述",
+      "severity": "HIGH"
+    }
+  ],
+  "verifications": [
+    { "id": "V-001", "verdict": "PASS", "notes": "驗證通過說明" },
+    { "id": "V-002", "verdict": "FAIL", "notes": "驗證失敗說明" }
+  ]
+}
+```
+
+欄位合約：
+- `branch`：當前分支名稱（非空字串）
+- `scopedFiles`：前置步驟 3 機械清單中的**所有**檔案；`status` 為 `reviewed` 或 `skipped`；`skipped` 時必須附 `skipReason`（Coverage 核對表的機器可讀版本）
+- `suggestions`：所有第一輪建議（含誤報），每項包含 `file`、`line`（整數 ≥ 1）、`quotedCode`（Phase 2 錨定驗證用的逐字引用）、`description`、`severity`（`CRITICAL|HIGH|MEDIUM|LOW|INFO`）
+- `verifications`：Phase 2 每個子代理的驗證結果；`verdict` 為 `PASS|FAIL|SKIP`；可附 `notes`
+
+寫出 JSON 後，執行驗證指令（必須通過才能進入最終 Markdown 表格）：
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/validators/validate-review-branch-results.cjs review-branch-results.json
+```
+
+驗證失敗表示 JSON 格式不符合合約（缺欄位、型別錯誤、skipped 缺 skipReason 等），需修正後重跑，確認 `VALID` 後繼續。
+
+接著執行覆蓋核對（coverage reconciliation）：
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/validators/coverage-reconcile.cjs review-branch-results.json
+```
+
+此步驟驗證覆蓋完整性（超出 schema 檢查範圍）：
+
+- `scopedFiles` 非空——有檔案在範圍內
+- 無重複的 `scopedFiles` 條目
+- `suggestions` 中出現的每個檔案都必須存在於 `scopedFiles`（未列入 = 覆蓋缺口）
+- 所有 `skipped` 條目必須有 `skipReason`
+
+兩個驗證都必須通過（`VALID` 和 `PASS`）才能進入最終 Markdown 表格。
+
+### 最終 Markdown 報告
+
+僅呈現「已驗證」的建議（`verdict: PASS`），格式為 markdown 表格：
 
 ```markdown
 ## 已驗證的審查建議

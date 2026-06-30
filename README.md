@@ -42,6 +42,59 @@ Or install directly:
 
 ---
 
+## Quality Gate Selection Guide
+
+Five plugins address quality and correctness from different angles. Choose based on your goal:
+
+| Plugin / Skill | Purpose | What it is NOT |
+|---|---|---|
+| **Security Audit** | Adversarial hunt for exploitable security vulnerabilities across a codebase; six-phase parallel sub-agent pipeline | Not a code review tool; not for design decisions |
+| **Code Audit Rigor** | Rigorous review discipline for high-stakes code changes — quantified triage (EV, STRIDE+CWE), cross-reference contract, coverage reconciliation | Not a vulnerability hunter; not a design debate; not an implementation tool |
+| **Multi-Agent Debate** | Structured debate for design decisions and architecture trade-offs; consensus-driven with quantitative scoring | Not for code review; not for implementation; not security hunting |
+| **High-Precision Dev** | Spec-driven implementation with independent implementers, critic, adversary, and verifier; error rate compression to p^4 | Not a reviewer of existing code; not a design tool |
+| **OpenSpec + Superpowers** | Six-phase feature lifecycle enforcing role separation between OpenSpec (spec) and Superpowers (implementation) | Not a quality gate — enforces workflow discipline |
+
+**Decision tree:**
+- _"Find exploitable bugs I didn't know about"_ → **Security Audit**
+- _"Review this PR / branch rigorously with evidence"_ → **Code Audit Rigor** (`/review-branch`, `/review-pr`)
+- _"Decide between design options with rationale"_ → **Multi-Agent Debate** (`/debate`)
+- _"Implement this critical spec with near-zero defects"_ → **High-Precision Dev** (`/init`, `/start`)
+- _"Manage a feature from proposal to archive"_ → **OpenSpec + Superpowers**
+
+Chain them: use `/debate` to decide What/Why, then `/start` to implement How, then `/review-branch` to review the diff.
+
+## Running Validator Fixture Checks
+
+All plugin output schemas have zero-dependency Node validators with fixture suites. Run all checks from the repo root:
+
+```bash
+node scripts/validate-fixtures.cjs
+```
+
+This validates every valid fixture exits 0 and every invalid fixture exits non-zero across all plugins (35 fixture checks, no install required).
+
+Individual validator examples:
+
+```bash
+# Multi-Agent Debate
+node plugins/multi-agent-debate/validators/validate-debate-output.cjs path/to/debate-output.json
+
+# High-Precision Dev
+node plugins/high-precision-dev/validators/validate-high-precision-output.cjs path/to/output.json
+
+# OpenSpec + Superpowers (validates a change folder)
+node plugins/openspec-superpowers-workflow/skills/openspec-superpowers-workflow/validators/validate-openspec-workflow.cjs openspec/changes/<name>
+
+# Code Audit Rigor
+node plugins/code-audit-rigor/validators/validate-finding.cjs path/to/finding.json
+node plugins/code-audit-rigor/validators/validate-review-branch-results.cjs path/to/results.json
+node plugins/code-audit-rigor/validators/validate-review-pr-comments.cjs path/to/review-pr-comments.json
+node plugins/code-audit-rigor/validators/validate-audit-review-fix-result.cjs path/to/audit-review-fix-result.json
+node plugins/code-audit-rigor/validators/coverage-reconcile.cjs path/to/results.json
+```
+
+---
+
 # Dev Workflow Plugin
 
 A comprehensive development workflow system for Claude Code, automating the journey from requirements analysis to quality assurance.

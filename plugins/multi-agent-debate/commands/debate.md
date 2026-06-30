@@ -14,13 +14,33 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, TodoWrite, AskUserQues
 
 ## 執行流程
 
-### Phase 0：需求分析與角度配置
+### Phase 0：先行辯論查找與需求分析
+
+#### 0a. 先行辯論查找（Prior-Debate Lookup）
+
+在啟動新辯論前，先檢查本地運行目錄是否存在先行辯論產物：
+
+1. 尋找當前目錄或指定路徑下的 `prior-debate.json`（或 `prior-debate-*.json`）
+2. 若找到，讀取並驗證其 schema（`schema/prior-debate.schema.json`）：
+   - `reuseConstraint.suppressNewFindings` **必須為 `false`**——否則拒絕使用該產物
+   - `reuseConstraint.suppressNewDecisions` **必須為 `false`**——否則拒絕使用該產物
+   - 確認 `topic` 與當前辯論主題相符
+3. 若先行產物有效，將以下資訊注入 orchestrator prompt（**僅作為背景脈絡，不替代新分析**）：
+   - 先行決策（`priorDecision`）——供角度配置參考，不可直接採納
+   - 已拒絕的替代方案（`rejectedAlternatives`）——提示避免重蹈覆轍
+   - 未解決的風險（`unresolvedRisks`）——**必須在本次辯論中重新審查**
+   - 未覆蓋的面向（`coverage.notCovered`）——提示本次辯論重點關注
+4. 若未找到先行產物，或找到但不適用（topic 不符、verdict 為 REJECTED），直接進行需求分析，不帶任何先行脈絡
+
+**覆蓋聲明**：先行辯論資訊只改變審查重點，不壓制任何新發現或新決策。每次辯論必須獨立得出結論。
+
+#### 0b. 需求分析與角度配置
 
 使用 Task tool 調用 orchestrator agent：
 ```
 Task(
   subagent_type="multi-agent-debate:orchestrator",
-  prompt="需求描述：$ARGUMENTS\n\n請分析需求並決定三個 Agent 的思考角度。"
+  prompt="需求描述：$ARGUMENTS\n\n[若有先行辯論脈絡，附加：]\n先行辯論脈絡（背景參考，不得直接採納）：\n- 先行決策：{priorDecision.selectedProposal}（信心度：{priorDecision.confidenceLevel}）\n- 已拒絕方案：{rejectedAlternatives}\n- 未解決風險（本次必須重新審查）：{unresolvedRisks}\n- 先前未覆蓋（本次需重點關注）：{coverage.notCovered}\n\n請分析需求並決定三個 Agent 的思考角度。"
 )
 ```
 
@@ -100,6 +120,34 @@ AskUserQuestion(
 )
 ```
 
+### Phase 5.5：獨立驗證（Validator Gate）
+
+在候選方案確定後（共識達成、使用者選擇「採納」或 Critic 最終裁決後），**必須**先執行驗證關卡才能進入最終輸出：
+
+```
+Task(
+  subagent_type="multi-agent-debate:validator",
+  prompt="請驗證以下候選最終決策。\n\n原始需求：$ARGUMENTS\n\n候選方案：{候選方案完整內容}\n\n辯論過程摘要（含所有 Critic 挑戰與 Agent 回應）：{辯論摘要}\n\n請依照 validator.md 的驗證清單逐一審查，並輸出裁決報告。"
+)
+```
+
+**路由規則（依裁決結果）：**
+
+| 裁決 (`verdict`) | 後續動作 |
+|-----------------|---------|
+| `verified` | 直接進入 Phase 6 最終輸出，輸出中標注「Validator: ✅ verified」 |
+| `corrected` | 使用 validator 提供的修正後合成版本進入 Phase 6，輸出中附上修正記錄（corrections 欄位內容） |
+| `rejected` | 先用 AskUserQuestion 向使用者說明 Validator 拒絕原因；使用者確認後退回 Phase 2 重新執行批判審查；若已達到最大輪數，等待使用者指示 |
+| `needs_user_decision` | 立即使用 AskUserQuestion 向使用者呈現 unresolvedQuestions，等待使用者裁決後再決定是否輸出 |
+
+**跳過驗證的唯一允許情況：**
+
+若 validator agent 因工具故障或 agent 不可用而無法執行，必須：
+1. 在最終輸出中明確標注「⚠️ Validator 未執行，原因：{具體原因}」
+2. 不得靜默跳過（silently skip）——必須有明確的跳過記錄
+
+---
+
 ### Phase 6：最終輸出
 
 輸出格式：
@@ -110,8 +158,12 @@ AskUserQuestion(
 ## 採納方案: [方案名稱]
 **來源**: Agent [X]（[共識狀態]）
 **總分**: X/30
+**Validator 裁決**: `verified` | `corrected` | ⚠️ 未執行（原因：...）
 
 [完整方案內容]
+
+### 修正記錄（Validator corrected 時出現）
+[來自 validator 的 corrections 欄位內容]
 
 ## 📊 評分明細
 
@@ -128,6 +180,24 @@ AskUserQuestion(
 
 </details>
 ```
+
+## 覆蓋聲明（Coverage Declaration）
+
+Phase 6 最終輸出**必須附上**覆蓋聲明，說明本次辯論覆蓋了哪些面向、哪些面向未覆蓋，讓覆蓋狀況可在不讀完整個對話記錄的情況下被審查：
+
+```markdown
+## 🗂️ 覆蓋聲明
+
+| 面向 | 狀態 | 摘要 |
+|------|------|------|
+| [面向 1] | 已覆蓋 | [1-2 句說明討論深度] |
+| [面向 2] | 已覆蓋 | [1-2 句說明討論深度] |
+| [面向 3] | 未覆蓋 | 原因：[為何本次辯論未能涵蓋] |
+
+**先行辯論脈絡**：[若有使用先行產物，記錄 artifactRef 及對本次辯論的影響；若無，寫「無先行辯論脈絡」]
+```
+
+最終輸出後，選擇性地將本次辯論摘要寫入本地 `prior-debate.json`（僅在 orchestrator 判斷本次辯論結果具備後續重用價值時），格式符合 `schema/prior-debate.schema.json`，其中 `reuseConstraint.suppressNewFindings` 和 `reuseConstraint.suppressNewDecisions` **必須為 `false`**。
 
 ## 使用範例
 
@@ -146,6 +216,12 @@ AskUserQuestion(
 
 - `--max-rounds N`：最大辯論輪數（預設 10）
 - `--perspectives "角度1,角度2,角度3"`：自訂三個思考角度
+
+## 參考文件
+
+- **Phase 2 批判審查方法論**：`references/CRITIQUE-METHODOLOGY.md`（Critic 在第一輪審查前讀；評分校準有疑問、挑戰品質退化或最終裁決前重讀）
+- **辯論品質退化處理**：`references/ANTI-PATTERNS.md`（Orchestrator/Critic/Validator 當辯論品質退化時讀；包含五種常見失敗模式與 Recovery）
+- **先行辯論產物合約**：`schema/prior-debate.schema.json`（Phase 0 查找先行辯論時讀；定義 reuseConstraint 必要欄位與不得壓制新發現的規則）
 
 ## 注意事項
 

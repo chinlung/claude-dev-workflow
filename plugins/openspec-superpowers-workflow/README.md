@@ -77,3 +77,15 @@ skills/openspec-superpowers-workflow/
 ## 版本
 
 1.0.0 — 初始發布。詳見 [CHANGELOG.md](./CHANGELOG.md)。
+
+## Validator
+
+OpenSpec change folders are validated by a zero-dependency Node script. Run from the repo root:
+
+```bash
+# Validate a change folder (checks required files + SHALL/MUST in spec.md requirement blocks)
+node plugins/openspec-superpowers-workflow/skills/openspec-superpowers-workflow/validators/validate-openspec-workflow.cjs openspec/changes/<name>
+
+# Run all fixture checks
+node scripts/validate-fixtures.cjs
+```

@@ -22,11 +22,13 @@ allowed-tools: Bash(date:*)
 - 出現 `--no-sweep` → `args.sweep = false`：跳過 Sweep 補漏階段。**cost↓**（省 ~7 agent），代價是放棄「第一輪漏抓」的補抓
 - 出現 `--keep-all` → `args.keepAll = true`：關閉 EV 機械式自動 dismiss，low-EV finding 改交 triage agent 判。**rigor↑**（偏執高風險域）
 - 出現 `--max-fix-loc N`（整數）→ `args.maxFixLoc = N`：自動修 LOC 上限（與既有 100/50 取 min），超過者改進 user review。**保守自動修**
-- 出現 `--profile <name>` → **預設組合**（先套 profile 當預設，後面個別旗標**覆寫**之）：
+- 出現 `--profile <name>` → **預設組合**（**先套 profile 設定預設值，後面個別旗標覆寫之**——profile 優先順序低於明確旗標）：
   - `cheap` → `model:'haiku'` + `angles:5` + `sweep:false`（探勘 / 重跑壓成本）
   - `thorough` → `votes:3` + `keepAll:true`（高風險域 max rigor）
   - `ci` → `autoFix:false` + 非互動（等同 `dry --yes`，CI 閘門只報不修）
 - `today` = 上方 date 輸出的當天日期（YYYY-MM-DD）
+
+> **數值旗標錯誤處理**：`--votes`、`--angles`、`--max-fix-loc` 必須為有限整數；傳入非數字字串（如 `--votes foo`）、`NaN`、非有限數時，workflow 內部 `num()` helper 會退回安全預設值（`votes→1`、`angles→9`、`maxFixLoc→∞`），不會靜默崩潰或讓 finding 從結果中消失。
 
 ### 2. 前置檢查
 - **Hard（不滿足一律停，`--yes` 也擋）**：在 git repo 內，且 baseRef 存在（`git rev-parse --verify <baseRef>`）。不存在 → 建議改正確 base 或 `HEAD~N`，**不要**硬跑（會空審浪費 token）
@@ -45,11 +47,29 @@ Workflow({
 `model` 只在使用者帶 `--model` 時放入；省略時別塞 `undefined` 字串。Workflow 啟動會跳權限對話框顯示成本與描述，使用者可在此取消——`--yes` 也不繞過它，命令層不需另外再問。
 
 ### 4. 回報結果（依回傳 `status`）
+
+Workflow 回傳結構化結果；workflow 本身只會用 Write tool 產出 Markdown 報告，不會自動寫 JSON。若需要可驗證 artifact，將 Workflow 回傳物件原樣寫入 `audit-review-fix-result.json`，再用 `${CLAUDE_PLUGIN_ROOT}/validators/validate-audit-review-fix-result.cjs` 驗證。schema `${CLAUDE_PLUGIN_ROOT}/schema/audit-review-fix-result.schema.json` 支援 raw Workflow return 形狀，也支援 normalized `summary/items` artifact 形狀。
+
+`status` 枚舉（`computeStatus()` 產生前五種狀態；`EMPTY_DIFF` 由 Scope 中止路徑直接回傳）：
+
+| status | 意義 |
+|--------|------|
+| `CLEAN` | 找不到應修項目 |
+| `READY_FOR_COMMIT` | 修復完成、測試通過、無人類待辦 |
+| `REQUIRES_USER_REVIEW` | 有 MUST_FIX 觸及 public API / schema / 多種可行解法，**或**有 skipped |
+| `REQUIRES_FOLLOW_UP` | 僅有 DEFER_OUT_OF_SCOPE，無待修/待審項 |
+| `TESTS_FAILED` | 修復後測試失敗，**不可 commit** |
+| `EMPTY_DIFF` | 沒有變動 |
+
+各 finding 在結構化輸出中附有 `crossReferences`（file/lines/quotedCode/note）以確保引用可驗證。可用 finding validator 逐項驗證：`node ${CLAUDE_PLUGIN_ROOT}/validators/validate-finding.cjs <finding.json>`。
+
+依 `status` 的回報行為：
 - `READY_FOR_COMMIT` → 摘要 Applied 修復；提醒人工 review 後**自行 `/commit`**（workflow 不自動 commit，commit message 該由人寫「為什麼」）
 - `REQUIRES_USER_REVIEW` → 逐項列出 User Review Required + **Skipped**（agent 判定不安全拒修 / dry-run 未修）待人類決策
 - `REQUIRES_FOLLOW_UP` → 列出 Deferred 項目（真 bug 但結構性大），建議開成後續 PR/issue
 - `TESTS_FAILED` → 警告**不可 commit**，列出 applied 供決定 rollback 或續修
 - `CLEAN` / `EMPTY_DIFF` → 告知無應修項 / 無變更
+
 一律附上報告路徑 `audits/workflow-audit-<date>.md`。
 
 ## 續跑（中斷或改 script 後）

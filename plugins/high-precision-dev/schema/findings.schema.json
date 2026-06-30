@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "high-precision-findings",
+  "title": "High-Precision Dev Findings",
+  "description": "Findings from critic, adversary, and disproof agents in high-precision-dev workflow.",
+  "type": "object",
+  "required": ["implementerId", "timestamp", "specRef", "completionSignal", "findings"],
+  "properties": {
+    "implementerId": { "type": "string", "minLength": 1 },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "specRef": { "type": "string", "minLength": 1 },
+    "completionSignal": {
+      "type": "string",
+      "enum": ["SPEC_COMPLETE", "CONSENSUS_REACHED", "PARTIAL", "FAILED"]
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["source", "severity", "description", "location", "evidence"],
+        "properties": {
+          "source": { "type": "string", "enum": ["critic", "adversary", "disproof"] },
+          "severity": { "type": "string", "enum": ["critical", "high", "medium", "low", "info"] },
+          "description": { "type": "string", "minLength": 1 },
+          "location": { "type": "string", "minLength": 1 },
+          "evidence": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

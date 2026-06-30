@@ -88,22 +88,56 @@ Task(
 ```
 
 收集結果後檢查：
-- 如有 severity >= 3 的問題：退回給對應 implementer 修復
-  - 修復後 critic 必須重新審查該問題，**並確認修復未引入新的 severity >= 3 問題**
-  - adversary 需對修復涉及的函數重新進行 Round 1 邊界攻擊
-  - **修復循環上限：3 次。** 超過後用 AskUserQuestion 向使用者報告並等待裁決
-- 當 critic 宣告「所有問題 severity <= 1」且 adversary 宣告「3 輪攻擊均失敗」：在 CONSENSUS.md Phase 3 區段標記完成
+- 如有 severity >= 3 的問題：**不直接退回給 implementer 修復，先進入 Phase 3.5**
+- 當 critic 宣告「所有問題 severity <= 1」且 adversary 宣告「3 輪攻擊均失敗」：在 CONSENSUS.md Phase 3 區段標記完成，**跳過 Phase 3.5，直接進入 Phase 4**
+
+---
+
+## Phase 3.5：獨立反證
+
+只有當 Phase 3 存在 severity >= 3 的發現時才執行此 Phase。
+
+```
+Task(
+  subagent_type="high-precision-dev:disproof-agent",
+  prompt="對 Phase 3 的 severity >= 3 發現進行獨立反證。\n\nSPEC.md 路徑：{路徑}\nCRITIQUE.md 路徑：{路徑}\nATTACKS.md 路徑：{路徑}\nImplementer-A worktree：{路徑}\nImplementer-B worktree：{路徑}\n\n輸出 DISPROOF.md 到 {產出目錄}。"
+)
+```
+
+收到 DISPROOF.md 後，依裁決處理：
+
+| 裁決 | 處理方式 |
+|------|---------|
+| `verified` / `corrected` | 進入修復循環，只有這些發現才退回給對應 implementer 修復 |
+| `rejected` | 記錄於 CONSENSUS.md，**不**退回修復；修復循環中告知 implementer 此發現已被反證拒絕 |
+| `needs_user_decision` | **立即停止**，用 AskUserQuestion 向使用者呈現具體問題，等待裁決後再繼續 |
+
+**修復循環（僅針對 `verified`/`corrected` 發現）：**
+- 退回給對應 implementer 修復
+- 修復後 critic 必須重新審查該問題，**並確認修復未引入新的 severity >= 3 問題**
+- 若 critic 重新審查發現新的 severity >= 3 問題，**回到 Phase 3.5** 對該新發現進行獨立反證（視為新一輪 Phase 3.5）；不得直接進入下一次修復迭代
+- adversary 需對修復涉及的函數重新進行 Round 1 邊界攻擊
+- **修復循環上限：3 次。** 超過後用 AskUserQuestion 向使用者報告並等待裁決
+
+**Phase 3.5 跳過規則：**
+
+若 disproof-agent 因工具故障或 agent 不可用而無法執行：
+1. 在 CONSENSUS.md 中記錄跳過原因
+2. 用 AskUserQuestion 告知使用者，等待使用者確認是否繼續
+3. 未取得使用者明確確認前，不得直接進入修復循環
+
+當所有 `verified`/`corrected` 發現都已修復收斂，在 CONSENSUS.md Phase 3 區段標記完成（附上 DISPROOF.md 路徑），然後繼續執行 Phase 4。
 
 ---
 
 ## Phase 4：整合
 
-只有 Phase 3 完全收斂後才執行：
+只有 Phase 3 完全收斂（且 Phase 3.5 已完成或合法跳過）後才執行：
 
 ```
 Task(
   subagent_type="high-precision-dev:verifier",
-  prompt="比較兩份實作，逐條對照 SPEC.md，產生最終實作和 VERIFICATION.md。\n\nSPEC.md 路徑：{路徑}\nCONSENSUS.md 路徑：{路徑}\nImplementer-A worktree：{路徑}\nImplementer-B worktree：{路徑}\nCRITIQUE.md：{路徑}\nATTACKS.md：{路徑}\nIMPL_A_REPORT.md：{路徑}\nIMPL_B_REPORT.md：{路徑}\n\n輸出最終實作和 VERIFICATION.md 到 {產出目錄}。"
+  prompt="比較兩份實作，逐條對照 SPEC.md，產生最終實作和 VERIFICATION.md。\n\nSPEC.md 路徑：{路徑}\nCONSENSUS.md 路徑：{路徑}\nImplementer-A worktree：{路徑}\nImplementer-B worktree：{路徑}\nCRITIQUE.md：{路徑}\nATTACKS.md：{路徑}\nDISPROOF.md：{路徑}（若 Phase 3.5 執行）\nIMPL_A_REPORT.md：{路徑}\nIMPL_B_REPORT.md：{路徑}\n\n請在步驟零中同時確認 DISPROOF.md 中的 rejected 發現已被正確記錄（未進入修復循環），以及 verified/corrected 發現的修復均已通過 critic 重新審查。\n\n輸出最終實作和 VERIFICATION.md 到 {產出目錄}。"
 )
 ```
 
@@ -133,6 +167,17 @@ Phase 4 完成後，向使用者彙整報告：
 ## 已知的不確定性
 [來自 VERIFICATION.md]
 
+## 覆蓋聲明（Coverage Declaration）
+
+| 面向 | 狀態 | 說明 |
+|------|------|------|
+| SPEC 需求測試 | [covered/partial/none] | tested: N / untested: N / outOfScope: N |
+| 攻擊類別（adversary） | [covered/partial/none] | 已嘗試: N 個攻擊類別 |
+| 先行運行參考 | [有/無] | [若有：artifactPath；prior run 未壓制任何發現] |
+| 未覆蓋面向（explicit） | [N 項] | [每項列出原因] |
+
+未覆蓋面向不等於已排除——只是本次流程未能充分審視。
+
 ## 產出文件
 - SPEC.md
 - CONSENSUS.md
@@ -140,10 +185,17 @@ Phase 4 完成後，向使用者彙整報告：
 - IMPL_B_REPORT.md
 - CRITIQUE.md
 - ATTACKS.md
+- DISPROOF.md（若 Phase 3.5 執行）
 - VERIFICATION.md
 ```
 
 ---
+
+## 參考文件
+
+- **攻擊類別詳解**：`references/ATTACK-CLASSES.md`（Adversary 在 Phase 3 三輪攻擊前讀；Disproof Agent 在 Phase 3.5 評估 ATTACKS.md 前讀）
+- **工作流程失敗模式**：`references/ANTI-PATTERNS.md`（所有 agent 與 controller 當流程卡住或產出「太乾淨」時讀）
+- **覆蓋記錄合約**：`schema/coverage.schema.json`（Implementer 和 Verifier 提交 coverage 欄位前讀；定義 tested/untested/outOfScope/attackClassCoverage/priorRunRef 欄位規則）
 
 ## 異常處理
 

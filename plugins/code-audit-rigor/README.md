@@ -59,6 +59,22 @@ Both the commands and the skill resolve per-file review rules through the same c
 2. User `~/.claude/review-rules/manifest.json` (personal)
 3. Plugin built-in `${CLAUDE_PLUGIN_ROOT}/rules/manifest.json` — machine-independent, ships with the install
 
+## Validators
+
+All output artifacts are validated by zero-dependency Node scripts. Run from the repo root:
+
+```bash
+# All fixture checks (valid fixtures → exit 0; invalid fixtures → exit non-zero)
+node scripts/validate-fixtures.cjs
+
+# Validate individual artifacts
+node plugins/code-audit-rigor/validators/validate-finding.cjs path/to/finding.json
+node plugins/code-audit-rigor/validators/validate-review-branch-results.cjs path/to/review-branch-results.json
+node plugins/code-audit-rigor/validators/validate-review-pr-comments.cjs path/to/review-pr-comments.json
+node plugins/code-audit-rigor/validators/validate-audit-review-fix-result.cjs path/to/audit-review-fix-result.json
+node plugins/code-audit-rigor/validators/coverage-reconcile.cjs path/to/review-branch-results.json
+```
+
 ## Output format
 
 Findings are produced as structured JSON-style objects:

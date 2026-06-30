@@ -76,6 +76,8 @@ The OpenSpec validator enforces that **every `### Requirement:` block MUST conta
 
 **Trigger**: User approves Phase 1 requirements, or says "brainstorm", "refine design"
 
+**Before starting**: Read `SUPERPOWERS-HANDOFF.md` for the sync-back template and sidecar-file anti-patterns.
+
 **Actions**:
 1. Activate Superpowers `/brainstorming` skill
 2. Use `openspec/changes/<feature-name>/proposal.md` and `specs/` as input context
@@ -99,6 +101,8 @@ After brainstorming completes, OVERWRITE `openspec/changes/<feature-name>/design
 ## Phase 3: Task Planning (Superpowers leads → write to OpenSpec location)
 
 **Trigger**: User approves Phase 2 design, or says "plan tasks", "break down work"
+
+**Before starting**: Read `SUPERPOWERS-HANDOFF.md` for the `tasks.md` location requirements and sidecar-file anti-patterns.
 
 **Actions**:
 1. Activate Superpowers `/writing-plans` skill
@@ -203,6 +207,26 @@ not a changelog with amendments.
 ### Step 6b: User confirms reconciled specs
 
 Present the rewritten spec files for user review before archiving.
+
+### Step 6b5: Reconciliation Criteria Gate（歸檔前核查）
+
+在使用者確認 reconciled specs 之後、執行歸檔命令之前，**必須**依照 `RECONCILIATION-CRITERIA.md` 執行以下核查：
+
+1. 閱讀 `RECONCILIATION-CRITERIA.md`（位於 `skills/openspec-superpowers-workflow/RECONCILIATION-CRITERIA.md`）
+2. 閱讀 `OUTPUT-CONTRACTS.md`（位於 `skills/openspec-superpowers-workflow/OUTPUT-CONTRACTS.md`）中的 Phase 6 覆蓋定義，確認四個面向均已核查
+3. 逐一執行 C1–C5 核查項目
+4. 輸出核查結果表格（含裁決）和 Phase 6 覆蓋核查摘要
+
+**路由規則（依裁決結果）：**
+
+| 裁決 | 後續動作 |
+|------|---------|
+| `verified` | 繼續執行 Step 6c 歸檔 |
+| `corrected` | 修正問題後**重新執行** Step 6b5 所有核查；不得直接進入歸檔 |
+| `rejected` | 不得歸檔；向使用者報告具體問題並等待處置指示 |
+| `needs_user_decision` | 停止歸檔流程，向使用者提出具體問題並等待裁決 |
+
+**此 gate 不可跳過。** 未取得 `verified` 裁決，不得執行 `/opsx:archive`。
 
 ### Step 6c: Archive
 
