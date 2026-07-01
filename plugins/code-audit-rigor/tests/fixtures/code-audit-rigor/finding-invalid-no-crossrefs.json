@@ -1,0 +1,9 @@
+{
+  "id": "F-002",
+  "title": "Missing auth check",
+  "severity": "HIGH",
+  "confidence": 85,
+  "ev": 12.0,
+  "decision": "FIX",
+  "description": "Admin endpoint lacks authentication middleware."
+}

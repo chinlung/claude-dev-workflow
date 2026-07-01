@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "1.0",
+  "artifactRef": "debate-output-2026-06-30.json",
+  "sessionId": "debate-2026-001",
+  "timestamp": "2026-06-30T12:00:00Z",
+  "priorDecision": {
+    "selectedProposal": "Read Replicas",
+    "reasoning": "Lower operational complexity.",
+    "confidenceLevel": "HIGH"
+  },
+  "rejectedAlternatives": [],
+  "unresolvedRisks": [],
+  "coverage": { "covered": [], "notCovered": [] },
+  "validatorVerdict": "verified",
+  "reuseConstraint": {
+    "suppressNewFindings": false,
+    "suppressNewDecisions": false,
+    "applicabilityNote": "Prior debate covered the same question; topic field intentionally omitted for this fixture."
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "prNumber": 42,
+  "comments": [
+    {
+      "endpoint": "pulls/reviews",
+      "id": "r-55",
+      "author": "senior-dev",
+      "body": "Consider extracting this into a utility function for reuse.",
+      "classification": "style",
+      "decision": "skip",
+      "skip": {
+        "blocker": false
+      }
+    }
+  ]
+}

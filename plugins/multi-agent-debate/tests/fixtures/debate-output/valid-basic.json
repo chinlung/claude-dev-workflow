@@ -1,0 +1,61 @@
+{
+  "metadata": {
+    "sessionId": "debate-2026-001",
+    "timestamp": "2026-07-01T00:00:00Z",
+    "model": "claude-opus-4",
+    "totalDuration": 42
+  },
+  "requirement": "Choose the best data persistence strategy for a high-traffic read-heavy API.",
+  "proposals": [
+    {
+      "id": "p1",
+      "source": "perspective-a",
+      "title": "Redis Cache + PostgreSQL",
+      "summary": "Use Redis as a caching layer in front of PostgreSQL to handle read load.",
+      "scores": {
+        "feasibility": 8,
+        "completeness": 7,
+        "riskLevel": 3
+      },
+      "rationale": "Proven combination; cache hit rate > 90% for typical read patterns."
+    },
+    {
+      "id": "p2",
+      "source": "perspective-b",
+      "title": "Read Replicas",
+      "summary": "Scale reads via PostgreSQL read replicas with connection pooling.",
+      "scores": {
+        "feasibility": 9,
+        "completeness": 8,
+        "riskLevel": 2
+      },
+      "rationale": "Simpler ops; no cache invalidation complexity; strong consistency."
+    }
+  ],
+  "critiqueRounds": [
+    {
+      "round": 1,
+      "criticisms": [
+        {
+          "proposalId": "p1",
+          "issue": "Cache stampede risk under cold-start conditions.",
+          "severity": "medium"
+        }
+      ]
+    }
+  ],
+  "consensus": {
+    "reached": true,
+    "summary": "Read replicas preferred for simplicity; Redis acceptable if >50K RPS.",
+    "agreedProposals": ["p2"]
+  },
+  "finalDecision": {
+    "selectedProposal": "p2",
+    "reasoning": "Lower operational complexity and strong consistency outweigh marginal throughput gains of caching.",
+    "dissent": null
+  },
+  "validation": {
+    "verdict": "verified",
+    "issues": []
+  }
+}

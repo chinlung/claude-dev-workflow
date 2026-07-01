@@ -1,0 +1,17 @@
+{
+  "prNumber": -5,
+  "comments": [
+    {
+      "endpoint": "pulls/comments",
+      "id": "c-101",
+      "author": "reviewer-bot",
+      "body": "This function is missing error handling for the network timeout case.",
+      "classification": "bug",
+      "decision": "fix",
+      "fix": {
+        "evidence": "Added try/catch with timeout handling in commit abc1234.",
+        "testEvidence": "tests/network.test.ts#timeout-handling passes."
+      }
+    }
+  ]
+}

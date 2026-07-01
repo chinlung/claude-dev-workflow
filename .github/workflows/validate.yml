@@ -1,0 +1,23 @@
+name: validate-fixtures
+
+# Machine-enforced gate: every push and PR runs the plugin's own test suite
+# (static fixtures + generated mutations + schema↔validator consistency + self-test
+# canaries). A broken/fail-open validator, a schema↔validator drift, or a regressed
+# checker turns this red and blocks merge — independent of who made the change.
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  validate-fixtures:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # Zero-dependency Node CLIs — no install step needed.
+      - name: Run fixture / mutation / consistency suite
+        run: node scripts/validate-fixtures.cjs

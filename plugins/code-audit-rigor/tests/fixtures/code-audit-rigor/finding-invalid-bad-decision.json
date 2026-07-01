@@ -1,0 +1,17 @@
+{
+  "id": "F-021",
+  "title": "Weak password hashing algorithm",
+  "severity": "HIGH",
+  "confidence": 90,
+  "ev": 16.0,
+  "decision": "MAYBE",
+  "description": "Passwords are hashed with MD5 instead of a slow KDF.",
+  "crossReferences": [
+    {
+      "file": "src/auth/hash.ts",
+      "lines": "12-14",
+      "quotedCode": "const hash = crypto.createHash('md5').update(pw).digest('hex');",
+      "note": "MD5 is unsuitable for password storage."
+    }
+  ]
+}

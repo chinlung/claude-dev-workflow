@@ -1,0 +1,16 @@
+{
+  "status": "READY_FOR_COMMIT",
+  "summary": {
+    "total": 3,
+    "fixed": 3,
+    "skipped": 0,
+    "userReviewRequired": 0,
+    "deferred": 0,
+    "testsPass": true
+  },
+  "items": [
+    { "id": "F-001", "status": "fixed", "notes": "SQL injection patched." },
+    { "id": "F-002", "status": "fixed", "notes": "Auth middleware added." },
+    { "id": "F-003", "status": "fixed", "notes": "Rate limiting header added." }
+  ]
+}

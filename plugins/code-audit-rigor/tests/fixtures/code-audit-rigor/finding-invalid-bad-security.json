@@ -1,0 +1,21 @@
+{
+  "id": "F-011",
+  "title": "Reflected XSS in search results page",
+  "severity": "MEDIUM",
+  "confidence": 70,
+  "ev": 6.5,
+  "decision": "FIX",
+  "description": "Search term is echoed into the HTML response without escaping.",
+  "crossReferences": [
+    {
+      "file": "src/search.ts",
+      "lines": "55-58",
+      "quotedCode": "res.send(`<h1>Results for ${req.query.q}</h1>`);",
+      "note": "Unescaped query parameter reflected into HTML."
+    }
+  ],
+  "security": {
+    "stride": "X",
+    "cwe": "CWE-79xss"
+  }
+}

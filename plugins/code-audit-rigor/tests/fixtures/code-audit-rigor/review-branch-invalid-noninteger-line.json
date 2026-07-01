@@ -1,0 +1,18 @@
+{
+  "branch": "feature/rate-limiting",
+  "scopedFiles": [
+    { "file": "src/middleware/rate-limiter.ts", "status": "reviewed" }
+  ],
+  "suggestions": [
+    {
+      "file": "src/middleware/rate-limiter.ts",
+      "line": 42.5,
+      "quotedCode": "if (count > limit) return res.status(429).send('Too many requests');",
+      "description": "Missing Retry-After header as required by RFC 6585.",
+      "severity": "MEDIUM"
+    }
+  ],
+  "verifications": [
+    { "id": "V-001", "verdict": "PASS", "notes": "Rate limiting blocks at correct threshold." }
+  ]
+}

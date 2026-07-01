@@ -133,8 +133,8 @@ Workflow({
 │                  - Python: pytest + ruff                        │
 │                有 baseline：比對失敗鍵 + 失敗數，只有「新增      │
 │                key 或失敗數上升」才算 regression（涵蓋 jest      │
-│                檔案級 FAIL <file> 同檔新失敗）；無 baseline 才   │
-│                退回 "Tests: N failed" regex（best-effort）       │
+│                檔案級 FAIL <file> 同檔新失敗）。baseline 與      │
+│                verify 共用同一套訊號；無 baseline 視為全綠       │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
@@ -182,6 +182,14 @@ Workflow({
 ---
 
 ## 5. 回傳結構與 status 對應
+
+Workflow 回傳物件；workflow 本身只寫 Markdown 報告到 `audits/`，不會自動寫 JSON。若需要可驗證 artifact，將下方 raw Workflow return 原樣寫入 `audit-review-fix-result.json`（schema: `${CLAUDE_PLUGIN_ROOT}/schema/audit-review-fix-result.schema.json` 同時支援 raw return 與 normalized `summary/items` 形狀）。驗證方式：
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/validators/validate-audit-review-fix-result.cjs audit-review-fix-result.json
+```
+
+`status` 枚舉與 workflow 狀態來源嚴格對齊——`computeStatus()` 產生前五種狀態，`EMPTY_DIFF` 由 Scope 中止路徑直接回傳；validator 會把 raw return 正規化成 `summary/items` 後檢查 status/count 組合：
 
 ```js
 {

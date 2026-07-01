@@ -1,0 +1,18 @@
+{
+  "branch": "feature/user-export",
+  "scopedFiles": [
+    { "file": "src/export.ts", "status": "reviewed" }
+  ],
+  "suggestions": [
+    {
+      "file": "src/utils/csv.ts",
+      "line": 5,
+      "quotedCode": "return str.replace(/,/g, '');",
+      "description": "Comma stripping loses data; should use proper CSV quoting.",
+      "severity": "MEDIUM"
+    }
+  ],
+  "verifications": [
+    { "id": "V-001", "verdict": "PASS", "notes": "Confirmed: values with commas are silently truncated." }
+  ]
+}

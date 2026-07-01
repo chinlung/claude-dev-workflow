@@ -1,0 +1,12 @@
+{
+  "status": "EMPTY_DIFF",
+  "summary": {
+    "total": 2,
+    "fixed": 0,
+    "skipped": 0,
+    "userReviewRequired": 0,
+    "deferred": 0,
+    "testsPass": true
+  },
+  "items": []
+}

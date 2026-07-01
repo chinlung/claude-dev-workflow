@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "1.0",
+  "topic": "Choose the best data persistence strategy.",
+  "artifactRef": "debate-output-2026-06-30.json",
+  "priorDecision": {
+    "selectedProposal": "Read Replicas",
+    "reasoning": "Lower operational complexity.",
+    "confidenceLevel": "HIGH"
+  },
+  "rejectedAlternatives": [],
+  "unresolvedRisks": [],
+  "coverage": {
+    "covered": [],
+    "notCovered": []
+  },
+  "validatorVerdict": "verified",
+  "reuseConstraint": {
+    "suppressNewFindings": false,
+    "suppressNewDecisions": true,
+    "applicabilityNote": "Prior debate covered same topic."
+  }
+}

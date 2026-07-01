@@ -1,0 +1,21 @@
+{
+  "id": "F-001",
+  "title": "SQL Injection via unsanitized sort parameter",
+  "severity": "HIGH",
+  "confidence": 92,
+  "ev": 18.4,
+  "decision": "FIX",
+  "description": "The sort query parameter is directly interpolated into the SQL ORDER BY clause without sanitization.",
+  "crossReferences": [
+    {
+      "file": "src/users.ts",
+      "lines": "87-89",
+      "quotedCode": "const q = `SELECT * FROM users ORDER BY ${req.query.sort}`;",
+      "note": "Attacker can inject arbitrary SQL via sort parameter."
+    }
+  ],
+  "security": {
+    "stride": "T",
+    "cwe": "CWE-89"
+  }
+}

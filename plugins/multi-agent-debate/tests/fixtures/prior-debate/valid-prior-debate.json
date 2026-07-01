@@ -1,0 +1,48 @@
+{
+  "schemaVersion": "1.0",
+  "topic": "Choose the best data persistence strategy for a high-traffic read-heavy API.",
+  "artifactRef": "debate-output-2026-06-30.json",
+  "sessionId": "debate-2026-001",
+  "timestamp": "2026-06-30T12:00:00Z",
+  "priorDecision": {
+    "selectedProposal": "Read Replicas",
+    "reasoning": "Lower operational complexity and strong consistency outweigh marginal throughput gains of caching.",
+    "confidenceLevel": "HIGH"
+  },
+  "rejectedAlternatives": [
+    {
+      "proposal": "Redis Cache + PostgreSQL",
+      "rejectionReason": "Cache stampede risk and invalidation complexity at scale.",
+      "critiques": [
+        "Cache stampede under cold-start conditions.",
+        "Invalidation logic adds significant maintenance burden."
+      ]
+    }
+  ],
+  "unresolvedRisks": [
+    {
+      "description": "Replication lag under write spikes not fully benchmarked.",
+      "severity": "medium"
+    }
+  ],
+  "coverage": {
+    "covered": [
+      {
+        "aspect": "Read throughput at 10K RPS",
+        "summary": "Both proposals evaluated under simulated load. Read replicas scored higher on ops simplicity."
+      }
+    ],
+    "notCovered": [
+      {
+        "aspect": "Write-heavy workloads",
+        "reason": "Current workload is read-heavy (95:5 read/write ratio); write scaling not in scope."
+      }
+    ]
+  },
+  "validatorVerdict": "verified",
+  "reuseConstraint": {
+    "suppressNewFindings": false,
+    "suppressNewDecisions": false,
+    "applicabilityNote": "Prior debate covered the same API persistence question. Workload ratio unchanged. New debate should re-examine replication lag risk identified as unresolved."
+  }
+}

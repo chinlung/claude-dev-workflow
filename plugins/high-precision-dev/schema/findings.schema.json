@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "high-precision-findings",
+  "title": "High-Precision Dev Findings",
+  "description": "Full high-precision-dev implementer/verifier artifact: findings from critic, adversary, and disproof agents PLUS the coverage record. The `coverage` object is defined in coverage.schema.json and is a required part of this artifact (validate-high-precision-output.cjs enforces both together).",
+  "type": "object",
+  "required": ["implementerId", "timestamp", "specRef", "completionSignal", "findings", "coverage"],
+  "properties": {
+    "implementerId": { "type": "string", "minLength": 1 },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "specRef": { "type": "string", "minLength": 1 },
+    "completionSignal": {
+      "type": "string",
+      "enum": ["SPEC_COMPLETE", "CONSENSUS_REACHED", "PARTIAL", "FAILED"]
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["source", "severity", "description", "location", "evidence"],
+        "properties": {
+          "source": { "type": "string", "enum": ["critic", "adversary", "disproof"] },
+          "severity": { "type": "string", "enum": ["critical", "high", "medium", "low", "info"] },
+          "description": { "type": "string", "minLength": 1 },
+          "location": { "type": "string", "minLength": 1 },
+          "evidence": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "coverage": { "$ref": "./coverage.schema.json" }
+  }
+}

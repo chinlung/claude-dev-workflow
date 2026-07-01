@@ -1,0 +1,93 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "debate-output",
+  "title": "Multi-Agent Debate Output",
+  "description": "Machine-readable artifact contract for multi-agent-debate plugin outputs.",
+  "type": "object",
+  "required": ["metadata", "requirement", "proposals", "critiqueRounds", "consensus", "finalDecision", "validation"],
+  "properties": {
+    "metadata": {
+      "type": "object",
+      "required": ["sessionId", "timestamp", "model"],
+      "properties": {
+        "sessionId": { "type": "string", "minLength": 1 },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "model": { "type": "string", "minLength": 1 },
+        "totalDuration": { "type": "number", "minimum": 0 }
+      }
+    },
+    "requirement": { "type": "string", "minLength": 1 },
+    "proposals": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "source", "title", "summary", "scores", "rationale"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "source": { "type": "string", "minLength": 1 },
+          "title": { "type": "string", "minLength": 1 },
+          "summary": { "type": "string", "minLength": 1 },
+          "scores": {
+            "type": "object",
+            "required": ["feasibility", "completeness", "riskLevel"],
+            "properties": {
+              "feasibility": { "type": "number", "minimum": 0, "maximum": 10 },
+              "completeness": { "type": "number", "minimum": 0, "maximum": 10 },
+              "riskLevel": { "type": "number", "minimum": 0, "maximum": 10 }
+            }
+          },
+          "rationale": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "critiqueRounds": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["round", "criticisms"],
+        "properties": {
+          "round": { "type": "integer", "minimum": 1 },
+          "criticisms": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["proposalId", "issue", "severity"],
+              "properties": {
+                "proposalId": { "type": "string" },
+                "issue": { "type": "string" },
+                "severity": { "type": "string", "enum": ["critical", "high", "medium", "low"] }
+              }
+            }
+          }
+        }
+      }
+    },
+    "consensus": {
+      "type": "object",
+      "required": ["reached", "summary", "agreedProposals"],
+      "properties": {
+        "reached": { "type": "boolean" },
+        "summary": { "type": "string", "minLength": 1 },
+        "agreedProposals": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "finalDecision": {
+      "type": "object",
+      "required": ["selectedProposal", "reasoning"],
+      "properties": {
+        "selectedProposal": { "type": "string", "minLength": 1 },
+        "reasoning": { "type": "string", "minLength": 1 },
+        "dissent": {}
+      }
+    },
+    "validation": {
+      "type": "object",
+      "required": ["verdict"],
+      "properties": {
+        "verdict": { "type": "string", "enum": ["verified", "corrected", "rejected", "needs_user_decision"] },
+        "issues": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

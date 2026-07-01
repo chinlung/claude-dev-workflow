@@ -221,6 +221,8 @@ For each in-scope file, resolve the applicable review rule pack. Resolution walk
 
 Each manifest maps glob patterns to rule docs; within a layer, entries are evaluated top-to-bottom and the **first matching pattern wins** (patterns support `**` and `{a,b}` expansion). Read the matched rule docs — each contains a **Review focus** section (what to hunt for in this file type) and a **Do NOT report** suppression list (known false-positive classes for this file type).
 
+When resolving rule packs or expanding an audit sweep to a new category, read `tools/sweep-patterns.md` for targeted grep patterns by category (auth, injection, secrets, deserialization, concurrency, IaC, LLM prompt injection) with false-positive cautions.
+
 Output a short resolution table so the user can audit which rules were applied:
 ```
 RULES:
@@ -249,7 +251,7 @@ For each candidate issue:
 4. Check the file's resolved rule pack (Phase 1b): if the candidate matches a **Do NOT report** suppression entry, either drop it or explicitly state why the suppression does not apply here (e.g. "suppression covers test files; this is production code")
 5. Apply Framework 3 (STRIDE+CWE) if security-relevant
 6. Assign severity and confidence — a finding that matches a rule pack's **Review focus** entry may start at higher confidence; one that fights a suppression entry must justify it
-7. Compute EV per Framework 2
+7. Compute EV per Framework 2 — use `tools/triage-decision-tree.md` when there is a conflict between EV, severity label, confidence, and status
 8. Set `decision` field
 
 ### Phase 4: Adversarial sweep (Principle 4 corrective) + anchoring check
@@ -262,12 +264,15 @@ For each candidate issue:
 
 This is the deterministic counterpart to Principle 2: the self-check catches guessing you notice; the grep catches guessing you don't. (Adapted from alibaba/open-code-review's external positioning module: resolve mechanically first, fall back to re-location, never trust unanchored line numbers.)
 
-**Step 2 — Steel-man the opposite.** For each finding that survives anchoring, deliberately steel-man the **opposite** position:
-- Could the framework / runtime already prevent this?
-- Is there a guard further up the call chain you missed?
-- Is the input you assumed adversarial actually validated upstream?
+**Step 2 — Steel-man the opposite (read STEEL_MANNING.md).** For each finding that survives anchoring, execute the structured steel-manning procedure defined in `STEEL_MANNING.md` (located at `skills/code-audit-rigor/STEEL_MANNING.md` relative to the plugin root, or `./STEEL_MANNING.md` relative to this file):
+1. Read `STEEL_MANNING.md` if you have not already done so in this session
+2. Run all six opposite-case checks (OC-1 through OC-6) for the finding
+3. Adjust confidence per the delta rules in `STEEL_MANNING.md`
+4. Recompute EV and record the steel-manning verdict (`verified`, `corrected`, `rejected`, or `needs_user_decision`)
 
-If steel-manning lowers confidence below 67%, downgrade to INVESTIGATE_FURTHER or DISMISS.
+If steel-manning cannot be performed for a finding (e.g. insufficient code access), mark the finding `needs_user_decision` or `INVESTIGATE_FURTHER` with an explicit `steel-manning: NOT_PERFORMED — <reason>` note. **A finding that cannot be steel-manned cannot be confirmed.**
+
+If steel-manning lowers confidence below 67% (the EV breakeven point), downgrade to INVESTIGATE_FURTHER or DISMISS; use the EV calculation in `STEEL_MANNING.md` as the source of truth.
 
 ### Phase 5: Aggregate report
 Output structure:
@@ -276,10 +281,13 @@ EXECUTIVE SUMMARY: <1 paragraph>
 
 CONFIRMED FINDINGS (sorted by EV descending):
   - [Critical, conf 85, EV +6.5] BUG-001: ...
+    steel-manning: verified (all OC checks passed, no strong counter-evidence)
   - [High,     conf 72, EV +1.0] BUG-002: ...
+    steel-manning: corrected (OC-3 refined scope; original description overstated)
 
 DISMISSED FINDINGS (with rationale):
   - [Med, conf 30, EV -1.8] BUG-D01: dismissed because <reason>
+    steel-manning: rejected (OC-2: framework parameterization covers this; EV -3.2)
 
 COVERAGE (reconciled against the Phase 1 mechanical list):
   - scope source: <the command from Phase 1, e.g. git diff --name-only origin/main...HEAD>

@@ -1,0 +1,12 @@
+{
+  "prNumber": 43,
+  "comments": [
+    {
+      "id": "c-200",
+      "author": "bot",
+      "body": "Possible null dereference here.",
+      "classification": "bug",
+      "decision": "fix"
+    }
+  ]
+}

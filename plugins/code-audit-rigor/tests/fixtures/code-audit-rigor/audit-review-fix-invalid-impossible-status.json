@@ -1,0 +1,16 @@
+{
+  "status": "READY_FOR_COMMIT",
+  "summary": {
+    "total": 3,
+    "fixed": 1,
+    "skipped": 1,
+    "userReviewRequired": 0,
+    "deferred": 1,
+    "testsPass": true
+  },
+  "items": [
+    { "id": "F-001", "status": "fixed" },
+    { "id": "F-002", "status": "skipped", "notes": "False positive." },
+    { "id": "F-003", "status": "deferred", "notes": "Next sprint." }
+  ]
+}

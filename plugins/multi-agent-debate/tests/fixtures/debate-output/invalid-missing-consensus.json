@@ -1,0 +1,33 @@
+{
+  "metadata": {
+    "sessionId": "debate-2026-002",
+    "timestamp": "2026-07-01T01:00:00Z",
+    "model": "claude-opus-4",
+    "totalDuration": 30
+  },
+  "requirement": "Choose authentication strategy.",
+  "proposals": [
+    {
+      "id": "p1",
+      "source": "perspective-a",
+      "title": "JWT",
+      "summary": "Stateless JWT tokens.",
+      "scores": {
+        "feasibility": 8,
+        "completeness": 7,
+        "riskLevel": 3
+      },
+      "rationale": "Easy to scale."
+    }
+  ],
+  "critiqueRounds": [],
+  "finalDecision": {
+    "selectedProposal": "p1",
+    "reasoning": "Stateless scales well.",
+    "dissent": null
+  },
+  "validation": {
+    "verdict": "verified",
+    "issues": []
+  }
+}

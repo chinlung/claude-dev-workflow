@@ -42,6 +42,59 @@
 
 ---
 
+## 品質關卡選擇指南
+
+五個插件從不同角度處理品質與正確性，依目標選擇：
+
+| 插件 / Skill | 用途 | 不是什麼 |
+|---|---|---|
+| **Security Audit** | 主動獵捕可利用的安全漏洞；六階段並行 sub-agent pipeline | 不是程式碼審查工具；不用於設計決策 |
+| **Code Audit Rigor** | 高風險程式碼變更的嚴謹審查——量化分流（EV、STRIDE+CWE）、引用錨定、coverage 核銷 | 不是漏洞獵捕工具；不是設計辯論；不是實作工具 |
+| **Multi-Agent Debate** | 架構與設計決策的結構化辯論；量化評分與共識建立 | 不用於程式碼審查；不用於實作；不是安全獵捕 |
+| **High-Precision Dev** | Spec 驅動的實作，含獨立 implementer、critic、adversary、verifier；錯誤率壓縮至 p^4 | 不是既有程式碼的審查工具；不是設計工具 |
+| **OpenSpec + Superpowers** | 六階段功能生命週期，強制 OpenSpec（規格）與 Superpowers（實作）角色分離 | 不是品質關卡——執行工作流程紀律 |
+
+**決策樹：**
+- _「找出我不知道存在的可利用漏洞」_ → **Security Audit**
+- _「用證據嚴謹審查這個 PR / branch」_ → **Code Audit Rigor**（`/review-branch`、`/review-pr`）
+- _「在設計選項之間做出有理由支撐的決策」_ → **Multi-Agent Debate**（`/debate`）
+- _「用接近零缺陷的方式實作這個關鍵規格」_ → **High-Precision Dev**（`/init`、`/start`）
+- _「管理從提案到歸檔的完整功能開發流程」_ → **OpenSpec + Superpowers**
+
+可以串接使用：先用 `/debate` 決定 What/Why，再用 `/start` 實作 How，最後用 `/review-branch` 審查 diff。
+
+## 執行驗證器 Fixture 檢查
+
+所有插件的輸出 schema 都有零依賴的 Node 驗證器和 fixture 測試套件。從 repo 根目錄執行全部檢查：
+
+```bash
+node scripts/validate-fixtures.cjs
+```
+
+此命令對所有插件執行 148 項檢查（self-test canary + 靜態 fixture + 從合法 base 產生的單欄位變異 + schema↔validator 一致性檢查），不需要任何安裝。
+
+個別驗證器範例：
+
+```bash
+# Multi-Agent Debate
+node plugins/multi-agent-debate/validators/validate-debate-output.cjs path/to/debate-output.json
+
+# High-Precision Dev
+node plugins/high-precision-dev/validators/validate-high-precision-output.cjs path/to/output.json
+
+# OpenSpec + Superpowers（驗證 change folder）
+node plugins/openspec-superpowers-workflow/skills/openspec-superpowers-workflow/validators/validate-openspec-workflow.cjs openspec/changes/<name>
+
+# Code Audit Rigor
+node plugins/code-audit-rigor/validators/validate-finding.cjs path/to/finding.json
+node plugins/code-audit-rigor/validators/validate-review-branch-results.cjs path/to/results.json
+node plugins/code-audit-rigor/validators/validate-review-pr-comments.cjs path/to/review-pr-comments.json
+node plugins/code-audit-rigor/validators/validate-audit-review-fix-result.cjs path/to/audit-review-fix-result.json
+node plugins/code-audit-rigor/validators/coverage-reconcile.cjs path/to/results.json
+```
+
+---
+
 # 開發工作流程插件
 
 一個為 Claude Code 打造的完整開發工作流程系統，自動化從需求分析到品質保證的整個開發過程。

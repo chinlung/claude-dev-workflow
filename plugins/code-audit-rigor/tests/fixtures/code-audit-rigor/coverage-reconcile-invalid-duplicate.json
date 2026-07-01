@@ -1,0 +1,9 @@
+{
+  "branch": "feature/user-export",
+  "scopedFiles": [
+    { "file": "src/export.ts", "status": "reviewed" },
+    { "file": "src/export.ts", "status": "reviewed" }
+  ],
+  "suggestions": [],
+  "verifications": []
+}

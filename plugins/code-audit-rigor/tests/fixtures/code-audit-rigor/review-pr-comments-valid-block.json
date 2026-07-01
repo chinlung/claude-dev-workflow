@@ -1,0 +1,28 @@
+{
+  "prNumber": 44,
+  "comments": [
+    {
+      "endpoint": "pulls/comments",
+      "id": "c-301",
+      "author": "security-bot",
+      "body": "This change introduces a hardcoded secret. This PR must not be merged until removed.",
+      "classification": "security",
+      "decision": "block",
+      "block": {
+        "rationale": "Hardcoded AWS credentials detected at src/config.ts:12. PR is blocked until secret is rotated and removed."
+      }
+    },
+    {
+      "endpoint": "pulls/reviews",
+      "id": "r-80",
+      "author": "reviewer",
+      "body": "Typo in variable name.",
+      "classification": "style",
+      "decision": "skip",
+      "skip": {
+        "rationale": "Minor style issue; addressed in follow-up cleanup PR.",
+        "blocker": false
+      }
+    }
+  ]
+}

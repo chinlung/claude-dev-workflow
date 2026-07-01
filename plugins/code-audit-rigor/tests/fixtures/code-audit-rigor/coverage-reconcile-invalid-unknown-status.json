@@ -1,0 +1,7 @@
+{
+  "branch": "feature/rate-limiting",
+  "scopedFiles": [
+    { "file": "src/middleware/rate-limiter.ts", "status": "in-progress" }
+  ],
+  "suggestions": []
+}

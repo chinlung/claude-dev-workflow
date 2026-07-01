@@ -1,0 +1,14 @@
+{
+  "prNumber": 45,
+  "comments": [
+    {
+      "endpoint": "pulls/comments",
+      "id": "c-401",
+      "author": "reviewer-bot",
+      "body": "This branch lacks validation for empty input.",
+      "classification": "bug",
+      "decision": "fix",
+      "fix": {}
+    }
+  ]
+}

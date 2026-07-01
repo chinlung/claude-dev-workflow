@@ -1,0 +1,14 @@
+{
+  "branch": "feature/user-export",
+  "scopedFiles": [
+    { "file": "src/export.ts", "status": "reviewed" }
+  ],
+  "suggestions": [
+    {
+      "line": 18,
+      "quotedCode": "const data = req.body.fields;",
+      "description": "No input validation on fields array.",
+      "severity": "HIGH"
+    }
+  ]
+}
