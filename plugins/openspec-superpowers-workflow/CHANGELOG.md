@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-07-01
+
+### Added
+
+- **Phase 1 gained an optional, lenient local pre-check.** `phases.md` Phase 1 now suggests running the bundled `validate-openspec-workflow.cjs` on the change folder to catch a missing artifact (any of `proposal.md` / `design.md` / `tasks.md` / `review-notes.md`, or no `specs/**/spec.md`) or an empty SHALL/MUST first paragraph *before* the authoritative `openspec validate --strict` — fast and needs no OpenSpec install. Explicitly a pre-check, not a substitute for the strict CLI. From the loop-design review (`docs/loop-design-review-2026-07-01.md`), which noted the plugin's own validator was CI-only and never surfaced in the live workflow.
+
 ## [1.2.0] - 2026-07-01
 
 ### Added

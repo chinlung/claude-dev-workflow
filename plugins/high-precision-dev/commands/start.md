@@ -1,6 +1,6 @@
 ---
 description: 啟動高精確度開發模式的 4 Phase 工作流程，透過 5 個 agent 將錯誤率從 p 壓縮至 p^4
-argument-hint: <SPEC.md 路徑> [--phase N]
+argument-hint: <SPEC.md 路徑>
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, AskUserQuestion
 ---
 

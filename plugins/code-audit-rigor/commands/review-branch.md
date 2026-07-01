@@ -1,6 +1,6 @@
 ---
-description: "兩輪程式碼審查：第一輪產生建議清單，第二輪子代理驗證每項建議。使用方式：/review-branch [base-branch]"
-argument-hint: "[base-branch]"
+description: "兩輪程式碼審查：第一輪產生建議清單，第二輪子代理驗證每項建議。使用方式：/review-branch [base-branch] [--focus <pathspec>]"
+argument-hint: "[base-branch] [--focus <pathspec>]"
 ---
 
 對當前分支相對於 `$ARGUMENTS`（預設為 main 或 master）進行兩輪程式碼審查。
@@ -9,8 +9,8 @@ argument-hint: "[base-branch]"
 
 1. `git branch --show-current` 確認當前分支
 2. 用 `git merge-base HEAD <base-branch>` 找到分歧點
-3. `git diff <merge-base>...HEAD --name-only` 取得所有變更檔案清單——**此清單是覆蓋核對表的唯一基準**（Phase 3 必須逐檔核銷），不可事後憑記憶重建
-4. 若無 `$ARGUMENTS`，自動偵測 base branch（依序嘗試 `main`、`master`）
+3. `git diff <merge-base>...HEAD --name-only` 取得所有變更檔案清單——**此清單是覆蓋核對表的唯一基準**（Phase 3 必須逐檔核銷），不可事後憑記憶重建。若帶 `--focus <pathspec>`（如 `--focus 'src/auth/**'`），改用 `git diff <merge-base>...HEAD --name-only -- <pathspec>`，只審符合路徑的變更——大 PR 省 token + 範圍紀律；此時覆蓋核對表的基準即為**過濾後**的清單
+4. 若無 `$ARGUMENTS`（或僅提供 `--focus`），自動偵測 base branch（依序嘗試 `main`、`master`）
 
 ## 前置：解析適用審查規則（path-matched rule packs）
 
@@ -57,9 +57,11 @@ argument-hint: "[base-branch]"
 4. **檢查相關測試**：搜尋覆蓋該行為的測試檔案
 5. **分析上下游依賴**：確認變更是否影響其他元件
 
-驗證判定：
+驗證判定（每項附**信心度 0-100**——誠實估計此建議為真的機率，不要用「不確定」規避）：
 - **已驗證** — 確認問題存在且建議修復正確，附上具體證據（調用者程式碼、測試缺失、依賴衝突等）
 - **誤報** — 經查驗問題不存在或建議不正確，附上反駁證據（含「引用錨定失敗」這一類）
+
+信心度 < 67% 屬**邊界情況**：不要逕自二選一，先回原始碼再讀一次，把信心推到 67% 以上或 33% 以下再判；仍卡在中間則標為邊界、在報告點出交使用者判斷（避免把「其實沒把握」硬塞進「已驗證」或「誤報」任一桶）。
 
 ## Phase 3：結構化輸出與最終報告
 

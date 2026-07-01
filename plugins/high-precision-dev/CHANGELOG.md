@@ -5,6 +5,16 @@ All notable changes to the `high-precision-dev` plugin will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-07-01
+
+### Fixed
+
+- **`/start` no longer advertises a `--phase N` argument it never implemented.** `commands/start.md`'s `argument-hint` listed `[--phase N]`, but the body only ever reads `$ARGUMENTS` as the SPEC.md path. Removed the misleading hint (resume-from-phase can be added later; until then the hint no longer promises a non-feature).
+
+### Notes
+
+- Investigated (no code change needed) `disproof-agent` not appearing in a session's registered agent types: `agents/disproof-agent.md` is structurally identical to the sibling agents that do register (same frontmatter shape, name derived from filename), so it is not a file defect — it was added in PR #4 (`893821c`) without a version bump, so a registry keyed off version/reload did not re-scan it. The 1.2.0 bump plus a reinstall/reload resolves it.
+
 ## [1.2.0] - 2026-07-01
 
 ### Removed

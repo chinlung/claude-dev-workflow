@@ -2,6 +2,17 @@
 
 All notable changes to the `code-audit-rigor` plugin will be documented in this file.
 
+## [1.5.0] - 2026-07-01
+
+### Added
+
+- **`/review-branch --focus <pathspec>`** — scope the review to a git pathspec (e.g. `--focus 'src/auth/**'`), applied to the mechanical file-list step so the coverage checklist becomes the filtered set. Cuts token cost and enforces scope on large PRs (the cheapest high-value knob, mirroring `/audit-review-fix`).
+- **Confidence on `/review-branch` Phase 2 verdicts.** Each verified / false-positive verdict now carries an honest 0-100 confidence; a verdict under 67% is treated as borderline — re-read the source to push it above 67% or below 33%, or surface it to the user, rather than collapsing an unsure verdict into either bucket.
+
+### Changed
+
+- **`/review-pr` Phase 3 regression check hardened** to the baseline + exit-code-sentinel discipline already audited in `/audit-review-fix` (whose CHANGELOG [1.3.2]/[1.3.3]/[1.3.4] documents three real fail-open bugs in the naive "run the suite, confirm no regression" form). It now captures a pre-fix baseline, counts only new-vs-pre-existing failures as regressions, trusts an explicit `WF_TEST_EXIT=0` (avoiding false-closed on "error" text), treats a newly-broken build as a regression, and fails closed on unparseable output.
+
 ## [1.4.0] - 2026-07-01
 
 ### Added

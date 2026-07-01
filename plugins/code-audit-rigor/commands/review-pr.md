@@ -105,8 +105,15 @@ node ${CLAUDE_PLUGIN_ROOT}/validators/validate-review-pr-comments.cjs review-pr-
 ## Phase 3：修復與驗證
 
 對每個需要修復的評論（安全性修復 + 邏輯錯誤）：
-1. 生成子代理（可並行），各自讀取相關程式碼與上下游依賴、實作修復、編寫驗證測試
-2. 所有修復完成後執行全部測試套件確認無回歸
+
+1. **修復前先擷取測試 baseline**：動任何 code 前跑一次全套件，記錄 (a) 已經失敗的測試（pre-existing failure 的名稱/keys）、(b) 測試指令的**確切 exit code**（附哨符行，如 `<test-cmd>; echo "WF_TEST_EXIT=$?"`）。此 baseline 是「本次修復是否造成 regression」的唯一基準，避免把既有失敗誤判成本次破壞（fail-open 破口，`/audit-review-fix` 曾實測踩過三次）
+2. 生成子代理（可並行），各自讀取相關程式碼與上下游依賴、實作修復、**編寫驗證測試（測試須能在沒修復時失敗）**
+3. **修復後再跑全套件**（同附 `WF_TEST_EXIT=$?` 哨符），與 baseline 比對，**只有下列才算 regression**：
+   - 出現 baseline 沒有的**新失敗**（新 FAIL key）
+   - 失敗**數量上升**
+   - build 從能跑變成**壞掉**（編譯/收集/fatal 錯誤且 exit code ≠ 0）——即使 baseline 當時是綠的
+   baseline 就有、修復後仍在的 pre-existing failure **不算** regression
+4. **判定紀律**：只有測試指令**明確 exit 0** 才信任「通過」（輸出含 "error" 字樣但 exit 0 不算失敗，避免 false-closed）；輸出無法解析（無哨符、無 pass/fail 訊號）→ **fail closed**，當失敗退回人工。有 regression → 不可進入 Phase 4，檢查修正或回報
 
 ## Phase 4：提交與回覆
 

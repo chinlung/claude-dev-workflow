@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "Claude Code plugins collection by scl",
-    "version": "1.8.6"
+    "version": "1.8.7"
   },
   "plugins": [
     {
@@ -26,7 +26,7 @@
       "name": "high-precision-dev",
       "source": "./plugins/high-precision-dev",
       "description": "高精確度多 Agent 開發模式 - 透過認識論分工將錯誤率從 p 壓縮至 p^4",
-      "version": "1.2.0",
+      "version": "1.2.1",
       "keywords": ["high-precision", "multi-agent", "adversarial-review", "verification", "safety-critical"]
     },
     {
@@ -40,14 +40,14 @@
       "name": "openspec-superpowers-workflow",
       "source": "./plugins/openspec-superpowers-workflow",
       "description": "OpenSpec + Superpowers 六階段功能開發工作流程 - 強制規格生命週期（WHAT）與開發紀律（HOW）嚴格角色分離，避免規格漂移",
-      "version": "1.2.0",
+      "version": "1.2.1",
       "keywords": ["openspec", "superpowers", "workflow", "spec-driven", "tdd", "code-review", "reconciliation"]
     },
     {
       "name": "code-audit-rigor",
       "source": "./plugins/code-audit-rigor",
       "description": "程式碼審查工具箱 - routine 兩輪審查指令（/review-branch、/review-pr，共用語言規則包）+ 高風險域對抗式批次審查自動修 workflow（/audit-review-fix：9-angle review + EV triage + 安全閘門自動修 + 測試驗證 + 報告）+ 量化決策框架（EV 計算、評分校準、STRIDE+CWE 分類、強制交叉引用契約）+ 工程化保證（語言規則包分層匹配、機械化 scope/coverage 核銷、引用程式碼 grep 錨定）。靈感來自 codexstar69/bug-hunter 對抗式 review 與 alibaba/open-code-review 決定性工程層。量化框架 skill 本身刻意排除 auto-fix 與 LLM-readable 注入面；auto-fix 由獨立的 /audit-review-fix workflow 在安全閘門 + 對抗式驗證下提供。",
-      "version": "1.4.0",
+      "version": "1.5.0",
       "keywords": ["code-review", "audit", "security-review", "quantitative", "decision-framework", "stride", "cwe", "expected-value", "auto-fix", "workflow", "adversarial-verification"]
     },
     {

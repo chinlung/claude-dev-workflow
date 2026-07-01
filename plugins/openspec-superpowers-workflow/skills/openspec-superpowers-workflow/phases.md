@@ -63,7 +63,12 @@ The OpenSpec validator enforces that **every `### Requirement:` block MUST conta
    - `design.md` — **placeholder draft only**; Phase 2 will overwrite it entirely. Write a minimal stub noting it is a draft
    - `tasks.md` — **placeholder draft only**; Phase 3 will overwrite it entirely. Write a minimal stub noting it is a draft
 3. Create empty `review-notes.md` in the same folder for Phase 5 to populate later (OpenSpec does not generate this — do it with `Write`)
-4. Run `openspec validate <feature-name>` to catch SHALL/MUST violations and scenario-format errors (see Prerequisites → Spec writing gotcha)
+4. **Fast local pre-check (optional, lenient)**: run this plugin's bundled validator on the change folder to catch a missing artifact (any of `proposal.md` / `design.md` / `tasks.md` / `review-notes.md`, or no `specs/**/spec.md`) or an empty SHALL/MUST first paragraph *before* the authoritative CLI — it is fast and needs no OpenSpec install:
+   ```bash
+   node skills/openspec-superpowers-workflow/validators/validate-openspec-workflow.cjs openspec/changes/<feature-name>
+   ```
+   (Path is relative to this plugin's root — resolve it from where the skill is installed.) This is a **lenient pre-check, not a substitute** for step 5's strict validation.
+5. Run `openspec validate <feature-name>` to catch SHALL/MUST violations and scenario-format errors (see Prerequisites → Spec writing gotcha)
 
 **Quality gate**: User reviews and approves `proposal.md` and `specs/<capability>/spec.md` only.
 `design.md` and `tasks.md` are initial drafts — they WILL be overwritten in Phase 2-3. Do NOT ask the user to review them in Phase 1.
