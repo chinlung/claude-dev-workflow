@@ -1,6 +1,6 @@
 # high-precision-dev
 
-> Multi-agent implementation mode for safety-critical code. Compresses single-agent error rate from p to p^4 through epistemic division of labor: two independent implementers, a critic, an adversary, a disproof agent, and a verifier.
+> Multi-agent implementation mode for safety-critical code. Reduces the escape rate of systematic errors through epistemic division of labor and role-diverse adversarial review — two independent implementers (with different approaches), a critic, an adversary, a disproof agent, and a verifier.
 
 ## Purpose
 
@@ -14,6 +14,10 @@
 | Decide *what* to implement (design choices) | `multi-agent-debate` first |
 | Review an existing code change rigorously | `code-audit-rigor` |
 | Hunt exploitable security bugs in a codebase | `security-audit` skill |
+
+### On the error-rate framing (honest scope)
+
+Earlier releases claimed this "compresses error rate from `p` to `p⁴`." That multiplicative figure is an **idealized model, not a measured guarantee** — it assumes four *independent* channels, but all agents share one base model, the same `SPEC.md` / `CONSENSUS.md`, and the same session, so their errors are correlated exactly where it matters most (systematic misreadings). What genuinely works is **role-diverse adversarial review** (builder vs attacker vs checker surface different blind-spot classes) and the two implementers' **different approaches** (spec-first vs test-first). The improvement over a single optimistic pass is real but **unquantified and bounded below by a shared-model correlation floor** — you cannot get below the base model's systematic error rate on a class it uniformly mishandles. See `docs/loop-design-review-2026-07-01.md` §8.
 
 ## Usage
 

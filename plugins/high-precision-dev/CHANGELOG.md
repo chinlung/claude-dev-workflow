@@ -5,6 +5,13 @@ All notable changes to the `high-precision-dev` plugin will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-07-01
+
+### Changed
+
+- **Honest reframe of the error-rate claim.** The `p→p⁴` figure is demoted from a headline guarantee to an idealized model with an explicit correlation caveat, everywhere it appeared (`plugin.json`, `marketplace.json`, `README`, `commands/start.md`, `references/ANTI-PATTERNS.md`). A `/debate` re-examination (`docs/loop-design-review-2026-07-01.md` §8) source-verified that the four "independent" channels share one base model plus the same `SPEC.md` / `CONSENSUS.md`, so their errors are correlated exactly where it matters (systematic misreadings). The real, unquantified value is role-diverse adversarial review, bounded below by a shared-model correlation floor.
+- **`implementer-a` and `implementer-b` given genuinely different approaches** — they were previously byte-identical except the A/B label, which made the a-vs-b leg the weakest form of independence (identical prompts + same model = correlated systematic errors; worktree isolation stops plagiarism, not correlated independent error). A now works **spec-first / top-down** (enumerate every SPEC requirement + boundary, structure code around the spec, defensive checks first); B works **test-first / behavior-driven** (write failing tests from the SPEC's scenarios, then minimal code to pass). Same completeness bar (every requirement + boundary), different path — so Phase 3/4 disagreements carry decorrelated information instead of shared blind spots. `ANTI-PATTERNS.md` AP-1 updated accordingly.
+
 ## [1.3.0] - 2026-07-01
 
 ### Added

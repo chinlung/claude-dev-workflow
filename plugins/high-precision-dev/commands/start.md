@@ -1,12 +1,14 @@
 ---
-description: 啟動高精確度開發模式的 4 Phase 工作流程，透過 5 個 agent 將錯誤率從 p 壓縮至 p^4
+description: 啟動高精確度開發模式的 4 Phase 工作流程，透過 5 個 agent 的認識論分工與對抗式審查降低系統性錯誤的逃逸率
 argument-hint: <SPEC.md 路徑>
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, AskUserQuestion
 ---
 
 # /start - 高精確度開發流程
 
-啟動 4 Phase 高精確度開發流程。透過 5 個專業 agent（implementer-a、implementer-b、critic、adversary、verifier）的認識論分工，將單一 agent 的錯誤率 p 壓縮至 p^4。
+啟動 4 Phase 高精確度開發流程。透過 5 個專業 agent（implementer-a、implementer-b、critic、adversary、verifier）的認識論分工與**角色多樣的對抗式審查**，降低單一 agent 系統性錯誤的逃逸率——不同角色（建構者 / 攻擊者 / 檢查者）暴露不同的盲點。
+
+> **關於錯誤率**：早期版本宣稱「將 p 壓縮至 p⁴」；這是理想化模型，假設了共用同一個 base model 的通道其實不具備的獨立性（見 `docs/loop-design-review-2026-07-01.md` §8）。真正有效的是角色多樣性與對抗式 framing，受共用 model 的相關性地板所限、未量化。
 
 ## 前置檢查
 

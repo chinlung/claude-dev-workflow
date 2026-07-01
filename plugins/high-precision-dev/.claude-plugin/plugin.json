@@ -1,7 +1,7 @@
 {
   "name": "high-precision-dev",
-  "version": "1.3.0",
-  "description": "High-Precision Multi-Agent development mode - compress single-agent error rate from p to p^4 through epistemic division of labor",
+  "version": "1.4.0",
+  "description": "High-Precision Multi-Agent development mode - reduces systematic-error escape through epistemic division of labor and role-diverse adversarial review (two independent implementers with different approaches + critic/adversary/disproof/verifier), for safety-critical code",
   "author": {
     "name": "scl@hanchih.com"
   },
