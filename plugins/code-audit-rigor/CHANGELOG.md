@@ -2,6 +2,18 @@
 
 All notable changes to the `code-audit-rigor` plugin will be documented in this file.
 
+## [1.4.0] - 2026-07-01
+
+### Added
+
+- **Durable, machine-checkable output contracts for all three commands.** `/review-branch`, `/review-pr`, and `/audit-review-fix` now each write a structured JSON result (`review-branch-results.json`, PR-comments classification, audit-review-fix result) validated against a new JSON Schema (`schema/*.schema.json`) via a zero-dependency validator (`validators/*.cjs`) before the final Markdown report is produced — shifting these commands from prompt discipline to explicit, machine-checkable contracts. `/review-branch` Phase 3 gained a mandatory coverage-reconciliation step (`validators/coverage-reconcile.cjs`) on top of schema validation.
+- `skills/code-audit-rigor/STEEL_MANNING.md` — the Phase 4 steel-manning methodology extracted into its own reference doc.
+- Fixture-based test coverage for every validator rule (static fixtures + a single-field mutation generator), enforced repo-wide via GitHub Actions CI and a PostToolUse hook (148 checks total across the four plugins touched in this release).
+
+### Notes
+
+- This release was previously merged (commit `893821c`, PR #4) without a corresponding version bump on `plugin.json` / `marketplace.json` or a changelog entry — the plugin sat at `1.3.4` both before and after a functional (non-doc) change, making that version number ambiguous for consumers who pulled at different points. This entry backfills the version and changelog for that change; no further code changes were made.
+
 ## [1.3.4] - 2026-06-29
 
 ### Fixed

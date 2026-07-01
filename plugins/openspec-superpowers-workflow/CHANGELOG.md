@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-07-01
+
+### Added
+
+- **Durable, machine-checkable output contract for the workflow.** New `skills/openspec-superpowers-workflow/validators/validate-openspec-workflow.cjs` (zero-dependency) plus reference docs `OUTPUT-CONTRACTS.md`, `RECONCILIATION-CRITERIA.md`, and `PHASE-IDENTIFICATION.md` — formalizing what was previously prompt-only guidance (Phase 5 reconciliation criteria, Phase 6 archive discipline) into an explicit, testable contract, enforced repo-wide via GitHub Actions CI and a PostToolUse hook.
+- `SUPERPOWERS-HANDOFF.md` — documents the Phase 2-4 handoff contract to Superpowers skills (`brainstorming`, `writing-plans`, `subagent-driven-development`).
+
+### Notes
+
+- This release was previously merged (commit `893821c`, PR #4) without a corresponding version bump on `plugin.json` / `marketplace.json` or a changelog entry — the plugin sat at `1.1.0` both before and after a functional (non-doc) change. This entry backfills the version and changelog for that change; no further code changes were made.
+
 ## [1.1.0] - 2026-06-17
 
 ### Changed
