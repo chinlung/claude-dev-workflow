@@ -5,9 +5,10 @@
  * validate-prior-debate.cjs
  *
  * Zero-dependency validator for a prior-debate reuse artifact
- * (schema: schema/prior-debate.schema.json). Enforces the full contract:
- * required fields (incl. nested), enum vocabularies, and the reuse-constraint
- * MUST-be-false guards that prevent a prior run from suppressing new findings.
+ * (schema: schema/prior-debate.schema.json). Enforces the schema contract:
+ * required fields (incl. nested objects/arrays), non-empty top-level strings,
+ * enum vocabularies, and the reuse-constraint MUST-be-false guards that prevent
+ * a prior run from suppressing new findings.
  *
  * Exits 0 (VALID), 1 (INVALID or bad JSON), or 2 (usage/unreadable file).
  *
@@ -37,6 +38,14 @@ function validate(data) {
     if (data[f] === undefined || data[f] === null) errors.push(`Missing required field: ${f}`);
   }
 
+  // topic / artifactRef carry minLength:1 in the schema — enforce non-empty, matching
+  // the nested string fields (otherwise "" would pass while violating the schema).
+  for (const f of ['topic', 'artifactRef']) {
+    if (data[f] !== undefined && data[f] !== null && !isNonEmptyString(data[f])) {
+      errors.push(`${f} must be a non-empty string`);
+    }
+  }
+
   if (data.schemaVersion !== undefined && data.schemaVersion !== '1.0') {
     errors.push('schemaVersion must be "1.0"');
   }
@@ -62,6 +71,7 @@ function validate(data) {
     } else {
       data.rejectedAlternatives.forEach((a, i) => {
         const p = `rejectedAlternatives[${i}]`;
+        if (!a || typeof a !== 'object' || Array.isArray(a)) { errors.push(`${p} must be an object`); return; }
         if (!a.proposal) errors.push(`${p}.proposal required`);
         if (!a.rejectionReason) errors.push(`${p}.rejectionReason required`);
       });
@@ -75,6 +85,7 @@ function validate(data) {
     } else {
       data.unresolvedRisks.forEach((r, i) => {
         const p = `unresolvedRisks[${i}]`;
+        if (!r || typeof r !== 'object' || Array.isArray(r)) { errors.push(`${p} must be an object`); return; }
         if (!r.description) errors.push(`${p}.description required`);
         if (!SEVERITY_ENUM.includes(r.severity)) {
           errors.push(`${p}.severity must be one of: ${SEVERITY_ENUM.join(', ')}`);
@@ -94,6 +105,7 @@ function validate(data) {
       } else {
         c.covered.forEach((x, i) => {
           const p = `coverage.covered[${i}]`;
+          if (!x || typeof x !== 'object' || Array.isArray(x)) { errors.push(`${p} must be an object`); return; }
           if (!x.aspect) errors.push(`${p}.aspect required`);
           if (!x.summary) errors.push(`${p}.summary required`);
         });
@@ -103,6 +115,7 @@ function validate(data) {
       } else {
         c.notCovered.forEach((x, i) => {
           const p = `coverage.notCovered[${i}]`;
+          if (!x || typeof x !== 'object' || Array.isArray(x)) { errors.push(`${p} must be an object`); return; }
           if (!x.aspect) errors.push(`${p}.aspect required`);
           if (!x.reason) errors.push(`${p}.reason required`);
         });

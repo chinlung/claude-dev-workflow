@@ -66,15 +66,45 @@ function run(validator, fixture, expectValid) {
 }
 
 let tmpCounter = 0;
+
+/**
+ * Run a validator CLI against an in-memory object via a temp file. Returns the exit
+ * code (0, or the process's non-zero status). THROWS for spawn/setup failures (write
+ * error, validator missing/uncallable) — the caller MUST treat a throw as a harness
+ * error, never as a validator rejection (that was the old fail-open).
+ */
+function execValidatorOnObject(validator, obj) {
+  const tmp = path.join(os.tmpdir(), `validate-fixtures-mut-${process.pid}-${tmpCounter++}.json`);
+  // Write OUTSIDE the exit-capturing try: a write failure is a harness/environment
+  // error, not a validator rejection — it must propagate, never be scored as a pass.
+  fs.writeFileSync(tmp, JSON.stringify(obj));
+  try {
+    execFileSync(process.execPath, [validator, tmp], { stdio: 'pipe' });
+    return 0;
+  } catch (e) {
+    if (typeof e.status === 'number') return e.status; // validator ran and exited non-zero
+    throw e;                                            // could not even execute the validator
+  } finally {
+    try { fs.unlinkSync(tmp); } catch (e) { /* ignore cleanup errors */ }
+  }
+}
+
 /**
  * Generator-based coverage for the required-field / type / enum long tail.
  * Loads a KNOWN-VALID base fixture, applies exactly one mutation, and asserts the
- * validator rejects it. Isolation is guaranteed by construction: a valid base plus
- * a single-field change means a non-zero exit can only come from that field's rule.
- * Keeps the repo free of dozens of near-duplicate static fixtures.
+ * validator rejects it (exit non-zero). Isolation is guaranteed by construction: a
+ * valid base plus a single-field change means a non-zero exit can only come from that
+ * field's rule. A validator that cannot be executed (missing / mis-pathed / write
+ * failure) is scored as a FAILURE, never a spurious pass.
  */
 function runMutations(validator, baseFixture, group, mutations) {
   const rel = path.relative(ROOT, baseFixture);
+  if (!fs.existsSync(validator)) {
+    console.error(`  ✗  ${group}: validator not found — ${path.relative(ROOT, validator)}`);
+    failed++;
+    failures.push(group);
+    return;
+  }
   let base;
   try {
     base = JSON.parse(fs.readFileSync(baseFixture, 'utf8'));
@@ -87,18 +117,16 @@ function runMutations(validator, baseFixture, group, mutations) {
   for (const m of mutations) {
     const obj = JSON.parse(JSON.stringify(base));
     m.mutate(obj);
-    const tmp = path.join(os.tmpdir(), `validate-fixtures-mut-${process.pid}-${tmpCounter++}.json`);
-    let exitCode = 0;
-    try {
-      fs.writeFileSync(tmp, JSON.stringify(obj));
-      execFileSync(process.execPath, [validator, tmp], { stdio: 'pipe' });
-      exitCode = 0;
-    } catch (e) {
-      exitCode = typeof e.status === 'number' ? e.status : 1;
-    } finally {
-      try { fs.unlinkSync(tmp); } catch (e) { /* ignore cleanup errors */ }
-    }
     const label = `${group} ← mutate: ${m.label}`;
+    let exitCode;
+    try {
+      exitCode = execValidatorOnObject(validator, obj);
+    } catch (e) {
+      console.error(`  ✗  ${label}: validator could not be executed — ${e.message}`);
+      failed++;
+      failures.push(label);
+      continue;
+    }
     if (exitCode !== 0) {
       console.log(`  ✓  ${label}`);
       passed++;
@@ -110,74 +138,118 @@ function runMutations(validator, baseFixture, group, mutations) {
   }
 }
 
-/** Recursively collect string enum values and regex patterns declared in a schema. */
-function collectSchemaEnums(node, acc) {
+// ── Schema ↔ validator consistency: structural (set-based) enum/pattern drift ──────
+
+/** Recursively collect enum arrays (with the property name they sit under) and regex
+ *  patterns from a schema. The property name lets single-value const enums be checked
+ *  field-aware (e.g. `suppressNewFindings !== false`, not just `!== false` anywhere). */
+function collectSchemaEnums(node, acc, propName) {
   if (!node || typeof node !== 'object') return;
-  if (Array.isArray(node.enum)) {
-    for (const v of node.enum) if (typeof v === 'string') acc.enumValues.add(v);
-  }
+  if (Array.isArray(node.enum)) acc.enumArrays.push({ values: node.enum, prop: propName || '' });
   if (typeof node.pattern === 'string') acc.patterns.add(node.pattern);
   for (const k of Object.keys(node)) {
-    if (node[k] && typeof node[k] === 'object') collectSchemaEnums(node[k], acc);
+    if (k === 'properties' && node.properties && typeof node.properties === 'object') {
+      for (const pk of Object.keys(node.properties)) collectSchemaEnums(node.properties[pk], acc, pk);
+    } else if (node[k] && typeof node[k] === 'object') {
+      collectSchemaEnums(node[k], acc, propName);
+    }
   }
 }
 
-/**
- * Schema ↔ validator consistency gate. Nothing executes the JSON schemas at
- * runtime (no ajv), so schema/validator drift is otherwise invisible. This
- * makes the schema a live layer: bidirectional value-level diff —
- *   1. every string enum value / pattern declared in the schema(s) must appear
- *      in the validator source (schema promises → validator enforces), and
- *   2. every value in the validator's `*_ENUM` arrays must appear in the
- *      schema text (validator enforces → schema documents).
- * A mismatch (e.g. renaming an enum on one side only) fails the suite.
- */
-function checkSchemaConsistency(schemaPaths, validatorPath, group) {
-  let src;
-  try {
-    src = fs.readFileSync(validatorPath, 'utf8');
-  } catch (e) {
-    console.error(`  ✗  ${group}: cannot read validator — ${e.message}`);
-    failed++;
-    failures.push(group);
-    return;
+/** Parse `const NAME_ENUM = ['a', 'b', ...]` arrays from validator source into key-sets. */
+function parseValidatorEnumSets(src) {
+  const sets = [];
+  const re = /_ENUM\s*=\s*\[([^\]]*)\]/g;
+  let m;
+  while ((m = re.exec(src)) !== null) {
+    const quoted = m[1].match(/'([^']*)'|"([^"]*)"/g) || [];
+    if (quoted.length) sets.push(new Set(quoted.map(s => JSON.stringify(s.slice(1, -1)))));
   }
-  const acc = { enumValues: new Set(), patterns: new Set() };
-  const schemaTexts = [];
-  for (const sp of schemaPaths) {
-    let schema;
-    try {
-      const rawSchema = fs.readFileSync(sp, 'utf8');
-      schema = JSON.parse(rawSchema);
-      schemaTexts.push(rawSchema);
-    } catch (e) {
-      console.error(`  ✗  ${group}: cannot read schema ${path.relative(ROOT, sp)} — ${e.message}`);
-      failed++;
-      failures.push(group);
-      return;
-    }
-    collectSchemaEnums(schema, acc);
-  }
-  const schemaText = schemaTexts.join('\n');
+  return sets;
+}
 
-  const drift = [];
-  for (const v of acc.enumValues) {
-    if (!src.includes(v)) drift.push(`schema enum value "${v}" is not enforced in the validator`);
+const keySet = (values) => new Set(values.map(v => JSON.stringify(v)));
+function setsEqual(a, b) {
+  if (a.size !== b.size) return false;
+  for (const v of a) if (!b.has(v)) return false;
+  return true;
+}
+/** A single-value const enum (e.g. "1.0", false) is enforced via a strict comparison
+ *  on its own property, not a *_ENUM array. Confirm the validator compares THAT property
+ *  against THAT literal (field-aware — so `suppressNewFindings !== false` counts but an
+ *  unrelated `!== false` elsewhere does not). */
+function singleEnumEnforced(prop, rawVal, src) {
+  const lit = typeof rawVal === 'string' ? `'${rawVal}'` : String(rawVal);
+  const litDq = typeof rawVal === 'string' ? `"${rawVal}"` : String(rawVal);
+  if (!prop) { // no property context (e.g. top-level anyOf discriminator) — fall back to literal presence
+    return src.includes(lit) || src.includes(litDq);
   }
+  return src.includes(`${prop} === ${lit}`) || src.includes(`${prop} !== ${lit}`)
+      || src.includes(`${prop} === ${litDq}`) || src.includes(`${prop} !== ${litDq}`);
+}
+
+/**
+ * Pure drift computation (no scoring) so the self-test canary can exercise it.
+ * STRUCTURAL, set-based — NOT substring — so short/common tokens (STRIDE letters,
+ * "test", booleans) are checked as strongly as distinctive ones:
+ *   1. every multi-value schema enum must equal some validator *_ENUM set; every
+ *      single-value const enum must be enforced via a strict comparison;
+ *   2. every validator *_ENUM set must be declared as a schema enum;
+ *   3. every schema regex pattern must appear literally in the validator.
+ * Returns { drift: string[] } or { error: string }.
+ */
+function computeSchemaDrift(schemaPaths, validatorPath) {
+  let src;
+  try { src = fs.readFileSync(validatorPath, 'utf8'); }
+  catch (e) { return { error: `cannot read validator — ${e.message}` }; }
+
+  const acc = { enumArrays: [], patterns: new Set() };
+  for (const sp of schemaPaths) {
+    try { collectSchemaEnums(JSON.parse(fs.readFileSync(sp, 'utf8')), acc); }
+    catch (e) { return { error: `cannot read schema ${path.relative(ROOT, sp)} — ${e.message}` }; }
+  }
+
+  const validatorSets = parseValidatorEnumSets(src);
+  const schemaSets = acc.enumArrays.map(e => keySet(e.values));
+  const drift = [];
+
+  // 1. schema → validator
+  for (const { values, prop } of acc.enumArrays) {
+    const ks = keySet(values);
+    if (ks.size >= 2) {
+      if (!validatorSets.some(v => setsEqual(v, ks))) {
+        drift.push(`schema enum [${values.map(String).join(', ')}] has no matching *_ENUM set in the validator`);
+      }
+    } else if (ks.size === 1) {
+      const raw = values[0];
+      const k = JSON.stringify(raw);
+      if (!validatorSets.some(v => v.has(k)) && !singleEnumEnforced(prop, raw, src)) {
+        drift.push(`schema const enum ${prop ? prop + ' ' : ''}[${String(raw)}] is not enforced in the validator`);
+      }
+    }
+  }
+  // 2. validator → schema
+  for (const v of validatorSets) {
+    if (!schemaSets.some(s => setsEqual(s, v))) {
+      drift.push(`validator *_ENUM [${[...v].map(k => JSON.parse(k)).join(', ')}] is not declared as a schema enum`);
+    }
+  }
+  // 3. patterns
   for (const p of acc.patterns) {
     if (!src.includes(p)) drift.push(`schema pattern "${p}" is not present in the validator`);
   }
-  const enumArrayRe = /_ENUM\s*=\s*\[([^\]]*)\]/g;
-  let m;
-  while ((m = enumArrayRe.exec(src)) !== null) {
-    const quoted = m[1].match(/'([^']*)'|"([^"]*)"/g) || [];
-    for (const raw of quoted) {
-      const val = raw.slice(1, -1);
-      if (!schemaText.includes(val)) drift.push(`validator enum value "${val}" is not declared in the schema`);
-    }
-  }
+  return { drift };
+}
 
+function checkSchemaConsistency(schemaPaths, validatorPath, group) {
   const label = `${group} (schema ↔ validator)`;
+  const { drift, error } = computeSchemaDrift(schemaPaths, validatorPath);
+  if (error) {
+    console.error(`  ✗  ${label}: ${error}`);
+    failed++;
+    failures.push(label);
+    return;
+  }
   if (drift.length === 0) {
     console.log(`  ✓  ${label}`);
     passed++;
@@ -197,6 +269,38 @@ const P = (...parts) => path.join(ROOT, ...parts);
 
 function main() {
   console.log('\n=== validate-fixtures: repo-root fixture runner ===\n');
+
+  // ── Self-test: the checkers must detect a planted defect (else they give false green) ──
+  console.log('## Self-test (canaries)');
+  {
+    // (a) consistency gate MUST report drift for a deliberately mismatched schema/validator pair.
+    const { drift, error } = computeSchemaDrift(
+      [P('plugins/code-audit-rigor/schema/finding.schema.json')],
+      P('plugins/multi-agent-debate/validators/validate-debate-output.cjs'),
+    );
+    const label = 'canary: consistency gate detects a mismatched schema/validator pair';
+    if (!error && Array.isArray(drift) && drift.length > 0) { console.log(`  ✓  ${label}`); passed++; }
+    else { console.error(`  ✗  ${label}: gate did NOT report drift (error=${error || 'none'})`); failed++; failures.push(label); }
+  }
+  {
+    // (b) mutation harness discrimination: a no-op (still-valid) object → exit 0 (the
+    //     harness scores exit 0 as FAILURE), and a real single-field mutation → non-zero.
+    const findV0 = P('plugins/code-audit-rigor/validators/validate-finding.cjs');
+    const base = JSON.parse(fs.readFileSync(P('plugins/code-audit-rigor/tests/fixtures/code-audit-rigor/finding-valid.json'), 'utf8'));
+    const noop = 'canary: no-op mutation leaves object valid (exit 0 → harness flags as non-rejection)';
+    const real = 'canary: a real single-field mutation is rejected (exit non-zero)';
+    try {
+      const okExit = execValidatorOnObject(findV0, base);
+      if (okExit === 0) { console.log(`  ✓  ${noop}`); passed++; }
+      else { console.error(`  ✗  ${noop}: expected exit 0, got ${okExit}`); failed++; failures.push(noop); }
+    } catch (e) { console.error(`  ✗  ${noop}: ${e.message}`); failed++; failures.push(noop); }
+    try {
+      const bad = JSON.parse(JSON.stringify(base)); bad.severity = 'NOT-A-SEVERITY';
+      const badExit = execValidatorOnObject(findV0, bad);
+      if (badExit !== 0) { console.log(`  ✓  ${real}`); passed++; }
+      else { console.error(`  ✗  ${real}: expected non-zero, got 0`); failed++; failures.push(real); }
+    } catch (e) { console.error(`  ✗  ${real}: ${e.message}`); failed++; failures.push(real); }
+  }
 
   // ── Multi-Agent Debate ───────────────────────────────────────────────────────
   console.log('## Multi-Agent Debate — debate-output validator');
@@ -383,6 +487,18 @@ function main() {
     { label: 'rejectedAlternatives missing proposal', mutate: o => { delete o.rejectedAlternatives[0].proposal; } },
     { label: 'coverage.covered missing aspect', mutate: o => { delete o.coverage.covered[0].aspect; } },
     { label: 'coverage.notCovered missing reason', mutate: o => { delete o.coverage.notCovered[0].reason; } },
+    { label: 'priorDecision missing reasoning', mutate: o => { delete o.priorDecision.reasoning; } },
+    { label: 'rejectedAlternatives missing rejectionReason', mutate: o => { delete o.rejectedAlternatives[0].rejectionReason; } },
+    { label: 'unresolvedRisks missing description', mutate: o => { delete o.unresolvedRisks[0].description; } },
+    { label: 'coverage.covered missing summary', mutate: o => { delete o.coverage.covered[0].summary; } },
+    { label: 'coverage.notCovered missing aspect', mutate: o => { delete o.coverage.notCovered[0].aspect; } },
+    { label: 'priorDecision not an object', mutate: o => { o.priorDecision = 'x'; } },
+    { label: 'rejectedAlternatives not an array', mutate: o => { o.rejectedAlternatives = 'x'; } },
+    { label: 'unresolvedRisks not an array', mutate: o => { o.unresolvedRisks = 'x'; } },
+    { label: 'coverage not an object', mutate: o => { o.coverage = 'x'; } },
+    { label: 'coverage.covered not an array', mutate: o => { o.coverage.covered = 'x'; } },
+    { label: 'coverage.notCovered not an array', mutate: o => { o.coverage.notCovered = 'x'; } },
+    { label: 'rejectedAlternatives item is null', mutate: o => { o.rejectedAlternatives = [null]; } },
   ]);
 
   // ── Schema ↔ validator consistency (makes the schema a live, checked layer) ──

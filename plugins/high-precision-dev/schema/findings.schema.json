@@ -27,9 +27,6 @@
         }
       }
     },
-    "coverage": {
-      "$ref": "./coverage.schema.json",
-      "description": "Coverage record (SPEC requirements tested/untested/outOfScope, attack classes, verification status). Defined in coverage.schema.json; required as part of the full artifact."
-    }
+    "coverage": { "$ref": "./coverage.schema.json" }
   }
 }
