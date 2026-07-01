@@ -43,7 +43,7 @@ function validate(data) {
       data.suggestions.forEach((s, i) => {
         const p = `suggestions[${i}]`;
         if (!s.file) errors.push(`${p}.file required`);
-        if (typeof s.line !== 'number' || s.line < 1) errors.push(`${p}.line must be integer >= 1`);
+        if (typeof s.line !== 'number' || !Number.isInteger(s.line) || s.line < 1) errors.push(`${p}.line must be integer >= 1`);
         if (!s.quotedCode) errors.push(`${p}.quotedCode required`);
         if (!s.description) errors.push(`${p}.description required`);
         if (!SEVERITY_ENUM.includes(s.severity)) {

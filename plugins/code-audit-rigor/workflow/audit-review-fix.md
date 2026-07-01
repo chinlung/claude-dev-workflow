@@ -133,8 +133,8 @@ Workflow({
 │                  - Python: pytest + ruff                        │
 │                有 baseline：比對失敗鍵 + 失敗數，只有「新增      │
 │                key 或失敗數上升」才算 regression（涵蓋 jest      │
-│                檔案級 FAIL <file> 同檔新失敗）；無 baseline 才   │
-│                退回 "Tests: N failed" regex（best-effort）       │
+│                檔案級 FAIL <file> 同檔新失敗）。baseline 與      │
+│                verify 共用同一套訊號；無 baseline 視為全綠       │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐

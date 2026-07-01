@@ -41,12 +41,20 @@ function checkImpossibleStates(status, s, errors) {
       if (testsPass === false) {
         errors.push('READY_FOR_COMMIT is impossible: testsPass must be true');
       }
+      if (fixed === 0) {
+        errors.push('READY_FOR_COMMIT is impossible: fixed must be > 0 (no fixes applied would be CLEAN)');
+      }
       break;
     }
 
     case 'REQUIRES_USER_REVIEW':
       if (userReviewRequired === 0 && skipped === 0) {
         errors.push('REQUIRES_USER_REVIEW requires userReviewRequired > 0 or skipped > 0');
+      }
+      if (fixed > 0 && testsPass === false) {
+        errors.push(
+          'REQUIRES_USER_REVIEW is impossible when fixed > 0 and testsPass = false: workflow precedence produces TESTS_FAILED instead'
+        );
       }
       break;
 

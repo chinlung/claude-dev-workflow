@@ -13,7 +13,7 @@
     "covered": [],
     "notCovered": []
   },
-  "validatorVerdict": "APPROVED",
+  "validatorVerdict": "verified",
   "reuseConstraint": {
     "suppressNewFindings": false,
     "suppressNewDecisions": false

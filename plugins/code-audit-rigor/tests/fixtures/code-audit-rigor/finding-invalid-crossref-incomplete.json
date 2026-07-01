@@ -1,0 +1,19 @@
+{
+  "id": "F-010",
+  "title": "Path traversal in file download endpoint",
+  "severity": "HIGH",
+  "confidence": 80,
+  "ev": 12.0,
+  "decision": "FIX",
+  "description": "User-supplied filename is joined to a base path without normalization.",
+  "crossReferences": [
+    {
+      "file": "src/download.ts",
+      "lines": "30-32"
+    }
+  ],
+  "security": {
+    "stride": "I",
+    "cwe": "CWE-22"
+  }
+}

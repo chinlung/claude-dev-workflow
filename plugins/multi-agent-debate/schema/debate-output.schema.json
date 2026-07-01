@@ -85,7 +85,7 @@
       "type": "object",
       "required": ["verdict"],
       "properties": {
-        "verdict": { "type": "string", "enum": ["APPROVED", "REJECTED", "NEEDS_REVISION"] },
+        "verdict": { "type": "string", "enum": ["verified", "corrected", "rejected", "needs_user_decision"] },
         "issues": { "type": "array", "items": { "type": "string" } }
       }
     }

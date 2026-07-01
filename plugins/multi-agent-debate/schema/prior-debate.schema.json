@@ -116,7 +116,7 @@
     },
     "validatorVerdict": {
       "type": "string",
-      "enum": ["APPROVED", "REJECTED", "NEEDS_REVISION", "NOT_VALIDATED"],
+      "enum": ["verified", "corrected", "rejected", "needs_user_decision", "NOT_VALIDATED"],
       "description": "The validator verdict from the prior debate. NOT_VALIDATED means the validator gate was skipped or unavailable."
     },
     "reuseConstraint": {

@@ -8,12 +8,12 @@
  * review-branch-results.json artifact:
  *
  *   1. scopedFiles must be a non-empty array.
- *   2. No duplicate file entries in scopedFiles.
+ *   2. No duplicate file entries in scopedFiles; every entry must name a file.
  *   3. Every 'skipped' entry must have a non-empty skipReason.
- *   4. Every file appearing in suggestions must also appear in scopedFiles
- *      (unaccounted suggestion file = coverage gap).
- *   5. Every file in scopedFiles must have a status of 'reviewed' or 'skipped'.
+ *   4. Every file in scopedFiles must have a status of 'reviewed' or 'skipped'.
  *      Files present in scopedFiles but with no valid status are flagged.
+ *   5. Every file appearing in suggestions must also appear in scopedFiles
+ *      (unaccounted suggestion file = coverage gap).
  *   6. Every suggestion must include a file so it can be reconciled to scope.
  *
  * Exits 0 (PASS), 1 (coverage issues found), or 2 (usage/IO error).
@@ -45,7 +45,13 @@ function reconcile(data) {
   for (let i = 0; i < data.scopedFiles.length; i++) {
     const entry = data.scopedFiles[i];
     const file = entry.file;
-    if (!file) continue; // let schema validator handle missing .file
+    if (!file) {
+      // Defense-in-depth: when run standalone (not chained after the review-branch
+      // validator that also requires .file), flag the missing file ourselves rather
+      // than relying on call-site ordering.
+      errors.push(`scopedFiles[${i}]: file is missing or empty — every scoped entry must name a file`);
+      continue;
+    }
     if (seen.has(file)) {
       errors.push(`Duplicate file in scopedFiles: "${file}" appears at index ${seen.get(file)} and ${i}`);
     } else {
@@ -118,8 +124,10 @@ function main() {
   try {
     data = JSON.parse(raw);
   } catch (e) {
+    // Invalid JSON is an artifact-validation failure (exit 1), consistent with the
+    // sibling code-audit validators. Exit 2 is reserved for usage/unreadable-file errors.
     console.error(`Invalid JSON: ${e.message}`);
-    process.exit(2);
+    process.exit(1);
   }
 
   const result = reconcile(data);

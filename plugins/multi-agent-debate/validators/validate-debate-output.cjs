@@ -5,7 +5,7 @@ const fs = require('fs');
 const path = require('path');
 
 const SEVERITY_ENUM = ['critical', 'high', 'medium', 'low'];
-const VERDICT_ENUM = ['APPROVED', 'REJECTED', 'NEEDS_REVISION'];
+const VERDICT_ENUM = ['verified', 'corrected', 'rejected', 'needs_user_decision'];
 
 function err(msg) { return { ok: false, message: msg }; }
 function ok() { return { ok: true }; }
@@ -96,6 +96,8 @@ function validate(data) {
 
   if (!Array.isArray(data.critiqueRounds)) {
     errors.push('critiqueRounds must be an array');
+  } else if (data.critiqueRounds.length < 1) {
+    errors.push('critiqueRounds must contain at least one round — a debate with zero critique rounds defeats the adversarial gate');
   } else {
     data.critiqueRounds.forEach((round, i) => {
       r = validateCritiqueRound(round, i);

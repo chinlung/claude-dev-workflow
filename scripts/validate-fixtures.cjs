@@ -151,6 +151,12 @@ function main() {
   const debateF = P('plugins/multi-agent-debate/tests/fixtures/debate-output');
   run(debateV, path.join(debateF, 'valid-basic.json'), true);
   run(debateV, path.join(debateF, 'invalid-missing-consensus.json'), false);
+  run(debateV, path.join(debateF, 'invalid-bad-verdict.json'), false);
+  run(debateV, path.join(debateF, 'invalid-score-out-of-range.json'), false);
+  run(debateV, path.join(debateF, 'invalid-bad-severity.json'), false);
+  run(debateV, path.join(debateF, 'invalid-noninteger-round.json'), false);
+  run(debateV, path.join(debateF, 'invalid-consensus-not-boolean.json'), false);
+  run(debateV, path.join(debateF, 'invalid-empty-critique-rounds.json'), false);
 
   console.log('\n## Multi-Agent Debate — prior-debate schema (shape checks)');
   const priorF = P('plugins/multi-agent-debate/tests/fixtures/prior-debate');
@@ -169,6 +175,7 @@ function main() {
   run(hpV, path.join(hpF, 'invalid-partial-empty-coverage.json'), false);
   run(hpV, path.join(hpF, 'invalid-prior-run-suppresses.json'), false);
   run(hpV, path.join(hpF, 'invalid-verified-empty-tested.json'), false);
+  run(hpV, path.join(hpF, 'invalid-verified-passed-false.json'), false);
 
   // ── OpenSpec + Superpowers ─────────────────────────────────────────────────
   console.log('\n## OpenSpec + Superpowers Workflow — change-folder validator');
@@ -183,12 +190,15 @@ function main() {
   const findV = P('plugins/code-audit-rigor/validators/validate-finding.cjs');
   run(findV, path.join(carF, 'finding-valid.json'), true);
   run(findV, path.join(carF, 'finding-invalid-no-crossrefs.json'), false);
+  run(findV, path.join(carF, 'finding-invalid-crossref-incomplete.json'), false);
+  run(findV, path.join(carF, 'finding-invalid-bad-security.json'), false);
 
   // ── Code Audit Rigor: review-branch-results ────────────────────────────────
   console.log('\n## Code Audit Rigor — review-branch-results validator');
   const rbV = P('plugins/code-audit-rigor/validators/validate-review-branch-results.cjs');
   run(rbV, path.join(carF, 'review-branch-valid.json'), true);
   run(rbV, path.join(carF, 'review-branch-invalid-skip-no-reason.json'), false);
+  run(rbV, path.join(carF, 'review-branch-invalid-noninteger-line.json'), false);
 
   // ── Code Audit Rigor: review-pr-comments ──────────────────────────────────
   console.log('\n## Code Audit Rigor — review-pr-comments validator');
@@ -198,6 +208,8 @@ function main() {
   run(prV, path.join(carF, 'review-pr-comments-invalid-block-no-rationale.json'), false);
   run(prV, path.join(carF, 'review-pr-comments-invalid-fix-no-evidence.json'), false);
   run(prV, path.join(carF, 'review-pr-comments-invalid-missing-endpoint.json'), false);
+  run(prV, path.join(carF, 'review-pr-comments-invalid-negative-prnumber.json'), false);
+  run(prV, path.join(carF, 'review-pr-comments-invalid-skip-no-rationale.json'), false);
 
   // ── Code Audit Rigor: audit-review-fix-result ─────────────────────────────
   console.log('\n## Code Audit Rigor — audit-review-fix-result validator');
@@ -208,6 +220,12 @@ function main() {
   run(arfV, path.join(carF, 'audit-review-fix-invalid-follow-up-tests-failed.json'), false);
   run(arfV, path.join(carF, 'audit-review-fix-invalid-impossible-status.json'), false);
   run(arfV, path.join(carF, 'audit-review-fix-invalid-tests-fail.json'), false);
+  run(arfV, path.join(carF, 'audit-review-fix-invalid-user-review-tests-failed.json'), false);
+  run(arfV, path.join(carF, 'audit-review-fix-invalid-ready-no-fixes.json'), false);
+  run(arfV, path.join(carF, 'audit-review-fix-invalid-clean-active.json'), false);
+  run(arfV, path.join(carF, 'audit-review-fix-invalid-tests-failed-no-fix.json'), false);
+  run(arfV, path.join(carF, 'audit-review-fix-invalid-follow-up-no-deferred.json'), false);
+  run(arfV, path.join(carF, 'audit-review-fix-invalid-empty-diff-nonzero.json'), false);
 
   // ── Code Audit Rigor: coverage-reconcile ──────────────────────────────────
   console.log('\n## Code Audit Rigor — coverage-reconcile validator');
@@ -217,6 +235,7 @@ function main() {
   run(covV, path.join(carF, 'coverage-reconcile-invalid-missing-status.json'), false);
   run(covV, path.join(carF, 'coverage-reconcile-invalid-skip-no-reason.json'), false);
   run(covV, path.join(carF, 'coverage-reconcile-invalid-suggestion-no-file.json'), false);
+  run(covV, path.join(carF, 'coverage-reconcile-invalid-scoped-no-file.json'), false);
   run(covV, path.join(carF, 'coverage-reconcile-invalid-unaccounted.json'), false);
 
   // ── Summary ────────────────────────────────────────────────────────────────

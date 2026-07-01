@@ -58,7 +58,13 @@ function validateCoverage(coverage, errors) {
   if (coverage.verificationStatus === 'VERIFIED') {
     const hasTested = Array.isArray(coverage.tested) && coverage.tested.length > 0;
     if (!hasTested) {
-      errors.push("coverage.verificationStatus is 'VERIFIED' but coverage.tested is empty — verified coverage requires at least one tested requirement with evidence");
+      errors.push("coverage.verificationStatus is 'VERIFIED' but coverage.tested is empty — verified coverage requires at least one tested requirement");
+    } else {
+      coverage.tested.forEach((t, i) => {
+        if (t.passed !== true) {
+          errors.push(`coverage.verificationStatus is 'VERIFIED' but coverage.tested[${i}].passed is not true — every tested requirement must pass for VERIFIED`);
+        }
+      });
     }
   }
 
@@ -108,10 +114,6 @@ function validate(data) {
   for (const f of required) {
     if (data[f] === undefined || data[f] === null) errors.push(`Missing required field: ${f}`);
   }
-  if (errors.find(e => e.includes('Missing required field'))) {
-    // Still try to validate present fields
-  }
-
   if (data.implementerId !== undefined && (!data.implementerId || typeof data.implementerId !== 'string')) {
     errors.push('implementerId must be a non-empty string');
   }

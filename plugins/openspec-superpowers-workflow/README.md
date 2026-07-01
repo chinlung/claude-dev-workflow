@@ -89,3 +89,5 @@ node plugins/openspec-superpowers-workflow/skills/openspec-superpowers-workflow/
 # Run all fixture checks
 node scripts/validate-fixtures.cjs
 ```
+
+> The `.cjs` validator is a fast, lenient **pre-check**: it confirms the required files exist and that each `### Requirement:` block's first paragraph contains SHALL/MUST (a bullet immediately after the heading is treated as that paragraph). It does not fully replicate `openspec validate --strict` — the strict CLI remains the authoritative gate (e.g. it rejects a SHALL that appears only inside a bullet list). Run `openspec validate --strict` before archiving.

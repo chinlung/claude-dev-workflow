@@ -55,7 +55,7 @@
     "dissent": null
   },
   "validation": {
-    "verdict": "APPROVED",
+    "verdict": "verified",
     "issues": []
   }
 }

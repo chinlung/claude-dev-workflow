@@ -32,7 +32,7 @@
       "required": ["stride", "cwe"],
       "properties": {
         "stride": { "type": "string", "enum": ["S", "T", "R", "I", "D", "E"] },
-        "cwe": { "type": "string", "pattern": "^CWE-[0-9]+" }
+        "cwe": { "type": "string", "pattern": "^CWE-[0-9]+$" }
       }
     }
   }

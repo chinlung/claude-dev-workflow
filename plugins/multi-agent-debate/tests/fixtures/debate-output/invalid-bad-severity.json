@@ -1,0 +1,29 @@
+{
+  "metadata": {
+    "sessionId": "debate-2026-004",
+    "timestamp": "2026-07-01T00:00:00Z",
+    "model": "claude-opus-4"
+  },
+  "requirement": "Choose the best data persistence strategy for a high-traffic read-heavy API.",
+  "proposals": [
+    {
+      "id": "p1",
+      "source": "perspective-a",
+      "title": "Redis Cache + PostgreSQL",
+      "summary": "Use Redis as a caching layer in front of PostgreSQL.",
+      "scores": { "feasibility": 8, "completeness": 7, "riskLevel": 3 },
+      "rationale": "Proven combination."
+    }
+  ],
+  "critiqueRounds": [
+    {
+      "round": 1,
+      "criticisms": [
+        { "proposalId": "p1", "issue": "Cache stampede risk.", "severity": "blocker" }
+      ]
+    }
+  ],
+  "consensus": { "reached": true, "summary": "Redis acceptable.", "agreedProposals": ["p1"] },
+  "finalDecision": { "selectedProposal": "p1", "reasoning": "Best fit." },
+  "validation": { "verdict": "verified", "issues": [] }
+}

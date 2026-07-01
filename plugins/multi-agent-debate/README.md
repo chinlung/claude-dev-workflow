@@ -36,7 +36,7 @@ Every debate produces a machine-readable artifact validated against `schema/deba
   "critiqueRounds": [ { "round": 1, "criticisms": [...] } ],
   "consensus": { "reached": true, "summary": "...", "agreedProposals": ["p2"] },
   "finalDecision": { "selectedProposal": "p2", "reasoning": "..." },
-  "validation": { "verdict": "APPROVED" }
+  "validation": { "verdict": "verified" }
 }
 ```
 

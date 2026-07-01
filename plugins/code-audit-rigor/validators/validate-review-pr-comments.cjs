@@ -42,8 +42,8 @@ function validateComment(c, i) {
 
 function validate(data) {
   const errors = [];
-  if (!data.prNumber || typeof data.prNumber !== 'number' || !Number.isInteger(data.prNumber)) {
-    errors.push('prNumber required (integer)');
+  if (!data.prNumber || typeof data.prNumber !== 'number' || !Number.isInteger(data.prNumber) || data.prNumber < 1) {
+    errors.push('prNumber required (integer >= 1)');
   }
   if (!Array.isArray(data.comments)) {
     errors.push('comments must be an array');
