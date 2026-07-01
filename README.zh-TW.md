@@ -71,7 +71,7 @@
 node scripts/validate-fixtures.cjs
 ```
 
-此命令對所有插件執行 70 個 fixture 檢查（有效 fixture 期望 exit 0，無效 fixture 期望 non-zero），不需要任何安裝。
+此命令對所有插件執行 119 個 fixture 檢查（有效 fixture 期望 exit 0，無效 fixture 期望 non-zero，含從合法 base 產生的單欄位變異檢查），不需要任何安裝。
 
 個別驗證器範例：
 

@@ -17,6 +17,7 @@
 
 const { execFileSync } = require('child_process');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
@@ -133,6 +134,51 @@ function checkPriorDebate(fixturePath, expectValid) {
     else console.error('     expected invalid but passed all shape checks');
     failed++;
     failures.push(label);
+  }
+}
+
+let tmpCounter = 0;
+/**
+ * Generator-based coverage for the required-field / type / enum long tail.
+ * Loads a KNOWN-VALID base fixture, applies exactly one mutation, and asserts the
+ * validator rejects it. Isolation is guaranteed by construction: a valid base plus
+ * a single-field change means a non-zero exit can only come from that field's rule.
+ * Keeps the repo free of dozens of near-duplicate static fixtures.
+ */
+function runMutations(validator, baseFixture, group, mutations) {
+  const rel = path.relative(ROOT, baseFixture);
+  let base;
+  try {
+    base = JSON.parse(fs.readFileSync(baseFixture, 'utf8'));
+  } catch (e) {
+    console.error(`  ✗  ${group}: cannot load valid base ${rel} — ${e.message}`);
+    failed++;
+    failures.push(group);
+    return;
+  }
+  for (const m of mutations) {
+    const obj = JSON.parse(JSON.stringify(base));
+    m.mutate(obj);
+    const tmp = path.join(os.tmpdir(), `validate-fixtures-mut-${process.pid}-${tmpCounter++}.json`);
+    let exitCode = 0;
+    try {
+      fs.writeFileSync(tmp, JSON.stringify(obj));
+      execFileSync(process.execPath, [validator, tmp], { stdio: 'pipe' });
+      exitCode = 0;
+    } catch (e) {
+      exitCode = typeof e.status === 'number' ? e.status : 1;
+    } finally {
+      try { fs.unlinkSync(tmp); } catch (e) { /* ignore cleanup errors */ }
+    }
+    const label = `${group} ← mutate: ${m.label}`;
+    if (exitCode !== 0) {
+      console.log(`  ✓  ${label}`);
+      passed++;
+    } else {
+      console.error(`  ✗  ${label}: expected rejection (exit non-zero), got exit 0`);
+      failed++;
+      failures.push(label);
+    }
   }
 }
 
@@ -253,6 +299,73 @@ function main() {
   run(covV, path.join(carF, 'coverage-reconcile-invalid-not-array.json'), false);
   run(covV, path.join(carF, 'coverage-reconcile-invalid-unknown-status.json'), false);
   run(covV, path.join(carF, 'coverage-reconcile-invalid-unaccounted.json'), false);
+
+  // ── Long-tail required-field / type / enum coverage (generated mutations) ────
+  console.log('\n## Required-field / type / enum coverage (single-field mutations off valid bases)');
+
+  runMutations(debateV, path.join(debateF, 'valid-basic.json'), 'debate-output', [
+    { label: 'delete metadata', mutate: o => { delete o.metadata; } },
+    { label: 'metadata.sessionId empty', mutate: o => { o.metadata.sessionId = ''; } },
+    { label: 'requirement empty', mutate: o => { o.requirement = ''; } },
+    { label: 'proposals empty', mutate: o => { o.proposals = []; } },
+    { label: 'proposal missing id', mutate: o => { delete o.proposals[0].id; } },
+    { label: 'proposal missing source', mutate: o => { delete o.proposals[0].source; } },
+    { label: 'proposal missing title', mutate: o => { delete o.proposals[0].title; } },
+    { label: 'proposal missing summary', mutate: o => { delete o.proposals[0].summary; } },
+    { label: 'proposal missing rationale', mutate: o => { delete o.proposals[0].rationale; } },
+    { label: 'proposal missing scores', mutate: o => { delete o.proposals[0].scores; } },
+    { label: 'criticism missing proposalId', mutate: o => { delete o.critiqueRounds[0].criticisms[0].proposalId; } },
+    { label: 'criticism missing issue', mutate: o => { delete o.critiqueRounds[0].criticisms[0].issue; } },
+    { label: 'consensus.summary empty', mutate: o => { o.consensus.summary = ''; } },
+    { label: 'consensus.agreedProposals not array', mutate: o => { o.consensus.agreedProposals = 'x'; } },
+    { label: 'finalDecision missing selectedProposal', mutate: o => { delete o.finalDecision.selectedProposal; } },
+    { label: 'finalDecision missing reasoning', mutate: o => { delete o.finalDecision.reasoning; } },
+    { label: 'delete validation', mutate: o => { delete o.validation; } },
+  ]);
+
+  runMutations(findV, path.join(carF, 'finding-valid.json'), 'finding', [
+    { label: 'severity bad enum', mutate: o => { o.severity = 'SEV'; } },
+    { label: 'confidence out of range', mutate: o => { o.confidence = 150; } },
+    { label: 'ev not number', mutate: o => { o.ev = 'high'; } },
+    { label: 'decision bad enum', mutate: o => { o.decision = 'MAYBE'; } },
+    { label: 'crossRef missing file', mutate: o => { delete o.crossReferences[0].file; } },
+    { label: 'crossRef missing lines', mutate: o => { delete o.crossReferences[0].lines; } },
+  ]);
+
+  runMutations(rbV, path.join(carF, 'review-branch-valid.json'), 'review-branch-results', [
+    { label: 'branch empty', mutate: o => { o.branch = ''; } },
+    { label: 'scopedFiles empty', mutate: o => { o.scopedFiles = []; } },
+    { label: 'scopedFile missing file', mutate: o => { delete o.scopedFiles[0].file; } },
+    { label: 'scopedFile bad status', mutate: o => { o.scopedFiles[0].status = 'wip'; } },
+    { label: 'suggestion missing quotedCode', mutate: o => { delete o.suggestions[0].quotedCode; } },
+    { label: 'suggestion missing description', mutate: o => { delete o.suggestions[0].description; } },
+    { label: 'suggestion bad severity', mutate: o => { o.suggestions[0].severity = 'SEV'; } },
+    { label: 'verification missing id', mutate: o => { delete o.verifications[0].id; } },
+    { label: 'verification bad verdict', mutate: o => { o.verifications[0].verdict = 'MAYBE'; } },
+  ]);
+
+  runMutations(prV, path.join(carF, 'review-pr-comments-valid.json'), 'review-pr-comments', [
+    { label: 'comments not array', mutate: o => { o.comments = 'x'; } },
+    { label: 'comment missing id', mutate: o => { delete o.comments[0].id; } },
+    { label: 'comment missing author', mutate: o => { delete o.comments[0].author; } },
+    { label: 'comment missing body', mutate: o => { delete o.comments[0].body; } },
+    { label: 'comment bad classification', mutate: o => { o.comments[0].classification = 'weird'; } },
+    { label: 'comment bad decision', mutate: o => { o.comments[0].decision = 'maybe'; } },
+  ]);
+
+  runMutations(hpV, path.join(hpF, 'valid-basic.json'), 'high-precision-output', [
+    { label: 'implementerId empty', mutate: o => { o.implementerId = ''; } },
+    { label: 'completionSignal bad enum', mutate: o => { o.completionSignal = 'DONE'; } },
+    { label: 'finding missing source', mutate: o => { delete o.findings[0].source; } },
+    { label: 'finding bad severity', mutate: o => { o.findings[0].severity = 'sev'; } },
+    { label: 'finding missing description', mutate: o => { delete o.findings[0].description; } },
+    { label: 'finding missing location', mutate: o => { delete o.findings[0].location; } },
+    { label: 'finding missing evidence', mutate: o => { delete o.findings[0].evidence; } },
+    { label: 'tested missing requirement', mutate: o => { delete o.coverage.tested[0].requirement; } },
+    { label: 'tested missing testCase', mutate: o => { delete o.coverage.tested[0].testCase; } },
+    { label: 'tested passed not boolean', mutate: o => { o.coverage.tested[0].passed = 'yes'; } },
+    { label: 'verificationStatus bad enum', mutate: o => { o.coverage.verificationStatus = 'DONE'; } },
+  ]);
 
   // ── Summary ────────────────────────────────────────────────────────────────
   console.log(`\n=== Summary: ${passed} passed, ${failed} failed ===`);
