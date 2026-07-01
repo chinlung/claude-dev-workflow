@@ -1,0 +1,17 @@
+{
+  "id": "F-022",
+  "title": "Open redirect in login return URL",
+  "severity": "MEDIUM",
+  "confidence": 150,
+  "ev": 7.0,
+  "decision": "FIX",
+  "description": "The return_to parameter is not validated against an allowlist.",
+  "crossReferences": [
+    {
+      "file": "src/auth/login.ts",
+      "lines": "40-42",
+      "quotedCode": "res.redirect(req.query.return_to);",
+      "note": "Unvalidated redirect target enables phishing."
+    }
+  ]
+}

@@ -164,6 +164,9 @@ function main() {
   checkPriorDebate(path.join(priorF, 'invalid-suppresses-new-findings.json'), false);
   checkPriorDebate(path.join(priorF, 'invalid-suppresses-new-decisions.json'), false);
   checkPriorDebate(path.join(priorF, 'invalid-missing-applicability-note.json'), false);
+  checkPriorDebate(path.join(priorF, 'invalid-missing-required.json'), false);
+  checkPriorDebate(path.join(priorF, 'invalid-bad-schemaversion.json'), false);
+  checkPriorDebate(path.join(priorF, 'invalid-reuseconstraint-not-object.json'), false);
 
   // ── High-Precision Dev ────────────────────────────────────────────────────
   console.log('\n## High-Precision Dev — output validator');
@@ -176,6 +179,8 @@ function main() {
   run(hpV, path.join(hpF, 'invalid-prior-run-suppresses.json'), false);
   run(hpV, path.join(hpF, 'invalid-verified-empty-tested.json'), false);
   run(hpV, path.join(hpF, 'invalid-verified-passed-false.json'), false);
+  run(hpV, path.join(hpF, 'invalid-priorref-no-artifact.json'), false);
+  run(hpV, path.join(hpF, 'invalid-attackclass-outcome.json'), false);
 
   // ── OpenSpec + Superpowers ─────────────────────────────────────────────────
   console.log('\n## OpenSpec + Superpowers Workflow — change-folder validator');
@@ -183,6 +188,8 @@ function main() {
   const openF = P('plugins/openspec-superpowers-workflow/tests/fixtures/openspec-workflow');
   run(openV, path.join(openF, 'valid-change'), true);
   run(openV, path.join(openF, 'invalid-missing-shall'), false);
+  run(openV, path.join(openF, 'invalid-missing-file'), false);
+  run(openV, path.join(openF, 'invalid-no-spec'), false);
 
   // ── Code Audit Rigor: finding ──────────────────────────────────────────────
   console.log('\n## Code Audit Rigor — finding validator');
@@ -192,6 +199,9 @@ function main() {
   run(findV, path.join(carF, 'finding-invalid-no-crossrefs.json'), false);
   run(findV, path.join(carF, 'finding-invalid-crossref-incomplete.json'), false);
   run(findV, path.join(carF, 'finding-invalid-bad-security.json'), false);
+  run(findV, path.join(carF, 'finding-invalid-empty-crossrefs.json'), false);
+  run(findV, path.join(carF, 'finding-invalid-bad-decision.json'), false);
+  run(findV, path.join(carF, 'finding-invalid-bad-confidence.json'), false);
 
   // ── Code Audit Rigor: review-branch-results ────────────────────────────────
   console.log('\n## Code Audit Rigor — review-branch-results validator');
@@ -226,6 +236,9 @@ function main() {
   run(arfV, path.join(carF, 'audit-review-fix-invalid-tests-failed-no-fix.json'), false);
   run(arfV, path.join(carF, 'audit-review-fix-invalid-follow-up-no-deferred.json'), false);
   run(arfV, path.join(carF, 'audit-review-fix-invalid-empty-diff-nonzero.json'), false);
+  run(arfV, path.join(carF, 'audit-review-fix-invalid-workflow-return-impossible.json'), false);
+  run(arfV, path.join(carF, 'audit-review-fix-invalid-follow-up-userreview.json'), false);
+  run(arfV, path.join(carF, 'audit-review-fix-invalid-tests-failed-passing.json'), false);
 
   // ── Code Audit Rigor: coverage-reconcile ──────────────────────────────────
   console.log('\n## Code Audit Rigor — coverage-reconcile validator');
@@ -236,6 +249,9 @@ function main() {
   run(covV, path.join(carF, 'coverage-reconcile-invalid-skip-no-reason.json'), false);
   run(covV, path.join(carF, 'coverage-reconcile-invalid-suggestion-no-file.json'), false);
   run(covV, path.join(carF, 'coverage-reconcile-invalid-scoped-no-file.json'), false);
+  run(covV, path.join(carF, 'coverage-reconcile-invalid-empty-scoped.json'), false);
+  run(covV, path.join(carF, 'coverage-reconcile-invalid-not-array.json'), false);
+  run(covV, path.join(carF, 'coverage-reconcile-invalid-unknown-status.json'), false);
   run(covV, path.join(carF, 'coverage-reconcile-invalid-unaccounted.json'), false);
 
   // ── Summary ────────────────────────────────────────────────────────────────

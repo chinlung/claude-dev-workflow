@@ -71,7 +71,7 @@ All plugin output schemas have zero-dependency Node validators with fixture suit
 node scripts/validate-fixtures.cjs
 ```
 
-This validates every valid fixture exits 0 and every invalid fixture exits non-zero across all plugins (54 fixture checks, no install required).
+This validates every valid fixture exits 0 and every invalid fixture exits non-zero across all plugins (70 fixture checks, no install required).
 
 Individual validator examples:
 

@@ -1,0 +1,10 @@
+{
+  "id": "F-020",
+  "title": "Missing authorization check on admin route",
+  "severity": "HIGH",
+  "confidence": 85,
+  "ev": 14.0,
+  "decision": "FIX",
+  "description": "The admin route handler does not verify the caller's role.",
+  "crossReferences": []
+}

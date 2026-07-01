@@ -1,0 +1,15 @@
+{
+  "status": "REQUIRES_FOLLOW_UP",
+  "summary": {
+    "total": 2,
+    "fixed": 0,
+    "skipped": 0,
+    "userReviewRequired": 1,
+    "deferred": 1,
+    "testsPass": true
+  },
+  "items": [
+    { "id": "F-001", "status": "userReviewRequired" },
+    { "id": "F-002", "status": "deferred" }
+  ]
+}

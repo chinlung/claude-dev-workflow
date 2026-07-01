@@ -1,0 +1,21 @@
+{
+  "status": "READY_FOR_COMMIT",
+  "reportPath": "audits/workflow-audit-2026-07-01.md",
+  "testsPass": true,
+  "counts": {
+    "totalReviewed": 3,
+    "applied": 1,
+    "skipped": 1,
+    "userReviewRequired": 0,
+    "deferred": 0,
+    "dismissed": 1
+  },
+  "applied": [
+    { "id": "F-001", "file": "src/auth.ts", "fixSummary": "Parameterized the query." }
+  ],
+  "userReviewRequired": [],
+  "deferred": [],
+  "skipped": [
+    { "id": "F-002", "file": "src/util.ts", "skipReason": "False positive." }
+  ]
+}
