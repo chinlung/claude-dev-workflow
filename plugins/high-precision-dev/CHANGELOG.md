@@ -5,6 +5,13 @@ All notable changes to the `high-precision-dev` plugin will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-07-01
+
+### Added
+
+- **Controller-run environmental test gate before Phase 4 completes.** `commands/start.md` Phase 4 now has the controller actually run the SPEC test suite and capture its exact exit code (`WF_TEST_EXIT=$?`) after the verifier produces the merged implementation — turning "tests pass" from an agent prose *claim* into an environmental *fact*. A non-zero exit routes into the existing capped fix-loop as an additional exit condition (same 3-iteration cap → `AskUserQuestion`); unparseable output fails closed. `agents/verifier.md` now requires the unit tests to be actually runnable and records the exit code in VERIFICATION.md.
+- Deliberately a **controller-assembled environmental check** (reads an exit code): it does **not** reintroduce a structured-output contract or the removed L2/L3 framework. It is the single gate satisfying the rule "a gate is justified iff (a) it reads an environmental fact (not an agent assertion) **and** (b) a downstream consumer acts on it" — here (a) the test exit code, (b) the capped fix-loop's exit condition. Outcome of a `/debate` re-examination of the 1.2.0 L2 removal; see `docs/loop-design-review-2026-07-01.md`.
+
 ## [1.2.1] - 2026-07-01
 
 ### Fixed

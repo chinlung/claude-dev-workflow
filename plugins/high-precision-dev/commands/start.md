@@ -148,6 +148,24 @@ Task(
 
 ---
 
+## Phase 4 完成前：環境測試閘門（Controller 親自執行，非 agent 宣稱）
+
+verifier 產出最終實作後，**由 controller 親自跑一次 SPEC 測試套件**，把「測試通過」從 agent 的 prose 宣稱升級為**環境事實**（exit code）：
+
+1. 在最終合併的實作目錄跑測試，擷取**確切 exit code**（附哨符）：
+   ```bash
+   <SPEC.md 指定或專案偵測到的 test 指令> ; echo "WF_TEST_EXIT=$?"
+   ```
+2. 判定：
+   - **exit 0** → 測試真的跑過且通過 → 可進入完成報告
+   - **exit ≠ 0**（含編譯/收集/fatal 錯誤）→ **接進 Phase 3.5 既有的 capped fix-loop 當多一個退出條件**：把測試失敗視為一條 severity≥3 發現退回對應 implementer 修復，修完 controller **重跑本閘門**；沿用同一個 3 次上限（撞頂走 AskUserQuestion，不靜默進第 4 次）
+   - 測試指令無法執行 / 無法解析 exit code → **不得宣稱通過**，在完成報告明確標註並退回人工（fail closed）
+3. 完成報告的「SPEC 需求測試」列必須記錄**實際 exit code**，不接受「測試已寫」這種 prose 宣稱。
+
+> **設計紀律（元規則）**：此閘門刻意是 **controller 組裝的環境檢查**（讀 exit code），**不要求任何 subagent 產出結構化 JSON**——避免重蹈曾被移除的 L2 死碼（validator 驗一個沒 agent 會產出的形狀）。它是 HP 唯一通過「閘門有資格存在 iff (a) 讀環境事實而非 agent 斷言，且 (b) 有下游消費者據其結果行動」門檻的機器閘門：(a) 讀 exit code、(b) 消費者是既有 capped fix-loop 的退出條件。**不新增結構化輸出合約、不重加 L2/L3 框架。**
+
+---
+
 ## 完成報告
 
 Phase 4 完成後，向使用者彙整報告：

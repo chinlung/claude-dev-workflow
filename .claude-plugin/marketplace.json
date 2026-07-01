@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "Claude Code plugins collection by scl",
-    "version": "1.8.7"
+    "version": "1.8.8"
   },
   "plugins": [
     {
@@ -26,7 +26,7 @@
       "name": "high-precision-dev",
       "source": "./plugins/high-precision-dev",
       "description": "高精確度多 Agent 開發模式 - 透過認識論分工將錯誤率從 p 壓縮至 p^4",
-      "version": "1.2.1",
+      "version": "1.3.0",
       "keywords": ["high-precision", "multi-agent", "adversarial-review", "verification", "safety-critical"]
     },
     {

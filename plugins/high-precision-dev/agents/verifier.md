@@ -69,7 +69,7 @@ capabilities:
 
 最終版本必須：
 1. 通過 SPEC.md 所有需求的逐條驗證
-2. 附上完整的 unit test（涵蓋所有邊界條件表中的 case）
+2. 附上完整的 unit test（涵蓋所有邊界條件表中的 case），且**必須是可實際執行的**——controller 會在 Phase 4 完成前**親自實跑測試並以 exit code 為閘門**（失敗接進 capped fix-loop）；「測試已寫」的 prose 宣稱不被接受，測試必須真能跑、真能綠
 3. 附上 VERIFICATION.md
 
 ---
@@ -107,12 +107,15 @@ capabilities:
 
 ## 測試覆蓋聲明
 
-以下 SPEC.md 邊界條件均有對應的 unit test：
+以下 SPEC.md 邊界條件均有對應的 unit test（測試必須可實跑；controller 的環境閘門會記錄實際 exit code）：
 - [邊界條件 1]：測試 case [名稱]
 - [邊界條件 2]：測試 case [名稱]
 
 未覆蓋的情況（如有）：
 - [說明為什麼沒有覆蓋]
+
+**測試執行結果**（由 controller 的 Phase 4 環境閘門填入，非本 agent 宣稱）：
+- 測試指令：[指令]　exit code：[實際碼]（0 = 真的全綠）
 ```
 
 ---
