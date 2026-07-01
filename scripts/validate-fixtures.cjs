@@ -65,78 +65,6 @@ function run(validator, fixture, expectValid) {
   }
 }
 
-/**
- * prior-debate.schema.json has no dedicated validator CLI.
- * We enforce the key contract directly here: schemaVersion is current,
- * reuseConstraint is present, suppressNew* are false, and an applicability
- * note documents why the prior run may inform this run.
- */
-function checkPriorDebate(fixturePath, expectValid) {
-  const label = `prior-debate shape check ← ${path.relative(ROOT, fixturePath)}`;
-  let raw;
-  try {
-    raw = fs.readFileSync(fixturePath, 'utf8');
-  } catch (e) {
-    console.error(`  ✗  ${label}: cannot read file — ${e.message}`);
-    failed++;
-    failures.push(label);
-    return;
-  }
-  let data;
-  try {
-    data = JSON.parse(raw);
-  } catch (e) {
-    if (!expectValid) {
-      console.log(`  ✓  ${label} (invalid JSON as expected)`);
-      passed++;
-    } else {
-      console.error(`  ✗  ${label}: invalid JSON — ${e.message}`);
-      failed++;
-      failures.push(label);
-    }
-    return;
-  }
-
-  const errors = [];
-  const required = [
-    'schemaVersion', 'topic', 'artifactRef', 'priorDecision',
-    'rejectedAlternatives', 'unresolvedRisks', 'coverage',
-    'validatorVerdict', 'reuseConstraint',
-  ];
-  for (const f of required) {
-    if (data[f] === undefined || data[f] === null) errors.push(`Missing required field: ${f}`);
-  }
-  if (data.schemaVersion !== '1.0') {
-    errors.push('schemaVersion must be "1.0"');
-  }
-  if (!data.reuseConstraint || typeof data.reuseConstraint !== 'object' || Array.isArray(data.reuseConstraint)) {
-    errors.push('reuseConstraint must be an object');
-  } else {
-    if (data.reuseConstraint.suppressNewFindings !== false) {
-      errors.push('reuseConstraint.suppressNewFindings MUST be false');
-    }
-    if (data.reuseConstraint.suppressNewDecisions !== false) {
-      errors.push('reuseConstraint.suppressNewDecisions MUST be false');
-    }
-    if (!data.reuseConstraint.applicabilityNote || typeof data.reuseConstraint.applicabilityNote !== 'string') {
-      errors.push('reuseConstraint.applicabilityNote required');
-    }
-  }
-
-  const isValid = errors.length === 0;
-  const ok = expectValid ? isValid : !isValid;
-  if (ok) {
-    console.log(`  ✓  ${label}`);
-    passed++;
-  } else {
-    console.error(`  ✗  ${label}`);
-    if (expectValid) errors.forEach(e => console.error(`     - ${e}`));
-    else console.error('     expected invalid but passed all shape checks');
-    failed++;
-    failures.push(label);
-  }
-}
-
 let tmpCounter = 0;
 /**
  * Generator-based coverage for the required-field / type / enum long tail.
@@ -182,6 +110,85 @@ function runMutations(validator, baseFixture, group, mutations) {
   }
 }
 
+/** Recursively collect string enum values and regex patterns declared in a schema. */
+function collectSchemaEnums(node, acc) {
+  if (!node || typeof node !== 'object') return;
+  if (Array.isArray(node.enum)) {
+    for (const v of node.enum) if (typeof v === 'string') acc.enumValues.add(v);
+  }
+  if (typeof node.pattern === 'string') acc.patterns.add(node.pattern);
+  for (const k of Object.keys(node)) {
+    if (node[k] && typeof node[k] === 'object') collectSchemaEnums(node[k], acc);
+  }
+}
+
+/**
+ * Schema ↔ validator consistency gate. Nothing executes the JSON schemas at
+ * runtime (no ajv), so schema/validator drift is otherwise invisible. This
+ * makes the schema a live layer: bidirectional value-level diff —
+ *   1. every string enum value / pattern declared in the schema(s) must appear
+ *      in the validator source (schema promises → validator enforces), and
+ *   2. every value in the validator's `*_ENUM` arrays must appear in the
+ *      schema text (validator enforces → schema documents).
+ * A mismatch (e.g. renaming an enum on one side only) fails the suite.
+ */
+function checkSchemaConsistency(schemaPaths, validatorPath, group) {
+  let src;
+  try {
+    src = fs.readFileSync(validatorPath, 'utf8');
+  } catch (e) {
+    console.error(`  ✗  ${group}: cannot read validator — ${e.message}`);
+    failed++;
+    failures.push(group);
+    return;
+  }
+  const acc = { enumValues: new Set(), patterns: new Set() };
+  const schemaTexts = [];
+  for (const sp of schemaPaths) {
+    let schema;
+    try {
+      const rawSchema = fs.readFileSync(sp, 'utf8');
+      schema = JSON.parse(rawSchema);
+      schemaTexts.push(rawSchema);
+    } catch (e) {
+      console.error(`  ✗  ${group}: cannot read schema ${path.relative(ROOT, sp)} — ${e.message}`);
+      failed++;
+      failures.push(group);
+      return;
+    }
+    collectSchemaEnums(schema, acc);
+  }
+  const schemaText = schemaTexts.join('\n');
+
+  const drift = [];
+  for (const v of acc.enumValues) {
+    if (!src.includes(v)) drift.push(`schema enum value "${v}" is not enforced in the validator`);
+  }
+  for (const p of acc.patterns) {
+    if (!src.includes(p)) drift.push(`schema pattern "${p}" is not present in the validator`);
+  }
+  const enumArrayRe = /_ENUM\s*=\s*\[([^\]]*)\]/g;
+  let m;
+  while ((m = enumArrayRe.exec(src)) !== null) {
+    const quoted = m[1].match(/'([^']*)'|"([^"]*)"/g) || [];
+    for (const raw of quoted) {
+      const val = raw.slice(1, -1);
+      if (!schemaText.includes(val)) drift.push(`validator enum value "${val}" is not declared in the schema`);
+    }
+  }
+
+  const label = `${group} (schema ↔ validator)`;
+  if (drift.length === 0) {
+    console.log(`  ✓  ${label}`);
+    passed++;
+  } else {
+    console.error(`  ✗  ${label}`);
+    drift.forEach(d => console.error(`     - ${d}`));
+    failed++;
+    failures.push(label);
+  }
+}
+
 // ── path helpers ──────────────────────────────────────────────────────────────
 
 const P = (...parts) => path.join(ROOT, ...parts);
@@ -204,15 +211,16 @@ function main() {
   run(debateV, path.join(debateF, 'invalid-consensus-not-boolean.json'), false);
   run(debateV, path.join(debateF, 'invalid-empty-critique-rounds.json'), false);
 
-  console.log('\n## Multi-Agent Debate — prior-debate schema (shape checks)');
+  console.log('\n## Multi-Agent Debate — prior-debate validator');
+  const priorV = P('plugins/multi-agent-debate/validators/validate-prior-debate.cjs');
   const priorF = P('plugins/multi-agent-debate/tests/fixtures/prior-debate');
-  checkPriorDebate(path.join(priorF, 'valid-prior-debate.json'), true);
-  checkPriorDebate(path.join(priorF, 'invalid-suppresses-new-findings.json'), false);
-  checkPriorDebate(path.join(priorF, 'invalid-suppresses-new-decisions.json'), false);
-  checkPriorDebate(path.join(priorF, 'invalid-missing-applicability-note.json'), false);
-  checkPriorDebate(path.join(priorF, 'invalid-missing-required.json'), false);
-  checkPriorDebate(path.join(priorF, 'invalid-bad-schemaversion.json'), false);
-  checkPriorDebate(path.join(priorF, 'invalid-reuseconstraint-not-object.json'), false);
+  run(priorV, path.join(priorF, 'valid-prior-debate.json'), true);
+  run(priorV, path.join(priorF, 'invalid-suppresses-new-findings.json'), false);
+  run(priorV, path.join(priorF, 'invalid-suppresses-new-decisions.json'), false);
+  run(priorV, path.join(priorF, 'invalid-missing-applicability-note.json'), false);
+  run(priorV, path.join(priorF, 'invalid-missing-required.json'), false);
+  run(priorV, path.join(priorF, 'invalid-bad-schemaversion.json'), false);
+  run(priorV, path.join(priorF, 'invalid-reuseconstraint-not-object.json'), false);
 
   // ── High-Precision Dev ────────────────────────────────────────────────────
   console.log('\n## High-Precision Dev — output validator');
@@ -366,6 +374,29 @@ function main() {
     { label: 'tested passed not boolean', mutate: o => { o.coverage.tested[0].passed = 'yes'; } },
     { label: 'verificationStatus bad enum', mutate: o => { o.coverage.verificationStatus = 'DONE'; } },
   ]);
+
+  runMutations(priorV, path.join(priorF, 'valid-prior-debate.json'), 'prior-debate', [
+    { label: 'validatorVerdict bad enum', mutate: o => { o.validatorVerdict = 'APPROVED'; } },
+    { label: 'priorDecision.confidenceLevel bad enum', mutate: o => { o.priorDecision.confidenceLevel = 'VERY_HIGH'; } },
+    { label: 'priorDecision missing selectedProposal', mutate: o => { delete o.priorDecision.selectedProposal; } },
+    { label: 'unresolvedRisks bad severity', mutate: o => { o.unresolvedRisks[0].severity = 'blocker'; } },
+    { label: 'rejectedAlternatives missing proposal', mutate: o => { delete o.rejectedAlternatives[0].proposal; } },
+    { label: 'coverage.covered missing aspect', mutate: o => { delete o.coverage.covered[0].aspect; } },
+    { label: 'coverage.notCovered missing reason', mutate: o => { delete o.coverage.notCovered[0].reason; } },
+  ]);
+
+  // ── Schema ↔ validator consistency (makes the schema a live, checked layer) ──
+  console.log('\n## Schema ↔ validator consistency (enum/pattern drift detection)');
+  checkSchemaConsistency([P('plugins/code-audit-rigor/schema/finding.schema.json')], findV, 'finding');
+  checkSchemaConsistency([P('plugins/code-audit-rigor/schema/review-branch-results.schema.json')], rbV, 'review-branch-results');
+  checkSchemaConsistency([P('plugins/code-audit-rigor/schema/review-pr-comments.schema.json')], prV, 'review-pr-comments');
+  checkSchemaConsistency([P('plugins/code-audit-rigor/schema/audit-review-fix-result.schema.json')], arfV, 'audit-review-fix-result');
+  checkSchemaConsistency([
+    P('plugins/high-precision-dev/schema/findings.schema.json'),
+    P('plugins/high-precision-dev/schema/coverage.schema.json'),
+  ], hpV, 'high-precision-output');
+  checkSchemaConsistency([P('plugins/multi-agent-debate/schema/debate-output.schema.json')], debateV, 'debate-output');
+  checkSchemaConsistency([P('plugins/multi-agent-debate/schema/prior-debate.schema.json')], priorV, 'prior-debate');
 
   // ── Summary ────────────────────────────────────────────────────────────────
   console.log(`\n=== Summary: ${passed} passed, ${failed} failed ===`);

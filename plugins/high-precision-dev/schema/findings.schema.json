@@ -2,9 +2,9 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "high-precision-findings",
   "title": "High-Precision Dev Findings",
-  "description": "Findings from critic, adversary, and disproof agents in high-precision-dev workflow.",
+  "description": "Full high-precision-dev implementer/verifier artifact: findings from critic, adversary, and disproof agents PLUS the coverage record. The `coverage` object is defined in coverage.schema.json and is a required part of this artifact (validate-high-precision-output.cjs enforces both together).",
   "type": "object",
-  "required": ["implementerId", "timestamp", "specRef", "completionSignal", "findings"],
+  "required": ["implementerId", "timestamp", "specRef", "completionSignal", "findings", "coverage"],
   "properties": {
     "implementerId": { "type": "string", "minLength": 1 },
     "timestamp": { "type": "string", "format": "date-time" },
@@ -26,6 +26,10 @@
           "evidence": { "type": "string", "minLength": 1 }
         }
       }
+    },
+    "coverage": {
+      "$ref": "./coverage.schema.json",
+      "description": "Coverage record (SPEC requirements tested/untested/outOfScope, attack classes, verification status). Defined in coverage.schema.json; required as part of the full artifact."
     }
   }
 }
