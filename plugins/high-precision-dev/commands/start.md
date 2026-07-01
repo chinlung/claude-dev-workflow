@@ -195,7 +195,6 @@ Phase 4 完成後，向使用者彙整報告：
 
 - **攻擊類別詳解**：`references/ATTACK-CLASSES.md`（Adversary 在 Phase 3 三輪攻擊前讀；Disproof Agent 在 Phase 3.5 評估 ATTACKS.md 前讀）
 - **工作流程失敗模式**：`references/ANTI-PATTERNS.md`（所有 agent 與 controller 當流程卡住或產出「太乾淨」時讀）
-- **覆蓋記錄合約**：`schema/coverage.schema.json`（Implementer 和 Verifier 提交 coverage 欄位前讀；定義 tested/untested/outOfScope/attackClassCoverage/priorRunRef 欄位規則）
 
 ## 異常處理
 

@@ -5,6 +5,16 @@ All notable changes to the `high-precision-dev` plugin will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-07-01
+
+### Removed
+
+- **The 1.1.0 machine-checkable output contract (`schema/findings.schema.json`, `schema/coverage.schema.json`, `validators/validate-high-precision-output.cjs`, and its fixtures) is removed.** A same-day design review (`docs/loop-design-review-2026-07-01.md`) found it was never wired into the live `/start` flow — the six agents emit prose reports (`IMPL_A_REPORT.md`, `CRITIQUE.md`, `ATTACKS.md`, `DISPROOF.md`, `VERIFICATION.md`), so the validator only ever checked a JSON shape that no agent produced (validated against fixtures in CI, never against real output). This plugin's rigor comes from its epistemic division of labor — two worktree-isolated independent implementers, plus critic / adversary / disproof / verifier with a capped fix loop — not from a structural JSON contract. Rather than complete a high-effort producer step for near-zero marginal rigor, the dead contract is removed. `agents/disproof-agent.md` (also added in 1.1.0) is unaffected and stays.
+
+### Notes
+
+- Selective-consolidation decision: `code-audit-rigor`'s live validators are kept (they gate the routine review commands and check a real coverage invariant), `openspec` and `multi-agent-debate` contracts are kept/completed, and this plugin's unwired contract is removed. Rationale and per-plugin gap analysis in `docs/loop-design-review-2026-07-01.md`.
+
 ## [1.1.0] - 2026-07-01
 
 ### Added

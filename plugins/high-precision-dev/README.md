@@ -27,39 +27,11 @@
 /start ./SPEC.md
 ```
 
-## Output contract
+## Output artifacts
 
-Every agent emits a machine-readable output validated against `schema/findings.schema.json` and `schema/coverage.schema.json`:
+Each phase writes prose Markdown deliverables to the SPEC.md directory (see the **Agents** table below for the per-agent files). Coverage and residual-uncertainty tracking live in `CONSENSUS.md` and the verifier's `VERIFICATION.md`, reconciled against `SPEC.md` by prompt discipline, phase by phase.
 
-```json
-{
-  "implementerId": "implementer-a",
-  "timestamp": "2026-07-01T00:00:00Z",
-  "specRef": "SPEC.md#v1.0",
-  "completionSignal": "SPEC_COMPLETE",
-  "findings": [
-    { "source": "critic", "severity": "high", "description": "...", "location": "src/...", "evidence": "..." }
-  ],
-  "coverage": {
-    "tested": [ { "requirement": "REQ-001", "testCase": "tests/...", "passed": true } ],
-    "untested": [ { "requirement": "REQ-003", "reason": "..." } ],
-    "outOfScope": [],
-    "verificationStatus": "PARTIAL"
-  }
-}
-```
-
-Key contract: `coverage.verificationStatus = "VERIFIED"` requires at least one entry in `coverage.tested`. A prior-run reference (`coverage.priorRunRef`) must have `suppressesFindings: false` — prior runs never suppress critic/adversary findings.
-
-## Validators
-
-```bash
-# Validate a single agent output artifact
-node plugins/high-precision-dev/validators/validate-high-precision-output.cjs path/to/output.json
-
-# Run all fixture checks from repo root
-node scripts/validate-fixtures.cjs
-```
+> An earlier release (1.1.0) shipped a JSON schema + validator for a machine-readable agent output. It was never wired into the live `/start` flow — the agents emit the prose reports above — so it was removed in 1.2.0 (see `CHANGELOG.md` and `docs/loop-design-review-2026-07-01.md`). This plugin's rigor comes from its epistemic division of labor, not a structural output contract.
 
 ## Agents
 

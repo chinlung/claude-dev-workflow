@@ -95,10 +95,14 @@ Task(
 
 ### Phase 4：共識檢查
 
-檢查共識狀態：
-- ≥2 個 Agent 同意某方案 → 達成共識，進入 Phase 5
-- 未達成共識且 <10 輪 → 回到 Phase 2
-- 達到 10 輪仍未達成 → Critic 最終裁決
+依序檢查共識狀態，**任一條成立即視為收斂**，進入 Phase 5（三項判斷由 orchestrator 於每輪維護，見 `agents/orchestrator.md`「共識檢查邏輯」）：
+
+1. **≥2 個 Agent 同意同一方案** → 達成共識
+2. **單一方案總分明顯領先**（與次高分差距 ≥8 分）→ 視為實質收斂，即使未達第 1 條的明確同意
+
+以上皆不成立時：
+- 未收斂且 < 最大輪數（`--max-rounds`，預設 10）→ 回到 Phase 2
+- 達到最大輪數仍未收斂 → Critic 最終裁決
 
 ### Phase 5：使用者互動
 
@@ -150,6 +154,21 @@ Task(
 
 ### Phase 6：最終輸出
 
+#### 6a. 結構化產物與結構閘門（Structural Gate）
+
+在輸出最終 markdown 前，先將本次辯論結果組裝為 `debate-output.json`（符合 `schema/debate-output.schema.json`），寫入運行目錄，並執行驗證：
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/validators/validate-debate-output.cjs debate-output.json
+```
+
+此為**結構閘門**，與 Phase 5.5 validator agent 的**語意**裁決互補：機器化確認產物欄位完整、分數 0-10、verdict 合法，且**跨欄位引用完整**——`finalDecision.selectedProposal` 與 `consensus.agreedProposals` 都必須指向真實存在的 `proposals[].id`（防止多輪後選到不存在的方案 id）。此外**覆蓋聲明（`coverage`）為必填**：`covered[{aspect, summary}]` / `notCovered[{aspect, reason}]`，且每個未覆蓋面向都必須附 `reason`——機器強制「覆蓋缺口不得無故省略」。
+
+- 通過（exit 0，`VALID`）→ 進入 6b 最終 markdown 輸出
+- 失敗（exit 1，`INVALID`）→ 先修正產物組裝（欄位缺漏、id 不一致）後重跑；若根因是辯論結果本身不自洽，比照 Phase 5.5 `rejected` 路由退回 Phase 2。**不得靜默跳過**：若 validator 因工具故障無法執行，在最終輸出標註「⚠️ 結構驗證未執行，原因：...」
+
+#### 6b. 最終 markdown 輸出
+
 輸出格式：
 
 ```markdown
@@ -183,7 +202,7 @@ Task(
 
 ## 覆蓋聲明（Coverage Declaration）
 
-Phase 6 最終輸出**必須附上**覆蓋聲明，說明本次辯論覆蓋了哪些面向、哪些面向未覆蓋，讓覆蓋狀況可在不讀完整個對話記錄的情況下被審查：
+覆蓋聲明的**機器可讀形式是 6a `debate-output.json` 的 `coverage` 欄位**（`covered[{aspect, summary}]` / `notCovered[{aspect, reason}]`，由結構閘門強制為必填、每個未覆蓋面向須附 `reason`）。以下 markdown 表格由該欄位衍生，讓覆蓋狀況可在不讀完整個對話記錄的情況下被審查：
 
 ```markdown
 ## 🗂️ 覆蓋聲明

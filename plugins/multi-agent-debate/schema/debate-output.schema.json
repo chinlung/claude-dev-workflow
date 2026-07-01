@@ -4,7 +4,7 @@
   "title": "Multi-Agent Debate Output",
   "description": "Machine-readable artifact contract for multi-agent-debate plugin outputs.",
   "type": "object",
-  "required": ["metadata", "requirement", "proposals", "critiqueRounds", "consensus", "finalDecision", "validation"],
+  "required": ["metadata", "requirement", "proposals", "critiqueRounds", "consensus", "finalDecision", "validation", "coverage"],
   "properties": {
     "metadata": {
       "type": "object",
@@ -87,6 +87,34 @@
       "properties": {
         "verdict": { "type": "string", "enum": ["verified", "corrected", "rejected", "needs_user_decision"] },
         "issues": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "required": ["covered", "notCovered"],
+      "properties": {
+        "covered": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["aspect", "summary"],
+            "properties": {
+              "aspect": { "type": "string", "minLength": 1 },
+              "summary": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "notCovered": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["aspect", "reason"],
+            "properties": {
+              "aspect": { "type": "string", "minLength": 1 },
+              "reason": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
       }
     }
   }

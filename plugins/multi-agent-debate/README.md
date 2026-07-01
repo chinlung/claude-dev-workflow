@@ -48,11 +48,14 @@ A prior debate run can be summarized in `schema/prior-debate.schema.json` — a 
 # Validate a debate output artifact
 node plugins/multi-agent-debate/validators/validate-debate-output.cjs path/to/debate-output.json
 
+# Validate a prior-debate artifact
+node plugins/multi-agent-debate/validators/validate-prior-debate.cjs path/to/prior-debate.json
+
 # Run all fixture checks from repo root
 node scripts/validate-fixtures.cjs
 ```
 
-Note: `prior-debate` artifacts currently have no standalone CLI validator. The repo-root fixture runner performs inline shape checks for `schema/prior-debate.schema.json`, including `schemaVersion`, `reuseConstraint.suppressNewFindings === false`, `reuseConstraint.suppressNewDecisions === false`, and `reuseConstraint.applicabilityNote`.
+`/debate` runs `validate-debate-output.cjs` as a live structural gate in Phase 6 (before the final report), complementing the Phase 5.5 validator *agent's* semantic verdict. Beyond per-field checks, it enforces cross-field referential integrity: `finalDecision.selectedProposal` and every `consensus.agreedProposals` entry must name a real `proposals[].id`. `prior-debate` artifacts have their own standalone validator (`validate-prior-debate.cjs`) which enforces `schemaVersion`, `reuseConstraint.suppressNewFindings === false`, `reuseConstraint.suppressNewDecisions === false`, and `reuseConstraint.applicabilityNote`.
 
 ## Agents
 

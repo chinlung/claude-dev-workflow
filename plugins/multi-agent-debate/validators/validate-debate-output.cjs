@@ -68,9 +68,59 @@ function validateValidation(v) {
   return ok();
 }
 
+// Coverage declaration: which aspects the debate covered vs left uncovered. Required so
+// a debate cannot silently drop its coverage account; every uncovered aspect must state a
+// reason (an unexplained gap is the exact failure this makes machine-checkable). Shape
+// mirrors prior-debate's coverage for cross-artifact consistency.
+function validateCoverage(c) {
+  if (!c || typeof c !== 'object') return err('coverage must be an object');
+  for (const key of ['covered', 'notCovered']) {
+    if (!Array.isArray(c[key])) return err(`coverage.${key} must be an array`);
+  }
+  for (let i = 0; i < c.covered.length; i++) {
+    const e = c.covered[i];
+    if (!e || typeof e !== 'object') return err(`coverage.covered[${i}] must be an object`);
+    if (!e.aspect || typeof e.aspect !== 'string') return err(`coverage.covered[${i}].aspect required (string)`);
+    if (!e.summary || typeof e.summary !== 'string') return err(`coverage.covered[${i}].summary required (string)`);
+  }
+  for (let i = 0; i < c.notCovered.length; i++) {
+    const e = c.notCovered[i];
+    if (!e || typeof e !== 'object') return err(`coverage.notCovered[${i}] must be an object`);
+    if (!e.aspect || typeof e.aspect !== 'string') return err(`coverage.notCovered[${i}].aspect required (string)`);
+    if (!e.reason || typeof e.reason !== 'string') return err(`coverage.notCovered[${i}].reason required (string) — an uncovered aspect must state why`);
+  }
+  return ok();
+}
+
+// Cross-field referential integrity: decisions and consensus must point at proposals
+// that actually exist. A per-field pass cannot catch this — every field can be
+// individually well-formed while finalDecision.selectedProposal names a proposal that
+// was never made (an id typo, or a stale id after rounds renumbered proposals). Only
+// meaningful once proposals is a well-formed non-empty array; a malformed proposals array
+// is already reported per-field, so return no extra errors in that case (no duplicates).
+function validateCrossReferences(data) {
+  const errors = [];
+  if (!Array.isArray(data.proposals) || data.proposals.length < 1) return errors;
+  const ids = new Set(data.proposals.map(p => p && p.id).filter(Boolean));
+  if (ids.size === 0) return errors; // proposals all missing ids — already reported per-field
+
+  const sel = data.finalDecision && data.finalDecision.selectedProposal;
+  if (sel && !ids.has(sel)) {
+    errors.push(`finalDecision.selectedProposal "${sel}" is not one of proposals[].id (${[...ids].join(', ')})`);
+  }
+
+  const agreed = data.consensus && data.consensus.agreedProposals;
+  if (Array.isArray(agreed)) {
+    for (const a of agreed) {
+      if (!ids.has(a)) errors.push(`consensus.agreedProposals references "${a}" which is not one of proposals[].id`);
+    }
+  }
+  return errors;
+}
+
 function validate(data) {
   const errors = [];
-  const required = ['metadata', 'requirement', 'proposals', 'critiqueRounds', 'consensus', 'finalDecision', 'validation'];
+  const required = ['metadata', 'requirement', 'proposals', 'critiqueRounds', 'consensus', 'finalDecision', 'validation', 'coverage'];
   for (const f of required) {
     if (data[f] === undefined || data[f] === null) errors.push(`Missing required field: ${f}`);
   }
@@ -113,6 +163,13 @@ function validate(data) {
 
   r = validateValidation(data.validation);
   if (!r.ok) errors.push(r.message);
+
+  r = validateCoverage(data.coverage);
+  if (!r.ok) errors.push(r.message);
+
+  // Referential integrity across fields (runs after per-field checks so it can rely on
+  // the proposal id set; adds errors only for dangling references, never duplicates).
+  for (const e of validateCrossReferences(data)) errors.push(e);
 
   return { valid: errors.length === 0, errors };
 }

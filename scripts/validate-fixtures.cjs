@@ -326,20 +326,6 @@ function main() {
   run(priorV, path.join(priorF, 'invalid-bad-schemaversion.json'), false);
   run(priorV, path.join(priorF, 'invalid-reuseconstraint-not-object.json'), false);
 
-  // ── High-Precision Dev ────────────────────────────────────────────────────
-  console.log('\n## High-Precision Dev — output validator');
-  const hpV = P('plugins/high-precision-dev/validators/validate-high-precision-output.cjs');
-  const hpF = P('plugins/high-precision-dev/tests/fixtures/high-precision-output');
-  run(hpV, path.join(hpF, 'valid-basic.json'), true);
-  run(hpV, path.join(hpF, 'valid-with-prior-run.json'), true);
-  run(hpV, path.join(hpF, 'invalid-missing-coverage.json'), false);
-  run(hpV, path.join(hpF, 'invalid-partial-empty-coverage.json'), false);
-  run(hpV, path.join(hpF, 'invalid-prior-run-suppresses.json'), false);
-  run(hpV, path.join(hpF, 'invalid-verified-empty-tested.json'), false);
-  run(hpV, path.join(hpF, 'invalid-verified-passed-false.json'), false);
-  run(hpV, path.join(hpF, 'invalid-priorref-no-artifact.json'), false);
-  run(hpV, path.join(hpF, 'invalid-attackclass-outcome.json'), false);
-
   // ── OpenSpec + Superpowers ─────────────────────────────────────────────────
   console.log('\n## OpenSpec + Superpowers Workflow — change-folder validator');
   const openV = P('plugins/openspec-superpowers-workflow/skills/openspec-superpowers-workflow/validators/validate-openspec-workflow.cjs');
@@ -433,6 +419,12 @@ function main() {
     { label: 'finalDecision missing selectedProposal', mutate: o => { delete o.finalDecision.selectedProposal; } },
     { label: 'finalDecision missing reasoning', mutate: o => { delete o.finalDecision.reasoning; } },
     { label: 'delete validation', mutate: o => { delete o.validation; } },
+    { label: 'selectedProposal not in proposals (cross-ref)', mutate: o => { o.finalDecision.selectedProposal = 'p9'; } },
+    { label: 'agreedProposals references unknown proposal (cross-ref)', mutate: o => { o.consensus.agreedProposals = ['p9']; } },
+    { label: 'delete coverage', mutate: o => { delete o.coverage; } },
+    { label: 'coverage.covered not array', mutate: o => { o.coverage.covered = 'x'; } },
+    { label: 'coverage.covered missing aspect', mutate: o => { delete o.coverage.covered[0].aspect; } },
+    { label: 'coverage.notCovered missing reason', mutate: o => { delete o.coverage.notCovered[0].reason; } },
   ]);
 
   runMutations(findV, path.join(carF, 'finding-valid.json'), 'finding', [
@@ -465,20 +457,6 @@ function main() {
     { label: 'comment bad decision', mutate: o => { o.comments[0].decision = 'maybe'; } },
   ]);
 
-  runMutations(hpV, path.join(hpF, 'valid-basic.json'), 'high-precision-output', [
-    { label: 'implementerId empty', mutate: o => { o.implementerId = ''; } },
-    { label: 'completionSignal bad enum', mutate: o => { o.completionSignal = 'DONE'; } },
-    { label: 'finding missing source', mutate: o => { delete o.findings[0].source; } },
-    { label: 'finding bad severity', mutate: o => { o.findings[0].severity = 'sev'; } },
-    { label: 'finding missing description', mutate: o => { delete o.findings[0].description; } },
-    { label: 'finding missing location', mutate: o => { delete o.findings[0].location; } },
-    { label: 'finding missing evidence', mutate: o => { delete o.findings[0].evidence; } },
-    { label: 'tested missing requirement', mutate: o => { delete o.coverage.tested[0].requirement; } },
-    { label: 'tested missing testCase', mutate: o => { delete o.coverage.tested[0].testCase; } },
-    { label: 'tested passed not boolean', mutate: o => { o.coverage.tested[0].passed = 'yes'; } },
-    { label: 'verificationStatus bad enum', mutate: o => { o.coverage.verificationStatus = 'DONE'; } },
-  ]);
-
   runMutations(priorV, path.join(priorF, 'valid-prior-debate.json'), 'prior-debate', [
     { label: 'validatorVerdict bad enum', mutate: o => { o.validatorVerdict = 'APPROVED'; } },
     { label: 'priorDecision.confidenceLevel bad enum', mutate: o => { o.priorDecision.confidenceLevel = 'VERY_HIGH'; } },
@@ -507,10 +485,6 @@ function main() {
   checkSchemaConsistency([P('plugins/code-audit-rigor/schema/review-branch-results.schema.json')], rbV, 'review-branch-results');
   checkSchemaConsistency([P('plugins/code-audit-rigor/schema/review-pr-comments.schema.json')], prV, 'review-pr-comments');
   checkSchemaConsistency([P('plugins/code-audit-rigor/schema/audit-review-fix-result.schema.json')], arfV, 'audit-review-fix-result');
-  checkSchemaConsistency([
-    P('plugins/high-precision-dev/schema/findings.schema.json'),
-    P('plugins/high-precision-dev/schema/coverage.schema.json'),
-  ], hpV, 'high-precision-output');
   checkSchemaConsistency([P('plugins/multi-agent-debate/schema/debate-output.schema.json')], debateV, 'debate-output');
   checkSchemaConsistency([P('plugins/multi-agent-debate/schema/prior-debate.schema.json')], priorV, 'prior-debate');
 

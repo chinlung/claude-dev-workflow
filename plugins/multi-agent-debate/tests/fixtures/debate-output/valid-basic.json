@@ -57,5 +57,14 @@
   "validation": {
     "verdict": "verified",
     "issues": []
+  },
+  "coverage": {
+    "covered": [
+      { "aspect": "Read scalability", "summary": "Both proposals evaluated for read-heavy load; replicas vs cache tradeoff discussed over one critique round." },
+      { "aspect": "Operational complexity", "summary": "Cache invalidation vs replica lag weighed; replicas favored for simpler ops." }
+    ],
+    "notCovered": [
+      { "aspect": "Write scalability", "reason": "Requirement scoped to read-heavy traffic; the write path was out of scope for this debate." }
+    ]
   }
 }
