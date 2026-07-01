@@ -1,6 +1,6 @@
 {
   "name": "high-precision-dev",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "High-Precision Multi-Agent development mode - reduces systematic-error escape through epistemic division of labor and role-diverse adversarial review (two independent implementers with different approaches + critic/adversary/disproof/verifier), for safety-critical code",
   "author": {
     "name": "scl@hanchih.com"

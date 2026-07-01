@@ -1,5 +1,6 @@
 ---
 description: 高精確度開發模式的獨立實作者 A，採用防禦性實作原則，嚴格依照 SPEC.md 實作
+model: opus
 capabilities:
   - 嚴格依照 SPEC.md 進行防禦性實作
   - 驗證所有輸入，fail loudly on precondition failure

@@ -39,14 +39,20 @@ Each phase writes prose Markdown deliverables to the SPEC.md directory (see the 
 
 ## Agents
 
-| Agent | Role | Output |
-|-------|------|--------|
-| Implementer A | Independent defensive implementation | `IMPL_A_REPORT.md` |
-| Implementer B | Independent defensive implementation | `IMPL_B_REPORT.md` |
-| Critic | Finds bugs using severity 1–5 scale | `CRITIQUE.md` |
-| Adversary | 3-round red-team attack | `ATTACKS.md` |
-| Disproof Agent | Tries to disprove critic/adversary findings | — |
-| Verifier | Compares implementations, merges best parts | `VERIFICATION.md` |
+| Agent | Role | Model | Output |
+|-------|------|-------|--------|
+| Implementer A | Independent implementation — spec-first / top-down | `opus` | `IMPL_A_REPORT.md` |
+| Implementer B | Independent implementation — test-first / behavior-driven | `sonnet` | `IMPL_B_REPORT.md` |
+| Critic | Finds bugs using severity 1–5 scale | `sonnet` | `CRITIQUE.md` |
+| Adversary | 3-round red-team attack | `opus` | `ATTACKS.md` |
+| Disproof Agent | Tries to disprove critic/adversary findings | `sonnet` | — |
+| Verifier | Compares implementations, merges best parts | `opus` | `VERIFICATION.md` |
+
+### Model assignment (cross-family decorrelation)
+
+The `model` per agent is set **cross-family on purpose** — this is the strongest lever against the shared-model correlation floor described above. Two agents on the same base model share systematic blind spots (they mis-read the same spec clause the same way); two agents on *different* model families (Opus vs Sonnet) have *different* blind spots, so their disagreements carry real decorrelated signal. The assignment keeps **builders and checkers spanning both families**: implementer-a (`opus`) vs implementer-b (`sonnet`) decorrelates the two implementations, and the checkers (`sonnet` critic / `opus` adversary / `sonnet` disproof / `opus` verifier) ensure both families review the work. The verifier and adversary run on the stronger `opus`.
+
+Caveats: (1) this is still bounded — different frontier models can share *some* blind spots; the genuinely independent check is the Phase 4 environmental test gate, which is not a model at all. (2) It requires access to both families and costs more than a single model. To run everything on the session model instead, set each agent's `model:` back to `inherit`. Per-agent **effort** is *not* configurable via agent frontmatter (only `model` is) — effort follows the session's `/effort` setting.
 
 ## License
 

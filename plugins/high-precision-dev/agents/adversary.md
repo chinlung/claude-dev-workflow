@@ -1,5 +1,6 @@
 ---
 description: 高精確度開發模式的攻擊者（紅隊），假設實作有漏洞，嘗試找出讓它失敗的輸入
+model: opus
 capabilities:
   - 進行三輪系統性攻擊（邊界、語意、假設）
   - 使用 severity 1-5 與 critic 統一的量化分級

@@ -5,6 +5,12 @@ All notable changes to the `high-precision-dev` plugin will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-07-01
+
+### Changed
+
+- **Agents assigned cross-family models to break the shared-model correlation floor** — the single biggest lever against the correlated systematic errors that cap the `p→p⁴` premise (doc §8). Previously every agent ran on one inherited model, so all six shared the same base-model blind spots. Now `implementer-a` / `adversary` / `verifier` run on `opus` and `implementer-b` / `critic` / `disproof-agent` run on `sonnet`, keeping builders and checkers spanning **two model families** so disagreements carry genuinely decorrelated signal (different weights → different blind spots). Note: the `model` frontmatter field is **family-level** (`opus`/`sonnet`/`haiku`/`inherit`) — it pairs Opus 4.8 × Sonnet 5; a specific past version (e.g. Opus 4.6) is not selectable, and same-family pairings barely decorrelate. Still bounded — frontier models share *some* blind spots; the genuinely independent check is the Phase 4 environmental test gate (not a model at all). Set any agent's `model:` back to `inherit` to run on the session model. Per-agent **effort** is not frontmatter-configurable; effort follows the session `/effort` setting.
+
 ## [1.4.0] - 2026-07-01
 
 ### Changed

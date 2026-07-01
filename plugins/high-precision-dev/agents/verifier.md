@@ -1,5 +1,6 @@
 ---
 description: 高精確度開發模式的驗證整合者，比較兩份實作，逐條對照 SPEC.md，產出最終版本
+model: opus
 capabilities:
   - 確認 CRITIQUE.md/ATTACKS.md 中的問題已解決
   - 逐條對照 SPEC.md 驗證兩份實作

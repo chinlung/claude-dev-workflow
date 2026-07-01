@@ -1,5 +1,6 @@
 ---
 description: 高精確度開發模式的獨立反證者，在修復循環前對 critic/adversary 發現進行獨立反證或確認
+model: sonnet
 capabilities:
   - 獨立審查 critic/adversary 的 severity >= 3 發現
   - 對照 SPEC.md 和原始碼證據進行反證

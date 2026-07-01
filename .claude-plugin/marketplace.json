@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "Claude Code plugins collection by scl",
-    "version": "1.8.9"
+    "version": "1.8.10"
   },
   "plugins": [
     {
@@ -26,7 +26,7 @@
       "name": "high-precision-dev",
       "source": "./plugins/high-precision-dev",
       "description": "高精確度多 Agent 開發模式 - 透過認識論分工與角色多樣的對抗式審查（兩個不同路徑的獨立實作 + critic/adversary/disproof/verifier）降低系統性錯誤的逃逸率，用於安全關鍵程式碼",
-      "version": "1.4.0",
+      "version": "1.5.0",
       "keywords": ["high-precision", "multi-agent", "adversarial-review", "verification", "safety-critical"]
     },
     {
