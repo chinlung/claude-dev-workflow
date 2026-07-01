@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/scripts/hooks/validate-on-plugin-edit.cjs\"",
+            "timeout": 120,
+            "statusMessage": "Validating plugin test suite"
+          }
+        ]
+      }
+    ]
+  }
+}
