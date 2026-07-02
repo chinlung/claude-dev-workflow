@@ -5,6 +5,77 @@
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [1.8.11] - 2026-07-02
+
+### 變更
+
+- **security-audit 1.0.0 → 1.0.1** — 為 vendored validator 加上本地 drift 防護：新增 `valid-basic.json` fixture（confirmed + rejected 兩種 finding）與單欄位 mutation，接進 `scripts/validate-fixtures.cjs`，使 repo 根 suite + CI + PostToolUse hook 現在都守護 `validate-findings.cjs`（含其兩條語意約束：trace 首步須 `entrypoint`、末步須 `sink`）。記錄 re-vendor drift 檢查：pin 的 `4de1ac8` 對 upstream HEAD `f75f9a0` 為純目錄搬移、內容零漂移。未修改任何 vendored 檔。
+- **openspec-superpowers-workflow 1.2.1 → 1.2.2** — Phase 1 pre-check 路徑統一為 `${CLAUDE_PLUGIN_ROOT}`（原為 repo 相對路徑 + 「從安裝根解析」的 prose 說明），對齊其他 plugin skills/commands 的慣例。
+
+### 備註
+- 另（非 plugin）：在個人 `~/.claude/CLAUDE.md` 的 plugin 決策樹加入 `security-audit` 入口（主動獵漏 → `/security-audit`；diff/PR 治理 → `code-audit-rigor`），並將 `docs/loop-design-review-2026-07-01.md` 兩個懸空的 Tier-3 judgment call 以明確 won't-do 處置 + re-open 觸發條件收尾。Marketplace patch bump 1.8.10 → 1.8.11。
+
+## [1.8.10] - 2026-07-01
+
+### 變更
+
+- **high-precision-dev 1.4.0 → 1.5.0** — 跨家族 model 指派，打破共用 base-model 的相關性地板：`implementer-a`/`adversary`/`verifier` 用 `opus`，`implementer-b`/`critic`/`disproof-agent` 用 `sonnet`，讓 builder 與 checker 橫跨兩個 model 家族。`model` frontmatter 是家族層級（配 Opus 4.8 × Sonnet 5；選不到特定舊版、同家族配對幾乎不去相關）；per-agent effort 不可 frontmatter 設定，跟隨 session `/effort`。
+
+### 備註
+- Marketplace patch bump 1.8.9 → 1.8.10。
+
+## [1.8.9] - 2026-07-01
+
+### 變更
+
+- **high-precision-dev 1.3.0 → 1.4.0** — `p→p⁴` 誠實化 reframe + implementer 去相關。乘法式 `p⁴` 宣稱在所有出現處（`plugin.json` / `marketplace.json` / `README` / `start.md` / `ANTI-PATTERNS.md`）從頭條保證降級為「理想化模型 + 明確的共用 model 相關性地板 caveat」（同一 base model 的兩個 identical-prompt 實例，對系統性誤讀會同向出錯）。`implementer-a` 與 `implementer-b` 原本逐字元相同，現改為真正不同路徑（A 規格優先/由上而下、B 測試優先/行為驅動；同完整度、不同路徑），讓最弱的獨立性那條腿真正去相關。
+
+### 備註
+- Marketplace patch bump 1.8.8 → 1.8.9。
+
+## [1.8.8] - 2026-07-01
+
+### 新增
+
+- **high-precision-dev 1.2.1 → 1.3.0** — Phase 4 完成前的 controller 親跑環境測試閘門。verifier 合併後，controller 自己跑 SPEC 測試套件並捕捉 exit code（`WF_TEST_EXIT=$?`），把「測試通過」從 agent prose 宣稱升級為環境事實，接進既有 capped fix-loop 的退出條件。刻意不重新引入結構化輸出合約——它是唯一通過元規則的機器閘門：*閘門有資格存在 iff (a) 讀環境事實而非 agent 斷言，且 (b) 有下游消費者據其結果行動。*
+
+### 備註
+- Marketplace patch bump 1.8.7 → 1.8.8。
+
+## [1.8.7] - 2026-07-01
+
+### 變更
+
+- **code-audit-rigor 1.4.0 → 1.5.0** — `/review-branch` 新增 `--focus <pathspec>` 與 Phase 2 confidence 欄位（0-100，<67% 標記 borderline）；`/review-pr` Phase 3 回歸檢查硬化為 `/audit-review-fix` 已審過的 baseline + exit-code sentinel 紀律（捕捉修前 baseline、只數 new-vs-preexisting failure、信任 `WF_TEST_EXIT=0`、build 新壞算回歸、無法解析則 fail closed）。
+- **openspec-superpowers-workflow 1.2.0 → 1.2.1** — Phase 1 新增選用的寬鬆本地 pre-check，在權威的 `openspec validate --strict` 前先跑自帶 `.cjs`（讓 plugin 自己原本只在 CI 的 validator 出現在 live workflow）。
+- **high-precision-dev 1.2.0 → 1.2.1** — 移除 `start.md` 從未實作的 `--phase N` arg hint；查清 `disproof-agent` 未註冊非缺陷（frontmatter 與會註冊的 sibling 相同，是 under-versioned PR #4 的 reload 殘留，1.2.0 bump + reload 即解）。
+
+### 備註
+- loop-design review 的 follow-on 項目。Marketplace patch bump 1.8.6 → 1.8.7。
+
+## [1.8.6] - 2026-07-01
+
+### 變更
+
+- **選擇性 L2 收斂**（源自 `docs/loop-design-review-2026-07-01.md`）——把 PR #4「四個 plugin 一律加 schema + validator」縮減到只保留「真的有機器消費者讀取合約」之處，而非全盤 revert（全 revert 會連帶砍掉 code-audit-rigor 真正在運作的 live validator、CI、hook 與 STEEL_MANNING）。
+  - **multi-agent-debate 1.1.0 → 1.2.0** — 完成 L2：`/debate` Phase 6 現在 emit `debate-output.json` 並跑 `validate-debate-output.cjs` 當 live 結構閘門；新增跨欄位參照完整性（`selectedProposal`/`agreedProposals` 必須指向真實 `proposals[].id`）與必填、機器可檢的 `coverage` 欄位；對齊 Phase 4 收斂判準（分數差 ≥8）與 `orchestrator.md`。
+  - **high-precision-dev 1.1.0 → 1.2.0** — 移除死碼 L2：六個 agent 全產 prose 報告，schema 驗的是沒 agent 會產出的 JSON 形狀。刪除 `schema/`、validators、fixtures + runner wiring；清 `README`/`start.md` 的 dangling ref。
+- 移除誤留的 `t.json`（PR #4 誤入 repo 根目錄的 prior-debate 測試殘檔）。
+
+### 備註
+- 套件 148 → 133 checks（−21 移除的 high-precision checks、+6 新增 debate mutation）。Marketplace patch bump 1.8.5 → 1.8.6。
+
+## [1.8.5] - 2026-07-01
+
+### 修正
+
+- **回補 PR #4 的版本 bump + changelog**（commit `893821c`）——該 PR 在四個 plugin 一律加上「結構化輸出 + zero-dependency validator + fixtures + CI + PostToolUse hook」的 L2 層，卻**沒有任何版本 bump**，使每個 `plugin.json` 在功能變更前後都停在同一個 pre-merge 版號，且兩個 plugin 根本沒有 `CHANGELOG.md`。這種歧義正是 registry 版本快取失效（新 agent/能力靜默不載入）的病灶。
+  - **code-audit-rigor 1.3.4 → 1.4.0**、**openspec-superpowers-workflow 1.1.0 → 1.2.0** — 為 L2 變更回補版本 + changelog。
+  - **multi-agent-debate 1.0.0 → 1.1.0**、**high-precision-dev 1.0.0 → 1.1.0** — 建立 `CHANGELOG.md`（回補 1.0.0 initial-release + 1.1.0 L2 變更）。
+
+### 備註
+- 本次無功能性程式碼變更——僅版本/changelog 衛生。Marketplace 1.8.4 → 1.8.5。
+
 ## [1.8.4] - 2026-06-29
 
 ### 修正

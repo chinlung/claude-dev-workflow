@@ -31,7 +31,9 @@ process.stdin.on('end', () => {
     process.exit(0); // no parseable payload → nothing to check
   }
 
-  const relevant = /(\/validators\/.*\.cjs|\/schema\/.*\.json|\/tests\/|scripts\/validate-fixtures\.cjs)/.test(filePath);
+  // Vendored security-audit keeps its validator/schema under skills/security-audit/
+  // (not the conventional validators/ + schema/ dirs), so match those paths too.
+  const relevant = /(\/validators\/.*\.cjs|\/schema\/.*\.json|\/tests\/|scripts\/validate-fixtures\.cjs|security-audit\/(validate-findings\.cjs|report-schema\.json))/.test(filePath);
   if (!relevant) process.exit(0);
 
   const root = process.env.CLAUDE_PROJECT_DIR || process.cwd();

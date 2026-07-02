@@ -398,6 +398,26 @@ function main() {
   run(covV, path.join(carF, 'coverage-reconcile-invalid-unknown-status.json'), false);
   run(covV, path.join(carF, 'coverage-reconcile-invalid-unaccounted.json'), false);
 
+  // ── Security Audit (vendored) ──────────────────────────────────────────────
+  // Smoke coverage for the vendored cloudflare/security-audit-skill validator.
+  // NOTE: no schema↔validator consistency check here — validate-findings.cjs is a
+  // runtime-generic schema interpreter with no `*_ENUM` constants to compare, so the
+  // drift checker (which parses those constants) does not apply. Fixtures + single-field
+  // mutations guard against the vendored file or Node behavior drifting on re-vendor.
+  console.log('\n## Security Audit — findings validator (vendored)');
+  const saV = P('plugins/security-audit/skills/security-audit/validate-findings.cjs');
+  const saF = P('plugins/security-audit/tests/fixtures/security-audit');
+  run(saV, path.join(saF, 'valid-basic.json'), true);
+  runMutations(saV, path.join(saF, 'valid-basic.json'), 'security-audit-findings', [
+    { label: 'confirmed missing title', mutate: o => { delete o[0].title; } },
+    { label: 'confirmed bad overall_severity enum', mutate: o => { o[0].severity.overall_severity = 'SEV'; } },
+    { label: 'bad verdict discriminator', mutate: o => { o[0].verdict = 'maybe'; } },
+    { label: 'confirmed missing execution', mutate: o => { delete o[0].execution; } },
+    { label: 'trace first step not entrypoint (semantic)', mutate: o => { o[0].trace[0].kind = 'propagation'; } },
+    { label: 'trace last step not sink (semantic)', mutate: o => { o[0].trace[o[0].trace.length - 1].kind = 'propagation'; } },
+    { label: 'rejected missing reason', mutate: o => { delete o[1].reason; } },
+  ]);
+
   // ── Long-tail required-field / type / enum coverage (generated mutations) ────
   console.log('\n## Required-field / type / enum coverage (single-field mutations off valid bases)');
 

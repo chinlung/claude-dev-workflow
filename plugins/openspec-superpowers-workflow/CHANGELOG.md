@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.2] - 2026-07-02
+
+### Changed
+
+- **Phase 1 pre-check path unified to `${CLAUDE_PLUGIN_ROOT}`.** `phases.md` step 4 previously used a repo-relative path (`node skills/openspec-superpowers-workflow/validators/…`) with a prose "resolve it from where the skill is installed" note; it now uses `${CLAUDE_PLUGIN_ROOT}/skills/…`, matching the convention every other plugin's commands/skills use (verified available in the skill bash context). Makes the pre-check runnable as-written regardless of the caller's working directory.
+
 ## [1.2.1] - 2026-07-01
 
 ### Added

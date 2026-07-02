@@ -5,6 +5,77 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.11] - 2026-07-02
+
+### Changed
+
+- **security-audit 1.0.0 → 1.0.1** — added local drift protection for the vendored validator: a `valid-basic.json` fixture (confirmed + rejected findings) plus single-field mutations wired into `scripts/validate-fixtures.cjs`, so the repo-root suite + CI + PostToolUse hook now guard `validate-findings.cjs` (including its two semantic constraints: trace must start `entrypoint`, end `sink`). Re-vendor drift check recorded: pinned `4de1ac8` vs upstream HEAD `f75f9a0` is a pure directory move, zero content drift. No vendored file was modified.
+- **openspec-superpowers-workflow 1.2.1 → 1.2.2** — Phase 1 pre-check path unified to `${CLAUDE_PLUGIN_ROOT}` (was a repo-relative path with a prose "resolve from install root" note), matching the convention used across the other plugins' skills/commands.
+
+### Notes
+- Also (non-plugin): added a `security-audit` entry to the personal `~/.claude/CLAUDE.md` plugin-decision tree (active vulnerability hunting → `/security-audit`; diff/PR governance → `code-audit-rigor`), and closed the two dangling Tier-3 judgment calls in `docs/loop-design-review-2026-07-01.md` with explicit won't-do dispositions + re-open triggers. Marketplace patch bump 1.8.10 → 1.8.11.
+
+## [1.8.10] - 2026-07-01
+
+### Changed
+
+- **high-precision-dev 1.4.0 → 1.5.0** — cross-family model assignment to break the shared-base-model correlation floor: `implementer-a`/`adversary`/`verifier` on `opus`, `implementer-b`/`critic`/`disproof-agent` on `sonnet`, so builders and checkers span two model families. The `model` frontmatter is family-level (pairs Opus 4.8 × Sonnet 5; specific past versions not selectable, same-family pairings barely decorrelate); per-agent effort is not frontmatter-configurable and follows the session `/effort`.
+
+### Notes
+- Marketplace patch bump 1.8.9 → 1.8.10.
+
+## [1.8.9] - 2026-07-01
+
+### Changed
+
+- **high-precision-dev 1.3.0 → 1.4.0** — honest `p→p⁴` reframe + implementer decorrelation. The multiplicative `p⁴` claim was demoted everywhere it appeared (`plugin.json` / `marketplace.json` / `README` / `start.md` / `ANTI-PATTERNS.md`) from a headline guarantee to an idealized model with an explicit shared-model-correlation-floor caveat (two identically-prompted instances of one base model make correlated errors on systematic misreadings). `implementer-a` and `implementer-b`, previously byte-identical, were given genuinely different approaches (A spec-first / top-down, B test-first / behavior-driven; same completeness bar, different path) so the weakest independence leg actually decorrelates.
+
+### Notes
+- Marketplace patch bump 1.8.8 → 1.8.9.
+
+## [1.8.8] - 2026-07-01
+
+### Added
+
+- **high-precision-dev 1.2.1 → 1.3.0** — controller-run environmental test gate before Phase 4 completion. After the verifier merges, the controller itself runs the SPEC test suite and captures the exit code (`WF_TEST_EXIT=$?`), promoting "tests pass" from an agent prose claim to an environmental fact wired into the existing capped fix-loop's exit condition. Deliberately does NOT reintroduce a structured-output contract — it is the one machine gate that satisfies the meta-rule *a gate is justified iff (a) it reads an environmental fact, not an agent assertion, and (b) a downstream consumer acts on it.*
+
+### Notes
+- Marketplace patch bump 1.8.7 → 1.8.8.
+
+## [1.8.7] - 2026-07-01
+
+### Changed
+
+- **code-audit-rigor 1.4.0 → 1.5.0** — `/review-branch` gained `--focus <pathspec>` and a Phase 2 confidence field (0-100, <67% flagged borderline); `/review-pr` Phase 3 regression check hardened to the baseline + exit-code-sentinel discipline already audited in `/audit-review-fix` (capture pre-fix baseline, count new-vs-preexisting failures, trust `WF_TEST_EXIT=0`, a build newly broken counts as regression, unparseable → fail closed).
+- **openspec-superpowers-workflow 1.2.0 → 1.2.1** — Phase 1 gained an optional lenient local pre-check that runs the bundled `.cjs` before the authoritative `openspec validate --strict` (surfaces the plugin's own CI-only validator in the live workflow).
+- **high-precision-dev 1.2.0 → 1.2.1** — removed the never-implemented `--phase N` arg hint from `start.md`; investigated the `disproof-agent` non-registration and confirmed it was not a defect (identical frontmatter to registering siblings; an under-versioned-PR-#4 reload artifact resolved by the 1.2.0 bump + reload).
+
+### Notes
+- Follow-on items from the loop-design review. Marketplace patch bump 1.8.6 → 1.8.7.
+
+## [1.8.6] - 2026-07-01
+
+### Changed
+
+- **Selective L2 consolidation** (from `docs/loop-design-review-2026-07-01.md`) — the PR #4 uniform "schema + validator on all four plugins" was reduced to only where a machine consumer actually reads the contract, rather than reverted wholesale (a full revert would also have discarded code-audit-rigor's *working* live validators, CI, hook, and STEEL_MANNING).
+  - **multi-agent-debate 1.1.0 → 1.2.0** — completed L2: `/debate` Phase 6 now emits `debate-output.json` and runs `validate-debate-output.cjs` as a live structural gate; added cross-field referential integrity (`selectedProposal`/`agreedProposals` must point at real `proposals[].id`) and a required, machine-checked `coverage` field; reconciled Phase 4 convergence criteria (≥8 score gap) with `orchestrator.md`.
+  - **high-precision-dev 1.1.0 → 1.2.0** — removed dead L2: all six agents emit prose reports, so the schema validated a JSON shape nothing produces. Deleted `schema/`, validators, fixtures + runner wiring; cleaned dangling refs in `README`/`start.md`.
+- Removed a stray `t.json` (a prior-debate test artifact committed to repo root in PR #4).
+
+### Notes
+- Suite went 148 → 133 checks (−21 removed high-precision checks, +6 new debate mutations). Marketplace patch bump 1.8.5 → 1.8.6.
+
+## [1.8.5] - 2026-07-01
+
+### Fixed
+
+- **Backfilled version bumps + changelogs for PR #4** (commit `893821c`), which had landed a uniform "structured output + zero-dependency validator + fixtures + CI + PostToolUse hook" L2 layer across four plugins **without** any version bump — leaving each `plugin.json` at its pre-merge number both before and after a functional change, and two plugins with no `CHANGELOG.md` at all. This ambiguity is exactly what breaks registry version-caching (new agents/capabilities silently not loading).
+  - **code-audit-rigor 1.3.4 → 1.4.0**, **openspec-superpowers-workflow 1.1.0 → 1.2.0** — version + changelog backfilled for the L2 change.
+  - **multi-agent-debate 1.0.0 → 1.1.0**, **high-precision-dev 1.0.0 → 1.1.0** — `CHANGELOG.md` created (backfilled 1.0.0 initial-release + the 1.1.0 L2 change).
+
+### Notes
+- No functional code changes in this release — version/changelog hygiene only. Marketplace 1.8.4 → 1.8.5.
+
 ## [1.8.4] - 2026-06-29
 
 ### Fixed

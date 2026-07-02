@@ -1,0 +1,63 @@
+[
+  {
+    "verdict": "confirmed",
+    "title": "SQL Injection in user lookup",
+    "description": "The lookupUser handler concatenates the raw `id` query parameter into a SQL string, allowing an attacker to inject arbitrary SQL. Sending `id=1 OR 1=1` returns every user row.",
+    "root_cause": "lookupUser in src/handlers/user.js does not parameterize the id query parameter, allowing SQL injection.",
+    "intended_behavior": "The endpoint should return the single user whose primary key equals the supplied id.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "src/handlers/user.js",
+        "line": 12,
+        "scope": "lookupUser",
+        "description": "req.query.id enters from the HTTP request without validation."
+      },
+      {
+        "kind": "sink",
+        "file": "src/db/query.js",
+        "line": 40,
+        "scope": "rawQuery",
+        "description": "The concatenated string is executed directly against the database."
+      }
+    ],
+    "conditions": [],
+    "execution": {
+      "attacker_perspective": "An unauthenticated remote user with network access to the public API.",
+      "payloads": ["id=1 OR 1=1"],
+      "instructions": [
+        "Send GET /api/user?id=1%20OR%201=1",
+        "Observe the response contains rows for all users."
+      ],
+      "expected_result": "The response body includes user records beyond the single requested id, confirming the injection."
+    },
+    "remediation": {
+      "strategy": "Use a parameterized query so the id value is bound rather than concatenated.",
+      "code_changes": [
+        {
+          "file_name": "src/db/query.js",
+          "fixed_code": "db.query('SELECT * FROM users WHERE id = ?', [id])"
+        }
+      ]
+    },
+    "severity": {
+      "likelihood": {
+        "score": "high",
+        "reason": "The endpoint is publicly reachable and needs no authentication."
+      },
+      "impact": {
+        "score": "critical",
+        "reason": "Full read access to the users table, including credentials."
+      },
+      "overall_severity": "critical"
+    },
+    "confidence": {
+      "score": "high",
+      "reason": "The vulnerable concatenation and its execution sink were both read directly in source."
+    }
+  },
+  {
+    "verdict": "rejected",
+    "reason": "The described XSS in renderComment does not exist: the template engine auto-escapes all interpolated values, and no raw-output helper is used on that path."
+  }
+]
