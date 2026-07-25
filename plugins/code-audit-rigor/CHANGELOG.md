@@ -2,6 +2,24 @@
 
 All notable changes to the `code-audit-rigor` plugin will be documented in this file.
 
+## [2.0.0] - 2026-07-26
+
+### Removed
+
+- **`/audit-review-fix` and its entire implementation retired** (BREAKING). Removed `commands/audit-review-fix.md`, `workflow/audit-review-fix.md`, `workflow/audit-review-fix-workflow.js`, `schema/audit-review-fix-result.schema.json`, `validators/validate-audit-review-fix-result.cjs`, and the 14 corresponding fixtures. `scripts/validate-fixtures.cjs` dropped both its fixture block and its schema-validator consistency check for that artifact; the remaining suite is green (125 passed, 0 failed).
+
+  **Why:** the workflow overlapped with the `claude-security` plugin's *suggest-patches* job, which has a strictly better risk model. `/audit-review-fix` fanned out ~86 sub-agents (~400k tokens) and **rewrote source files directly** — undoing a bad run meant `git revert`. *suggest-patches* writes patch files to disk that you review and apply yourself (not applying one means nothing happened), each earning three confidence claims from a patch-verifier panel first. Once a patch-file mode exists, "automatically edit the code in place" stops being the better default in any scenario.
+
+  **Migration:** `/audit-review-fix [base-ref]` → run `/claude-security`, choose **Scan changes** (scopes the run to a diff), then **Suggest patches**. Note that `/claude-security` scans committed changes only — commit or stash work in progress first, or use its codebase scan instead.
+
+### Changed
+
+- Cross-references to the retired command in `/review-pr` and `tools/triage-decision-tree.md` rewritten so they no longer depend on it. The underlying discipline is unchanged: `/review-pr` Phase 3 still requires a pre-fix test baseline plus an explicit exit-code sentinel — that rule was learned from three real fail-open bugs in the retired workflow (documented in [1.3.2]/[1.3.3]/[1.3.4]) and it outlives the workflow itself.
+
+### Notes
+
+- **Retained:** `/review-branch`, `/review-pr`, and the `code-audit-rigor` skill. They judge by **correctness** — logic errors, maintainability, test coverage — which the security-oriented tools do not cover: `claude-security` and `security-audit` judge by **exploitability** (a complete attack path; a defense-in-depth gap is explicitly not a vulnerability). The two families are complementary, not substitutes.
+
 ## [1.5.0] - 2026-07-01
 
 ### Added

@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] - 2026-07-26
+
+### Changed
+
+- **code-audit-rigor 1.5.0 → 2.0.0** (BREAKING) — `/audit-review-fix` and its whole implementation (workflow script, command, schema, validator, 14 fixtures) retired. It overlapped with the `claude-security` plugin's *suggest-patches* job, which carries a strictly better risk model: patch files you review and apply yourself, versus ~86 sub-agents (~400k tokens) rewriting source in place. `/review-branch`, `/review-pr`, and the rigor skill are retained — they judge by correctness, which the exploitability-focused security tools do not cover. `scripts/validate-fixtures.cjs` updated accordingly; suite green at 125 passed, 0 failed. See that plugin's CHANGELOG [2.0.0] for the migration path.
+
 ## [1.8.11] - 2026-07-02
 
 ### Changed

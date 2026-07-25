@@ -1,17 +1,14 @@
 # code-audit-rigor
 
-> Code review & audit toolkit — routine two-round review commands sharing path-matched language rule packs, an automated adversarial batch audit-and-fix workflow, plus quantitative decision frameworks (EV calculation, score-based calibration, STRIDE+CWE classification, mandatory cross-reference contract) for high-stakes audits.
+> Code review & audit toolkit — routine two-round review commands sharing path-matched language rule packs, plus quantitative decision frameworks (EV calculation, score-based calibration, STRIDE+CWE classification, mandatory cross-reference contract) for high-stakes audits.
 
 ## What it does
 
-`code-audit-rigor` ships three layers that share the same `rules/` packs:
+`code-audit-rigor` ships two layers that share the same `rules/` packs:
 
 **Routine commands** (since 1.2.0):
 - `/review-branch [base-branch]` — two-round branch review: Phase 1 suggestions (with per-file-type rule injection) → Phase 2 per-suggestion sub-agent verification (quotedCode grep anchoring first) → Phase 3 report with a mandatory coverage reconciliation table
 - `/review-pr <PR#>` — fetch all three GitHub comment endpoints (`pulls/comments`, `pulls/reviews`, `issues/comments`), classify, fix security/logic issues with verification tests, commit and reply
-
-**Batch audit-and-fix workflow** (since 1.3.0):
-- `/audit-review-fix [base-ref] [dry] [--profile cheap|thorough|ci] [--votes N] [--focus <glob>] [--angles N] [--no-sweep] [--keep-all] [--max-fix-loc N] [--test-cmd <cmd>] [--model <tier>] [--yes]` — the non-interactive batch counterpart to the deep-audit skill. One run fans out ~86 sub-agents (~400k tokens) across a 9-angle review → EV triage → multi-vote adversarial verification → **safety-gated auto-fix** → test verification → written report under `audits/`. Reserve it for high-risk domains (auth / crypto / payment / IaC / untrusted-input parser / LLM context assembly); for routine PRs use `/review-branch`. Unlike the rigor skill, this layer *does* auto-fix — but only behind adversarial verification and a passing test run.
 
 **Deep-audit skill** — a quantitative checklist for situations where intuition is insufficient:
 
@@ -71,7 +68,6 @@ node scripts/validate-fixtures.cjs
 node plugins/code-audit-rigor/validators/validate-finding.cjs path/to/finding.json
 node plugins/code-audit-rigor/validators/validate-review-branch-results.cjs path/to/review-branch-results.json
 node plugins/code-audit-rigor/validators/validate-review-pr-comments.cjs path/to/review-pr-comments.json
-node plugins/code-audit-rigor/validators/validate-audit-review-fix-result.cjs path/to/audit-review-fix-result.json
 node plugins/code-audit-rigor/validators/coverage-reconcile.cjs path/to/review-branch-results.json
 ```
 
