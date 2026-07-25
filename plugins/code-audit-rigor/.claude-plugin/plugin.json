@@ -1,7 +1,7 @@
 {
   "name": "code-audit-rigor",
-  "version": "1.5.0",
-  "description": "Code review & audit toolkit — routine two-round review commands (/review-branch, /review-pr) sharing path-matched language rule packs, an automated adversarial batch audit-and-fix workflow (/audit-review-fix: 9-angle review + EV triage + safety-gated auto-fix + test verification + report), plus quantitative decision frameworks (EV calculation, score-based calibration, STRIDE+CWE classification) and deterministic engineering guarantees (mechanical scope/coverage reconciliation, quoted-code reference anchoring) for high-stakes audits where intuition is insufficient. The rigor skill itself stays auto-fix-free and injection-safe; auto-fix is provided only by the separate /audit-review-fix workflow under safety gates and adversarial verification.",
+  "version": "2.0.0",
+  "description": "Code review & audit toolkit — routine two-round review commands (/review-branch, /review-pr) sharing path-matched language rule packs, plus quantitative decision frameworks (EV calculation, score-based calibration, STRIDE+CWE classification) and deterministic engineering guarantees (mechanical scope/coverage reconciliation, quoted-code reference anchoring) for high-stakes audits where intuition is insufficient. The toolkit is auto-fix-free and injection-safe by design: it reports and verifies, never rewrites your code — for finding-to-patch work use the claude-security plugin's suggest-patches job.",
   "author": {
     "name": "scl@hanchih.com"
   },
@@ -17,7 +17,6 @@
     "stride",
     "cwe",
     "expected-value",
-    "auto-fix",
     "workflow",
     "adversarial-verification"
   ]

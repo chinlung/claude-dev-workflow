@@ -5,6 +5,12 @@
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [1.9.0] - 2026-07-26
+
+### 變更
+
+- **code-audit-rigor 1.5.0 → 2.0.0**（BREAKING）— `/audit-review-fix` 及其整組實作（workflow script、command、schema、validator、14 個 fixture）退役移除。理由是與 `claude-security` plugin 的 *suggest-patches* 功能重疊，而後者風險模型嚴格更優：產出 patch 檔由使用者自行審閱套用（不套用等於沒發生），而非一次 ~86 sub-agents（~400k tokens）直接改寫原始碼（回退需 `git revert`）。`/review-branch`、`/review-pr` 與 rigor skill 保留——它們以「正確性」為判準（邏輯錯誤、可維護性、測試覆蓋），這一層是以「可利用性」為判準的安全工具不涵蓋的。`scripts/validate-fixtures.cjs` 同步更新，套件全綠（125 passed, 0 failed）。遷移路徑見該 plugin 的 CHANGELOG [2.0.0]。
+
 ## [1.8.11] - 2026-07-02
 
 ### 變更

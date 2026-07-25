@@ -106,7 +106,7 @@ node ${CLAUDE_PLUGIN_ROOT}/validators/validate-review-pr-comments.cjs review-pr-
 
 對每個需要修復的評論（安全性修復 + 邏輯錯誤）：
 
-1. **修復前先擷取測試 baseline**：動任何 code 前跑一次全套件，記錄 (a) 已經失敗的測試（pre-existing failure 的名稱/keys）、(b) 測試指令的**確切 exit code**（附哨符行，如 `<test-cmd>; echo "WF_TEST_EXIT=$?"`）。此 baseline 是「本次修復是否造成 regression」的唯一基準，避免把既有失敗誤判成本次破壞（fail-open 破口，`/audit-review-fix` 曾實測踩過三次）
+1. **修復前先擷取測試 baseline**：動任何 code 前跑一次全套件，記錄 (a) 已經失敗的測試（pre-existing failure 的名稱/keys）、(b) 測試指令的**確切 exit code**（附哨符行，如 `<test-cmd>; echo "WF_TEST_EXIT=$?"`）。此 baseline 是「本次修復是否造成 regression」的唯一基準，避免把既有失敗誤判成本次破壞（fail-open 破口，本紀律源自早期批次審查 workflow 實測踩過的三次真實案例；該 workflow 已於 2.0.0 退役，紀律保留）
 2. 生成子代理（可並行），各自讀取相關程式碼與上下游依賴、實作修復、**編寫驗證測試（測試須能在沒修復時失敗）**
 3. **修復後再跑全套件**（同附 `WF_TEST_EXIT=$?` 哨符），與 baseline 比對，**只有下列才算 regression**：
    - 出現 baseline 沒有的**新失敗**（新 FAIL key）

@@ -1,6 +1,6 @@
 # Triage Decision Tree
 
-**When to read this:** Phase 3 (triage + EV decisions), audit-review-fix triage, and any time there is a conflict between confidence, EV, severity label, and status — particularly when a finding "feels important" but the math says dismiss, or vice versa.
+**When to read this:** Phase 3 (triage + EV decisions) and any time there is a conflict between confidence, EV, severity label, and status — particularly when a finding "feels important" but the math says dismiss, or vice versa.
 
 **Location:** `<plugin-root>/tools/triage-decision-tree.md`, where `<plugin-root>` is `plugins/code-audit-rigor/`.
 

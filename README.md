@@ -89,7 +89,6 @@ node plugins/openspec-superpowers-workflow/skills/openspec-superpowers-workflow/
 node plugins/code-audit-rigor/validators/validate-finding.cjs path/to/finding.json
 node plugins/code-audit-rigor/validators/validate-review-branch-results.cjs path/to/results.json
 node plugins/code-audit-rigor/validators/validate-review-pr-comments.cjs path/to/review-pr-comments.json
-node plugins/code-audit-rigor/validators/validate-audit-review-fix-result.cjs path/to/audit-review-fix-result.json
 node plugins/code-audit-rigor/validators/coverage-reconcile.cjs path/to/results.json
 ```
 

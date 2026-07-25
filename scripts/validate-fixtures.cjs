@@ -365,25 +365,6 @@ function main() {
   run(prV, path.join(carF, 'review-pr-comments-invalid-negative-prnumber.json'), false);
   run(prV, path.join(carF, 'review-pr-comments-invalid-skip-no-rationale.json'), false);
 
-  // ── Code Audit Rigor: audit-review-fix-result ─────────────────────────────
-  console.log('\n## Code Audit Rigor — audit-review-fix-result validator');
-  const arfV = P('plugins/code-audit-rigor/validators/validate-audit-review-fix-result.cjs');
-  run(arfV, path.join(carF, 'audit-review-fix-valid.json'), true);
-  run(arfV, path.join(carF, 'audit-review-fix-valid-follow-up-with-fixes.json'), true);
-  run(arfV, path.join(carF, 'audit-review-fix-valid-workflow-return.json'), true);
-  run(arfV, path.join(carF, 'audit-review-fix-invalid-follow-up-tests-failed.json'), false);
-  run(arfV, path.join(carF, 'audit-review-fix-invalid-impossible-status.json'), false);
-  run(arfV, path.join(carF, 'audit-review-fix-invalid-tests-fail.json'), false);
-  run(arfV, path.join(carF, 'audit-review-fix-invalid-user-review-tests-failed.json'), false);
-  run(arfV, path.join(carF, 'audit-review-fix-invalid-ready-no-fixes.json'), false);
-  run(arfV, path.join(carF, 'audit-review-fix-invalid-clean-active.json'), false);
-  run(arfV, path.join(carF, 'audit-review-fix-invalid-tests-failed-no-fix.json'), false);
-  run(arfV, path.join(carF, 'audit-review-fix-invalid-follow-up-no-deferred.json'), false);
-  run(arfV, path.join(carF, 'audit-review-fix-invalid-empty-diff-nonzero.json'), false);
-  run(arfV, path.join(carF, 'audit-review-fix-invalid-workflow-return-impossible.json'), false);
-  run(arfV, path.join(carF, 'audit-review-fix-invalid-follow-up-userreview.json'), false);
-  run(arfV, path.join(carF, 'audit-review-fix-invalid-tests-failed-passing.json'), false);
-
   // ── Code Audit Rigor: coverage-reconcile ──────────────────────────────────
   console.log('\n## Code Audit Rigor — coverage-reconcile validator');
   const covV = P('plugins/code-audit-rigor/validators/coverage-reconcile.cjs');
@@ -504,7 +485,6 @@ function main() {
   checkSchemaConsistency([P('plugins/code-audit-rigor/schema/finding.schema.json')], findV, 'finding');
   checkSchemaConsistency([P('plugins/code-audit-rigor/schema/review-branch-results.schema.json')], rbV, 'review-branch-results');
   checkSchemaConsistency([P('plugins/code-audit-rigor/schema/review-pr-comments.schema.json')], prV, 'review-pr-comments');
-  checkSchemaConsistency([P('plugins/code-audit-rigor/schema/audit-review-fix-result.schema.json')], arfV, 'audit-review-fix-result');
   checkSchemaConsistency([P('plugins/multi-agent-debate/schema/debate-output.schema.json')], debateV, 'debate-output');
   checkSchemaConsistency([P('plugins/multi-agent-debate/schema/prior-debate.schema.json')], priorV, 'prior-debate');
 
