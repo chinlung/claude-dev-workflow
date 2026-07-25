@@ -5,6 +5,12 @@
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [1.9.1] - 2026-07-26
+
+### 變更
+
+- **openspec-superpowers-workflow 1.2.2 → 1.3.0** — SKIP 條款自「small bug fixes with no spec impact」銳化為明確的契約風險 rubric（public API / data contract / schema / migration / 向後相容 / 安全權限邊界 / 並行一致性 / 跨模組行為；以契約風險判斷，LOC / 檔案數非判準）。放在 skill 描述是因為 auto-trigger 的跳過判斷就發生在那裡——對所有安裝者自包含。`PHASE-IDENTIFICATION.md` 與根 README 同步為相同語言。
+
 ## [1.9.0] - 2026-07-26
 
 ### 變更

@@ -53,7 +53,7 @@
 ### Case 3：「把這個 bug 修掉」
 - **有 spec impact（行為變更）** → openspec new change <bugfix-name>，走 Phase 1-4
 - **只是程式錯誤（no spec impact）** → 直接 TDD 修復，跳過 OpenSpec 流程
-- **判斷標準**：修復後是否需要更新任何 SHALL/MUST 需求？是 → spec impact
+- **判斷標準**：修復後是否需要更新任何 SHALL/MUST 需求？是 → spec impact；契約面訊號（public API / data contract / schema / migration / 向後相容 / 安全權限邊界 / 並行一致性 / 跨模組行為）命中任一通常即有 spec impact，以 LOC / 檔案數判斷是錯誤代理指標
 
 ### Case 4：「繼續上次的工作」
 - 先執行 `ls openspec/changes/` 查看存在哪些 change 資料夾

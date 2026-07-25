@@ -534,7 +534,7 @@ With this skill:
 
 ## Not For
 
-- Small bug fixes with no spec impact (do it with TDD directly, skip the six phases)
+- Single-module changes with clear acceptance criteria and no contract surface — public API / data contract / schema / migration / backward compatibility / security boundaries / concurrency / cross-module behavior (do it with bare superpowers skills directly; judge by contract risk, not LOC)
 - Pure prototyping where formal Phase 1 specs would slow exploration
 - Projects that do not use OpenSpec (the skill detects absence of `openspec/` and stays dormant)
 

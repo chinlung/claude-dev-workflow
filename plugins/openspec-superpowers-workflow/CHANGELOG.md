@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-07-26
+
+### Changed
+
+- **SKIP clause sharpened from vague to contract-risk rubric** (trigger-behavior change, hence minor bump). The frontmatter description's skip criterion was "small bug fixes with no spec impact" — undefined, and "small" invites judging by LOC / file count, which are the wrong proxies. It now enumerates the contract surfaces whose absence permits skipping: public API / data contract / schema / migration / backward compatibility / security or permission boundaries / concurrency or consistency / cross-module behavior — with an explicit "judge by contract risk, not LOC or file count". Single-module changes with clear acceptance criteria and none of those surfaces route to bare superpowers skills. Rationale: this is where the auto-trigger skip decision is actually made, so the rubric belongs in the description (self-contained for every installer) rather than in any one user's global CLAUDE.md.
+- `PHASE-IDENTIFICATION.md` Case 3's 判斷標準 now lists the same contract-surface signals alongside the SHALL/MUST test; root README's when-NOT-to-use line synced to the same language.
+
 ## [1.2.2] - 2026-07-02
 
 ### Changed
