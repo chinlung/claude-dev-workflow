@@ -73,7 +73,7 @@
 node scripts/validate-fixtures.cjs
 ```
 
-此命令對所有插件執行 148 項檢查（self-test canary + 靜態 fixture + 從合法 base 產生的單欄位變異 + schema↔validator 一致性檢查），不需要任何安裝。
+此命令對所有插件執行全套檢查（self-test canary + 靜態 fixture + 從合法 base 產生的單欄位變異 + schema↔validator 一致性檢查），不需要任何安裝；實際檢查項數以執行輸出為準。
 
 個別驗證器範例：
 
