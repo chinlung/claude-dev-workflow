@@ -5,6 +5,16 @@
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [1.10.1] - 2026-08-03
+
+### 變更
+
+- **session-learning 1.0.0 → 1.0.1** — save-session 提醒強化，回移植 session-reflect 於 1.10.0 出貨時的同類修復。原「已執行過 /save-session」的 grep 會匹配任何**提及**該字串的內容（討論、CLAUDE.md 注入、Read 本 plugin 檔案的輸出——實測某 session 62 次命中、零次實際執行），導致提醒被永久抑制；pattern 現只匹配真實執行形狀（`<command-name>/save-session</command-name>`、namespaced 變體、`"skill":"session-learning:save-session"` 呼叫形——皆經真實 transcript 驗證）。同時移除 Stop hook 的無效 `matcher` 欄位，新增 11 條斷言的 fixture 測試（`tests/reminder.test.sh`）並接入 CI。此問題由 session-reflect plugin 自身回顧流程的首次（手動）試跑發現。
+
+### 備註
+
+- Marketplace patch bump 1.10.0 → 1.10.1。
+
 ## [1.10.0] - 2026-08-03
 
 ### 新增

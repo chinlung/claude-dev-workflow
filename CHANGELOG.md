@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.1] - 2026-08-03
+
+### Changed
+
+- **session-learning 1.0.0 → 1.0.1** — save-session reminder hardening, porting the fixes session-reflect shipped with in 1.10.0. The "already ran /save-session" grep was matching any *mention* of the string (discussion, CLAUDE.md injection, Read output of the plugin's own files — one real session showed 62 hits with zero executions), permanently suppressing the reminder; the pattern now matches only real execution shapes (`<command-name>/save-session</command-name>`, namespaced variant, and the `"skill":"session-learning:save-session"` invocation form — all verified against real transcripts). Also removed the no-op `matcher` field from the Stop hook entry and added an 11-assertion fixture suite (`tests/reminder.test.sh`) wired into CI. Surfaced by the session-reflect plugin's own review flow on its first (manual) run.
+
+### Notes
+
+- Marketplace patch bump 1.10.0 → 1.10.1.
+
 ## [1.10.0] - 2026-08-03
 
 ### Added

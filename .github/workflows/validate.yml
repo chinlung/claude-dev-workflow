@@ -24,3 +24,5 @@ jobs:
       # ubuntu-latest ships jq — no install step needed.
       - name: Run session-reflect gate tests
         run: bash plugins/session-reflect/tests/gate.test.sh
+      - name: Run session-learning reminder tests
+        run: bash plugins/session-learning/tests/reminder.test.sh

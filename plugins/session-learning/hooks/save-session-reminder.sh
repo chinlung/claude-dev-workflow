@@ -35,7 +35,9 @@ if [ "${line_count:-0}" -lt 10 ]; then
 fi
 
 # 已執行過 /save-session → 放行
-if grep -q "save-session" "$transcript_path" 2>/dev/null; then
+# pattern 取 command 展開 / Skill 呼叫的執行形狀:僅「提及」(討論、
+# CLAUDE.md 注入、Read 檔案輸出)不得誤抑制提醒
+if grep -Eq '<command-name>/(session-learning:)?save-session</command-name>|"skill":"session-learning:save-session"' "$transcript_path" 2>/dev/null; then
   echo '{"decision": "approve"}'
   exit 0
 fi
