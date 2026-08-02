@@ -16,6 +16,7 @@ A collection of powerful plugins for Claude Code, featuring automated developmen
 | [Code Audit Rigor](#code-audit-rigor-plugin) | Review & audit toolkit: routine two-round review commands + quantitative frameworks (EV, score calibration, STRIDE+CWE) + engineering guarantees (language rule packs, coverage reconciliation, quote anchoring) | `/review-branch`, `/review-pr` + auto-triggered skill |
 | [CodeGraph](#codegraph-plugin) | Structural code intelligence (callers, impact, trace) before grep when editing/reviewing | auto-triggered skill |
 | [Security Audit](#security-audit-plugin) | Six-phase multi-agent pipeline that actively hunts exploitable vulnerabilities (vendored from cloudflare/security-audit-skill) | auto-triggered skill |
+| [Session Reflect](#session-reflect-plugin) | Session-end review that proposes up to 5 verified, actionable improvement suggestions | `/reflect` + Stop hook |
 
 ## Installation
 
@@ -32,6 +33,7 @@ A collection of powerful plugins for Claude Code, featuring automated developmen
 /plugin install code-audit-rigor@scl-claude-plugins
 /plugin install codegraph@scl-claude-plugins
 /plugin install security-audit@scl-claude-plugins
+/plugin install session-reflect@scl-claude-plugins
 ```
 
 Or install directly:
@@ -694,6 +696,12 @@ The vendored skill is agent-neutral: its `research` agent maps to Claude Code's 
 ## Requirements
 
 Node.js — for the Phase 5 `validate-findings.cjs` schema validator.
+
+---
+
+# Session Reflect Plugin
+
+Session-end reflective review. A fail-open Stop-hook gate triages cheaply (routine or thin sessions pass through untouched), then the `reflect` skill sweeps the session from four lenses — out-of-scope findings, pre-existing issues, adjacent optimizations, knowledge gaps. Every candidate must carry a concrete evidence anchor and survive both an inline four-filter self-review and an adversarial verifier subagent before you see it. Up to 5 suggestions are offered as a multi-select choice: chosen ones execute immediately while context is hot; unchosen ones persist to `.claude/reflect-backlog.md` for later (`/reflect` re-opens the review anytime). Complements Session Learning: that plugin saves *lessons*, this one proposes *actions*.
 
 ---
 
