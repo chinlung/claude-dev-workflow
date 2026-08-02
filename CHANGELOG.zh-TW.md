@@ -9,7 +9,7 @@
 
 ### 新增
 
-- **session-reflect 1.0.0**（新 plugin）— session 收尾回顧建議系統。fail-open 的 bash Stop hook 閘門（`stop_hook_active` 防迴圈、一 session 一次 flag file、<10 行實質性門檻、互動中偵測——讓路且不消耗唯一一次觸發權）交棒給兩段式 skill：快速 triage（routine session 一句「無需回顧」退出），再以四視角掃描（範圍外發現/既有問題/延伸優化/知識缺口）。候選建議必須先通過驗證層才會呈現給使用者：inline 四濾鏡自我反思（錨點親自 Read、已有防護、刻意設計、價值實在）+ 一個對抗式 verifier 子代理（繼承主迴圈模型、不降級），任務框架是反駁而非確認。最多 5 個存活建議以 multi-select 問卷呈現——選中即於本 session 執行，未選寫入 `.claude/reflect-backlog.md`（`[rejected]` 項永久保留作去重依據；plugin 永不自行 commit backlog）。閘門由 14 條 fixture 斷言覆蓋並接入 CI（`tests/gate.test.sh`）。設計文件：`docs/session-reflect-design-2026-08-03.md`。
+- **session-reflect 1.0.0**（新 plugin）— session 收尾回顧建議系統。fail-open 的 bash Stop hook 閘門（`stop_hook_active` 防迴圈、一 session 一次 flag file、<10 行實質性門檻、互動中偵測——讓路且不消耗唯一一次觸發權）交棒給兩段式 skill：快速 triage（routine session 一句「無需回顧」退出），再以四視角掃描（範圍外發現/既有問題/延伸優化/知識缺口）。候選建議必須先通過驗證層才會呈現給使用者：inline 四濾鏡自我反思（錨點親自 Read、已有防護、刻意設計、價值實在）+ 一個對抗式 verifier 子代理（繼承主迴圈模型、不降級），任務框架是反駁而非確認。最多 5 個存活建議以 multi-select 問卷呈現——選中即於本 session 執行，未選寫入 `.claude/reflect-backlog.md`（`[rejected]` 項永久保留作去重依據；plugin 永不自行 commit backlog）。閘門由 15 條 fixture 斷言覆蓋並接入 CI（`tests/gate.test.sh`）。設計文件：`docs/session-reflect-design-2026-08-03.md`。
 
 ### 備註
 

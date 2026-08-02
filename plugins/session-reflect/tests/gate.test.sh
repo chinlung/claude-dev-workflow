@@ -80,11 +80,17 @@ touch "$t/claude-session-reflect-c4"
 out=$(run_gate "$(input_json c4 "$t/tr.jsonl" false)" "$t")
 check "flag exists → approve" "$out" '"approve"'
 
-# 5) transcript 已含 session-reflect 紀錄 → approve
+# 5) transcript 已含 reflect skill 執行紀錄 → approve
 t=$WORK/c5; mkdir -p "$t"
-make_transcript "$t/tr.jsonl" 12 '{"type":"user","message":{"content":[{"type":"text","text":"呼叫 session-reflect plugin 的 reflect skill"}]}}'
+make_transcript "$t/tr.jsonl" 12 '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"session-reflect:reflect"}}]}}'
 out=$(run_gate "$(input_json c5 "$t/tr.jsonl" false)" "$t")
 check "already reflected → approve" "$out" '"approve"'
+
+# 5b) 僅「提及」plugin 名(非執行紀錄)→ 照常 block,不得誤抑制
+t=$WORK/c5b; mkdir -p "$t"
+make_transcript "$t/tr.jsonl" 12 '{"type":"assistant","message":{"content":[{"type":"text","text":"已幫你安裝 session-reflect plugin。"}]}}'
+out=$(run_gate "$(input_json c5b "$t/tr.jsonl" false)" "$t")
+check "mention-only → still block" "$out" '"block"'
 
 # 6) 最後 assistant 為 AskUserQuestion → approve 且不標記 flag
 t=$WORK/c6; mkdir -p "$t"

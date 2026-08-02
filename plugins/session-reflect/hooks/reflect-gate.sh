@@ -30,7 +30,8 @@ line_count=$(wc -l < "$transcript_path" 2>/dev/null | tr -d ' ')
 if [ "${line_count:-0}" -lt 10 ]; then approve; fi
 
 # 本 session 已執行過回顧(手動 /reflect 或先前觸發)→ 放行
-if grep -q "session-reflect" "$transcript_path" 2>/dev/null; then approve; fi
+# pattern 取完整 skill 識別字:僅「提及」plugin 名的對話不得誤抑制
+if grep -q "session-reflect:reflect" "$transcript_path" 2>/dev/null; then approve; fi
 
 # 互動中偵測:最後一則 assistant 訊息在等使用者 → 放行且「不標記 flag」
 # (讓路但保留下次觸發權;只有真正 block 才消耗一 session 唯一一次機會)
@@ -48,4 +49,4 @@ fi
 
 # 全部通過:標記 flag 並觸發回顧
 touch "$flag_file"
-echo '{"decision": "block", "reason": "🔍 Session 收尾回顧:請呼叫 session-reflect plugin 的 reflect skill 執行回顧。先快速 triage:routine 或無實質內容,直接回報「本次 session 無需回顧:<理由>」即可結束。"}'
+echo '{"decision": "block", "reason": "🔍 Session 收尾回顧:請呼叫 session-reflect:reflect skill 執行回顧。先快速 triage:routine 或無實質內容,直接回報「本次 session 無需回顧:<理由>」即可結束。"}'
