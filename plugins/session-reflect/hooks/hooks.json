@@ -1,0 +1,16 @@
+{
+  "description": "Session 收尾時經廉價閘門判斷後觸發回顧,提出經驗證的改進建議",
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/reflect-gate.sh\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

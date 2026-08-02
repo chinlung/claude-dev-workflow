@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "Claude Code plugins collection by scl",
-    "version": "1.9.1"
+    "version": "1.10.0"
   },
   "plugins": [
     {
@@ -63,6 +63,13 @@
       "description": "安全稽核 skill - 將 agent 化為安全稽核員，以六階段流程（recon → hunt → validate → report → structured output → independent verification）並用平行 sub-agent 主動找出可被利用、有實際影響的漏洞，而非偏離 checklist 的理論性問題。Vendored 自 cloudflare/security-audit-skill（MIT）。與 code-audit-rigor 互補：本 plugin 主動獵捕 exploit，code-audit-rigor 以量化決策框架治理 PR/branch review。",
       "version": "1.0.1",
       "keywords": ["security-audit", "security-review", "vulnerability", "pen-test", "exploit", "adversarial-validation", "cloudflare"]
+    },
+    {
+      "name": "session-reflect",
+      "source": "./plugins/session-reflect",
+      "description": "Session 收尾回顧建議系統 - Stop hook 廉價閘門 + 兩段 triage，回顧本次任務與交談，經證據錨點與對抗式驗證後提出最多 5 個可執行建議（範圍外 bug / 既有問題 / 延伸優化 / 知識缺口），互動勾選執行，未選入 backlog。與 session-learning 互補：session-learning 保存「經驗」，session-reflect 提出「行動」。",
+      "version": "1.0.0",
+      "keywords": ["session", "reflection", "review", "suggestions", "adversarial-verification", "backlog", "stop-hook"]
     }
   ]
 }

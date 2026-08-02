@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.0] - 2026-08-03
+
+### Added
+
+- **session-reflect 1.0.0** (new plugin) — session-end reflective review. A fail-open bash Stop-hook gate (loop guard via `stop_hook_active`, once-per-session flag file, <10-line substantiveness floor, mid-interaction detection that yields without consuming the session's single trigger) hands off to a two-stage skill: quick triage (routine sessions exit with a one-line "nothing to review"), then a four-lens sweep (out-of-scope findings / pre-existing issues / adjacent optimizations / knowledge gaps). Candidates must survive a verification layer before the user ever sees them: an inline four-filter self-review (anchor actually Read, existing safeguards, deliberate design, observable value) plus one adversarial verifier subagent (main-loop model, never downgraded) framed to refute, not confirm. Up to 5 survivors are offered via a multi-select prompt — chosen ones execute in-session, unchosen ones land in `.claude/reflect-backlog.md` (`[rejected]` entries are kept forever as dedup evidence; the plugin never commits the backlog). Gate covered by 18 fixture assertions wired into CI (`tests/gate.test.sh`). Design: `docs/session-reflect-design-2026-08-03.md`.
+
+### Notes
+
+- Marketplace minor bump 1.9.1 → 1.10.0 (new plugin).
+
 ## [1.9.1] - 2026-07-26
 
 ### Changed

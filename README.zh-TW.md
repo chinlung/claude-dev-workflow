@@ -16,6 +16,7 @@
 | [Code Audit Rigor](#code-audit-rigor-插件) | 審查工具箱：routine 兩輪審查指令 + 量化框架（EV、評分校準、STRIDE+CWE）+ 工程化保證（語言規則包、coverage 核銷、引用錨定） | `/review-branch`、`/review-pr` + 自動觸發 skill |
 | [CodeGraph](#codegraph-插件) | 編輯／審查前先查結構（callers、impact、trace）而非 grep | 自動觸發 skill |
 | [Security Audit](#security-audit-插件) | 六階段多代理流程，主動獵捕可被利用的漏洞（vendored 自 cloudflare/security-audit-skill） | 自動觸發 skill |
+| [Session Reflect](#session-reflect-插件) | Session 收尾回顧，提出最多 5 個經驗證的可執行改進建議 | `/reflect` + Stop hook |
 
 ## 安裝方式
 
@@ -32,6 +33,7 @@
 /plugin install code-audit-rigor@scl-claude-plugins
 /plugin install codegraph@scl-claude-plugins
 /plugin install security-audit@scl-claude-plugins
+/plugin install session-reflect@scl-claude-plugins
 ```
 
 或直接安裝：
@@ -692,6 +694,12 @@ vendored skill 寫成 agent-neutral：其 `research` agent 對應 Claude Code �
 ## 前置需求
 
 Node.js — 供第 5 階段 `validate-findings.cjs` schema 驗證。
+
+---
+
+# Session Reflect 插件
+
+Session 收尾回顧系統。fail-open 的 Stop hook 閘門先廉價 triage（routine 或無實質內容的 session 直接放行），再由 `reflect` skill 從四視角掃描 session——範圍外發現、既有問題、延伸優化、知識缺口。每個候選建議必附具體證據錨點，並通過 inline 四濾鏡自我反思與對抗式 verifier 子代理雙重驗證後才會呈現。最多 5 個建議以多選問卷提供：選中的趁 context 還熱立即執行；未選的寫入 `.claude/reflect-backlog.md` 供日後處理（隨時可用 `/reflect` 重開回顧）。與 Session 經驗學習插件互補：該插件保存「經驗」，本插件提出「行動」。
 
 ---
 
