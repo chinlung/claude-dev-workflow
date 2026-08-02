@@ -106,7 +106,7 @@ Stage 2 候選建議在發 AskUserQuestion 之前必須通過兩道過濾:
 
 ### 互動與執行
 
-一次 `AskUserQuestion`(multiSelect: true)列出建議,每項附一行證據與預估規模。
+以一次 `AskUserQuestion` 呼叫呈現建議,每項附一行證據與預估規模。工具硬限制每題選項 2-4 個,依存活數調整:1 項 → 單題兩選項(執行/入 backlog);2-4 項 → 單題 multiSelect;5 項 → 同一次呼叫拆兩題(3+2)。
 
 - 選中 → 依序在本 session 執行(遵守既有開發紀律),完成後更新 backlog 狀態為 done
 - 未選 → 寫入 backlog(pending)

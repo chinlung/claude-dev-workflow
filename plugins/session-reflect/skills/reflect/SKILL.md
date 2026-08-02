@@ -52,7 +52,10 @@ description: Use when the session-reflect Stop hook requests a session wrap-up r
 
 - 通過驗證的建議依「價值 × 執行成本」排序,**最多取 5 個**;超額者直接寫入 backlog(`[pending]`)
 - backlog 有既存 `[pending]` 項時,問卷前附一句「backlog 尚有 N 項 pending,可用 /reflect 回顧」(不佔名額)
-- 一次 `AskUserQuestion`(multiSelect: true)列出建議,每項附一行證據錨點與預估規模
+- 以一次 `AskUserQuestion` 呼叫呈現建議,每項附一行證據錨點與預估規模。**工具硬限制:每題選項 2-4 個**,依存活數調整:
+  - 1 項 → 單題兩選項:「執行此建議」/「入 backlog」
+  - 2-4 項 → 單題 multiSelect,逐項列出
+  - 5 項 → 同一次呼叫拆兩題(3+2)multiSelect
 - 通過驗證的建議為 0 個 → 輸出「本次 session 回顧完成:無通過驗證的建議」並結束
 
 使用者勾選後:

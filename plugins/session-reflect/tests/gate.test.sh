@@ -2,7 +2,7 @@
 # session-reflect gate script fixture 測試
 # 用法:bash plugins/session-reflect/tests/gate.test.sh
 # 消費者:提交前手跑 + CI(.github/workflows/validate.yml)
-set -u
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GATE="$SCRIPT_DIR/../hooks/reflect-gate.sh"
@@ -91,6 +91,19 @@ t=$WORK/c5b; mkdir -p "$t"
 make_transcript "$t/tr.jsonl" 12 '{"type":"assistant","message":{"content":[{"type":"text","text":"已幫你安裝 session-reflect plugin。"}]}}'
 out=$(run_gate "$(input_json c5b "$t/tr.jsonl" false)" "$t")
 check "mention-only → still block" "$out" '"block"'
+
+# 5c) 純文字含完整識別字(如讀取本 plugin 文件)→ 照常 block,不得誤抑制
+t=$WORK/c5c; mkdir -p "$t"
+make_transcript "$t/tr.jsonl" 12 '{"type":"assistant","message":{"content":[{"type":"text","text":"文件提到 session-reflect:reflect 的用法。"}]}}'
+out=$(run_gate "$(input_json c5c "$t/tr.jsonl" false)" "$t")
+check "literal-in-text → still block" "$out" '"block"'
+
+# 5d) 最後 assistant 行損毀(JSON 截斷)→ 依 fail-open 契約 approve 且不標記 flag
+t=$WORK/c5d; mkdir -p "$t"
+make_transcript "$t/tr.jsonl" 12 '{"type":"assistant","message":{"content":[{"type":"text","text":"broken'
+out=$(run_gate "$(input_json c5d "$t/tr.jsonl" false)" "$t")
+check "corrupted last line → approve" "$out" '"approve"'
+check_flag "corrupted last line → no flag" "$t/claude-session-reflect-c5d" absent
 
 # 6) 最後 assistant 為 AskUserQuestion → approve 且不標記 flag
 t=$WORK/c6; mkdir -p "$t"

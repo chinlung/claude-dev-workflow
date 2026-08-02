@@ -30,18 +30,20 @@ line_count=$(wc -l < "$transcript_path" 2>/dev/null | tr -d ' ')
 if [ "${line_count:-0}" -lt 10 ]; then approve; fi
 
 # 本 session 已執行過回顧(手動 /reflect 或先前觸發)→ 放行
-# pattern 取完整 skill 識別字:僅「提及」plugin 名的對話不得誤抑制
-if grep -q "session-reflect:reflect" "$transcript_path" 2>/dev/null; then approve; fi
+# pattern 取 Skill tool 呼叫的 JSON 形狀:僅「提及」plugin 名或讀取
+# 本 plugin 文件內容(純文字含識別字)的對話不得誤抑制
+if grep -q '"skill":"session-reflect:reflect"' "$transcript_path" 2>/dev/null; then approve; fi
 
 # 互動中偵測:最後一則 assistant 訊息在等使用者 → 放行且「不標記 flag」
 # (讓路但保留下次觸發權;只有真正 block 才消耗一 session 唯一一次機會)
 last_assistant=$(grep -F '"type":"assistant"' "$transcript_path" 2>/dev/null | tail -1 || true)
 if [ -n "$last_assistant" ]; then
-  tool_names=$(echo "$last_assistant" | jq -r '[.message.content[]? | select(.type=="tool_use") | .name] | join(",")' 2>/dev/null || echo "")
+  # 解析失敗(損毀/截斷的 JSONL)→ 依 fail-open 契約 approve,不猜測續行
+  if ! tool_names=$(echo "$last_assistant" | jq -r '[.message.content[]? | select(.type=="tool_use") | .name] | join(",")' 2>/dev/null); then approve; fi
   case "$tool_names" in
     *AskUserQuestion*|*ExitPlanMode*) approve ;;
   esac
-  last_text=$(echo "$last_assistant" | jq -r '[.message.content[]? | select(.type=="text") | .text] | last // ""' 2>/dev/null || echo "")
+  if ! last_text=$(echo "$last_assistant" | jq -r '[.message.content[]? | select(.type=="text") | .text] | last // ""' 2>/dev/null); then approve; fi
   case "$last_text" in
     *"?"|*"？") approve ;;
   esac
