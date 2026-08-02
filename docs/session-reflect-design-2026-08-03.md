@@ -16,6 +16,7 @@ Session 收尾時自動回顧本次完成的任務與近期交談,判斷是否�
 | 觸發頻率 | 一 session 一次(flag file 防重複,比照 save-session) |
 | 判斷引擎 | bash 機械閘門 + 主 Claude 兩段 triage(不用 prompt-based hook 小模型冷讀) |
 | 建議處置 | 選中即在本 session 執行;未選寫入 backlog 檔 |
+| 建議品質 | 呈現前必經 Stage 2.5 驗證:inline 四濾鏡自我反思 + 對抗式子代理反駁(不降級模型) |
 | 與 save-session 共存 | 獨立共存,各自防重複,不互相依賴 |
 
 ## 架構
@@ -85,6 +86,24 @@ Stop 事件
 - 依「價值 × 執行成本」排序,超過 5 個只取前 5,其餘直接寫入 backlog
 - 先讀 backlog 去重:已存在(pending / rejected)的項目不重複提出
 
+### Stage 2.5:建議驗證層(發想與呈現之間,防「激情發想」)
+
+Stage 2 候選建議在發 AskUserQuestion 之前必須通過兩道過濾:
+
+**第一道:inline 自我反思**(主 Claude,零派發成本)——每個候選過四個濾鏡:
+
+1. **錨點實存**:親自 Read 該 `file:line`,確認引用程式碼確實存在且如描述(grep 命中 ≠ live code,防區塊註解陷阱)
+2. **已有防護**:建議修的問題是否已被現有機制處理
+3. **刻意設計**:「問題」是否其實是不對稱設計或既定取捨
+4. **價值實在**:執行後使用者可觀察到什麼改善,說不出來即丟棄
+
+**第二道:對抗式子代理驗證**(僅存活者進入)——派發一個 verifier 子代理批次驗證(≤5 項小額主張,單一代理即足;**繼承主迴圈模型,不降級**——驗證器降級＝假信心),任務框架是反駁而非確認:「假設每項建議是誤報,找證據推翻它」。被駁倒的直接丟棄,回報中一句帶過(「另有 N 項候選未通過驗證」),不佔名額、不入 backlog。
+
+- 類別差異:「知識缺口」類無 code 錨點,驗證改查「該問題是否已在對話中解答過」
+- Fail-open:子代理派發失敗 → 退回僅 inline 驗證,呈現時明說「本次無對抗式驗證 pass」,不靜默略過
+
+分工原理:inline 反思抓「事實錯誤」(便宜但有自我確認偏誤);對抗式子代理抓「同向誤讀」——發想者與審查者同一 context 時錯誤前提會被繼承,獨立 context 的反駁框架才打得破。驗證層放在 AskUserQuestion 之前:使用者注意力是最貴資源,不讓未驗證建議消耗使用者判斷力。
+
 ### 互動與執行
 
 一次 `AskUserQuestion`(multiSelect: true)列出建議,每項附一行證據與預估規模。
@@ -128,7 +147,7 @@ Stop hook 壞掉的最壞後果是使用者無法結束 session,每條失敗路�
 ## 驗證
 
 - `tests/gate.test.sh`:餵入各情境模擬 hook JSON(空 transcript、短 transcript、問句結尾、flag 已存在、stop_hook_active=true),斷言 approve/block 輸出——讀環境事實、有消費者(提交前手跑/CI)的真閘門
-- skill 為 prompt 內容不可 unit-test,品質靠 playbook 內機械規則(證據錨點、≤5 上限)約束
+- skill 為 prompt 內容不可 unit-test,品質靠 playbook 內機械規則(證據錨點、≤5 上限、Stage 2.5 兩道驗證)約束
 
 ## 發布
 
