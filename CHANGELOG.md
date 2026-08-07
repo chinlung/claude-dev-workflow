@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.2] - 2026-08-08
+
+### Changed
+
+- **openspec-superpowers-workflow 1.3.0 → 1.3.1** — review-notes tagging criterion made explicit: tag by the artifact the fix lands in, not by the nature of the problem. A design decision that contradicts a spec scenario's literal wording is `[REQUIREMENT]` (the spec is the file that must change) — the C1 gate routes strictly by tag and forbids `[DESIGN]` from touching `specs/`. Stated in `phases.md` at the tag-writing site, plus a C1 修正路徑 paragraph standardizing re-tag-with-note when a mis-tag is caught at reconcile (the dangerous alternative — honoring the mis-tag by skipping the spec edit — archives spec-vs-implementation divergence into `openspec/specs/` as permanent wrong truth). Surfaced by two real re-tags in a production Phase 6 run.
+
+### Notes
+
+- Marketplace patch bump 1.10.1 → 1.10.2.
+
 ## [1.10.1] - 2026-08-03
 
 ### Changed

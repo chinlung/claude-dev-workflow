@@ -172,6 +172,16 @@ After brainstorming completes, OVERWRITE `openspec/changes/<feature-name>/design
 - `[CONSTITUTION]` — Cross-cutting concern that applies to ALL features
   → Mark Y (needs constitution update, NOT this feature's spec)
 
+**Tag by the artifact the fix lands in, not by the nature of the problem.**
+The reconciliation gate (RECONCILIATION-CRITERIA C1) routes strictly by tag:
+`[REQUIREMENT]` may only update `proposal.md` / `specs/`, and `[DESIGN]` may
+only update `design.md`. A "design decision" that contradicts the spec's
+literal wording is therefore `[REQUIREMENT]` — the spec is the file that must
+change. Deciding by problem-nature instead of fix-landing-point is the known
+mis-tagging trap: the tag is written in Phase 4/5 but consumed in Phase 6,
+possibly by a different session, so it must be routable without re-deriving
+context.
+
 ### Example:
 ```markdown
 ## Round 1 - PR Review (2026-03-30)

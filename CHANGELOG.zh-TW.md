@@ -5,6 +5,16 @@
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [1.10.2] - 2026-08-08
+
+### Changed
+
+- **openspec-superpowers-workflow 1.3.0 → 1.3.1** — review-notes 標籤判準明確化：**以修正落點的 artifact 歸類，而非問題的性質**。與 spec scenario 字面敘述衝突的設計決策應標 `[REQUIREMENT]`（spec 才是要被改的檔案）——C1 閘門嚴格依標籤路由且禁止 `[DESIGN]` 更新 `specs/`。判準寫在 `phases.md` 的標籤書寫現場（Phase 4/5，context 最新鮮處），並在 C1 新增「修正路徑」段落，把「reconcile 時發現誤標 → 修正標籤附註記再處理」制度化（危險的替代路徑——遷就誤標而跳過 spec 更新——會把 spec 與實作的分歧歸檔成 `openspec/specs/` 裡永久的錯誤真相來源）。源自一次真實 Phase 6 執行中的兩筆現場重新歸類。
+
+### Notes
+
+- Marketplace patch bump 1.10.1 → 1.10.2。
+
 ## [1.10.1] - 2026-08-03
 
 ### 變更

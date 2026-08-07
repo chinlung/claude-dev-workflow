@@ -17,6 +17,8 @@
 | `[CONSTITUTION]` Y | 專案 constitution（`openspec/config.yaml` 或指定位置）| feature spec 任何檔案 |
 | `[CODE]` N | （無需更新 spec） | — |
 
+**修正路徑**：若核查發現某 Y 項目的標籤與其實際修正落點不符（例如標了 `[DESIGN]` 但要改的字句在 `specs/`——「設計決策衝撞 spec 字面」是已知的誤標類型），在 `review-notes.md` 修正標籤並附註記，再依修正後的標籤處理。**不得**為遷就原標籤而跳過 spec 更新（會把 spec 與實作的分歧歸檔成永久的錯誤真相來源），也不得帶著原標籤違規更新。
+
 **失敗條件**：任何 Y 項目未被對應到應更新的 artifact，或被對應到禁止更新的 artifact。
 
 ---

@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] - 2026-08-08
+
+### Changed
+
+- **Review-notes tagging criterion made explicit: tag by fix-landing artifact, not problem nature.** `phases.md`'s Tags section described `[REQUIREMENT]`/`[DESIGN]` by the *kind* of problem ("wrong behavior" vs "architecture change"), while `RECONCILIATION-CRITERIA.md` C1 routes strictly by *artifact destination* ([DESIGN] may never touch `specs/`). The two axes diverge for one recurring class: a deliberate design decision whose conflicting text lives in a spec scenario's literal wording — by nature it feels like `[DESIGN]`, but the file that must change is the spec, so the correct tag is `[REQUIREMENT]`. Surfaced in a real Phase 6 run where two such items had to be re-tagged at the gate; the silent-failure mode this prevents is worse: honoring a mis-tag by skipping the spec edit archives a spec-vs-implementation divergence into `openspec/specs/` as permanent wrong truth. `phases.md` now states the criterion at the tag-writing site (Phase 4/5, where context is fresh), and C1 gained a 修正路徑 paragraph institutionalizing the re-tag-with-note recovery instead of leaving it to improvisation.
+
 ## [1.3.0] - 2026-07-26
 
 ### Changed
