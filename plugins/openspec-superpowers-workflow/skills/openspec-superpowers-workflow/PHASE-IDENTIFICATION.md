@@ -54,6 +54,7 @@
 - **有 spec impact（行為變更）** → openspec new change <bugfix-name>，走 Phase 1-4
 - **只是程式錯誤（no spec impact）** → 直接 TDD 修復，跳過 OpenSpec 流程
 - **判斷標準**：修復後是否需要更新任何 SHALL/MUST 需求？是 → spec impact；契約面訊號（public API / data contract / schema / migration / 向後相容 / 安全權限邊界 / 並行一致性 / 跨模組行為）命中任一通常即有 spec impact，以 LOC / 檔案數判斷是錯誤代理指標
+- **SKIP 判定程序**：決定跳過 OpenSpec 流程前，必須在回覆中逐項列出八項契約面的核對結論（不可整體宣稱「無契約面」）；先 `ls openspec/specs/` 對照——行為變更落在已涵蓋能力域 → 幾乎必有 spec impact（這是可查證的環境事實，優先於自由心證）。plugin 的 skip-gate hook 會在無 active change 的首次程式碼編輯 deny 一次，強制此程序留痕
 
 ### Case 4：「繼續上次的工作」
 - 先執行 `ls openspec/changes/` 查看存在哪些 change 資料夾
@@ -85,6 +86,10 @@
 - ❌ **Phase 4 期間跳過 TDD**
   - 症狀：直接寫實作程式碼，說「之後再補測試」
   - 後果：違反 Phase 4 的強制 TDD 規則
+
+- ❌ **未逐項核對八項契約面就 SKIP 本 workflow**
+  - 症狀：憑「感覺是小改動」或某份摘要句（如使用者全域 CLAUDE.md 的一行選路 rubric）就直接開始編輯程式碼
+  - 後果：契約面變更（如跨模組行為）繞過 spec 流程落地，事後才被抓回重走；skip-gate hook 會在首次編輯攔一次，但明示核對的責任在你
 
 - ❌ **沒有看 phases.md 就直接開始執行**
   - 每個 Phase 的完整 playbook（包含 sync-back 規則）在 phases.md 中，SKILL.md 只是概覽

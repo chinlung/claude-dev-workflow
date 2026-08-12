@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-08-13
+
+### Added
+
+- **skip-gate PreToolUse hook — the implicit SKIP decision is machine-forced into an explicit, auditable procedure** (new enforcement surface, hence minor bump). A real session skipped the whole workflow by eyeballing a one-line CLAUDE.md summary ("no contract surfaces → bare superpowers") while the change actually touched cross-module behavior documented in the canonical spec, in an already-spec'd capability domain — the 1.3.0 rubric was in context and still lost to rationalization, because skipping happens by *not acting* and leaves no artifact to check. The hook closes the gap at the moment of the mistake: on the session's first Edit/Write in a project that has `openspec/` but no active change under `openspec/changes/` (`archive/` doesn't count), it denies the edit once and demands a per-surface verdict on all eight contract surfaces before retrying. Scope guards: paths under `openspec/` and `.claude/` are exempt (writing proposals/specs IS workflow work), as are paths outside the project; fully fail-open (missing jq, malformed input, unknown tool shapes all allow) — the gate forces the judgment to happen and leave a trace, it does not judge contract risk itself. A 5-second batch window keeps sibling edits from the same parallel tool batch behind the gate (cross-vendor review caught that a bare once-per-session flag lets every edit after the first sail through when the session opens with a multi-file batch); path exemptions are evaluated before the window so legitimate same-batch `openspec/` writes are never denied. Ships with a 20-assertion fixture suite (`tests/skip-gate.test.sh`) wired into CI; flag dedupe, archive exclusion, and path exemption are each mutation-verified to break a distinct assertion, and the session_id path-sanitization case doubles as a fail-open regression guard (an unsanitized `/` in the id silently disabled the whole gate via a failed `touch`).
+
+### Changed
+
+- **SKIP clause proceduralized: an unstated skip is now a workflow violation.** The frontmatter description (the site where the auto-trigger skip decision is actually made) now requires the reply to enumerate all eight surfaces with explicit per-surface verdicts, and adds the strongest concrete signal the incident exposed: a behavior change in a capability domain already covered by `openspec/specs/` almost always has spec impact — a checkable environment fact that outranks free-form judgment. `PHASE-IDENTIFICATION.md` Case 3 gains the same SKIP 判定程序, 絕對禁止事項 gains the corresponding ❌, and the README documents the hook and its boundaries. The SKIP block sits ahead of the role-separation elaboration inside the description: the runtime truncates skill descriptions both per-skill (1536-char cap) and under an aggregate listing budget (`skillListingBudgetFraction`), so the load-bearing invariant must not live at the truncatable tail.
+
 ## [1.3.1] - 2026-08-08
 
 ### Changed

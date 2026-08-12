@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.3] - 2026-08-13
+
+### Changed
+
+- **openspec-superpowers-workflow 1.3.1 → 1.4.0** — skip-gate PreToolUse hook + proceduralized SKIP clause. A real session bypassed the six-phase workflow by judging "no contract surfaces" from a one-line CLAUDE.md summary — the change in fact touched cross-module behavior spelled out in the canonical spec, in an already-spec'd capability domain. Root cause: SKIP is an *implicit* decision (achieved by not acting), so nothing ever forces the eight-surface check to happen. The plugin now ships a PreToolUse hook that, in an openspec project with no active change, denies the session's first code edit and demands explicit per-surface verdicts before retry, with a 5-second batch window so sibling edits from the same parallel batch stay behind the gate (fail-open on every error path; `openspec/`/`.claude/` and out-of-project paths exempt; 20-assertion suite wired into CI, key protections mutation-verified). The SKIP clause itself now declares an unstated skip a workflow violation and adds the "behavior lands in a capability domain already covered by `openspec/specs/`" signal — a checkable environment fact that outranks free-form judgment.
+
+### Notes
+
+- Marketplace patch bump 1.10.2 → 1.10.3.
+
 ## [1.10.2] - 2026-08-08
 
 ### Changed

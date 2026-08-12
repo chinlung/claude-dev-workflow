@@ -536,7 +536,7 @@ With this skill:
 
 ## Not For
 
-- Single-module changes with clear acceptance criteria and no contract surface — public API / data contract / schema / migration / backward compatibility / security boundaries / concurrency / cross-module behavior (do it with bare superpowers skills directly; judge by contract risk, not LOC)
+- Single-module changes with clear acceptance criteria and no contract surface — public API / data contract / schema / migration / backward compatibility / security boundaries / concurrency / cross-module behavior (do it with bare superpowers skills directly; judge by contract risk, not LOC). Since 1.4.0 a skip decision must enumerate all eight surfaces explicitly in the reply — the plugin's skip-gate PreToolUse hook denies the session's first code edit once to force that check
 - Pure prototyping where formal Phase 1 specs would slow exploration
 - Projects that do not use OpenSpec (the skill detects absence of `openspec/` and stays dormant)
 

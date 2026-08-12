@@ -5,6 +5,16 @@
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [1.10.3] - 2026-08-13
+
+### Changed
+
+- **openspec-superpowers-workflow 1.3.1 → 1.4.0** — skip-gate PreToolUse hook＋SKIP 條款程序化。一次真實 session 憑 CLAUDE.md 一行摘要句自由心證「無契約面」而繞過六階段 workflow——變更實際觸碰正典 spec 明載的跨模組行為，且落在已 spec 化能力域。根因：SKIP 是「以不動作達成」的隱式決策，沒有任何 artifact 逼八項契約面核對真的發生。plugin 現出貨 PreToolUse hook：openspec 專案無 active change 時，deny 本 session 首次程式碼編輯並要求逐項明示結論後重試，附 5 秒批次窗讓同一並行批次的手足編輯一併被攔（所有錯誤路徑 fail-open；`openspec/`、`.claude/` 與專案外路徑豁免；20 條斷言測試接 CI，關鍵保護經 mutation 驗證）。SKIP 條款同步宣告「未明示核對的跳過＝流程違規」，並補上「行為落在 `openspec/specs/` 已涵蓋能力域」訊號——可查證的環境事實，優先於自由心證。
+
+### Notes
+
+- Marketplace patch bump 1.10.2 → 1.10.3。
+
 ## [1.10.2] - 2026-08-08
 
 ### Changed

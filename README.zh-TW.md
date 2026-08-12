@@ -534,7 +534,7 @@ Skill 啟動時 Claude 先讀 `SKILL.md`，辨認當前 Phase 後再讀 `phases.
 
 ## 不適用情境
 
-- 無規格影響的小型 bug 修復（直接 TDD 修好，跳過六階段）
+- 單一模組、驗收明確、且無任何契約面的變更——public API / data contract / schema / migration / 向後相容 / 安全權限邊界 / 並行一致性 / 跨模組行為（直接用裸 superpowers skills；看契約風險不看 LOC）。1.4.0 起 SKIP 判定必須在回覆中逐項明示八面結論——plugin 的 skip-gate PreToolUse hook 會 deny 本 session 首次程式碼編輯一次以強制此核對
 - 純原型探索（Phase 1 的正式 spec 會拖慢探索）
 - 不使用 OpenSpec 的專案（skill 偵測不到 `openspec/` 會自動不觸發）
 

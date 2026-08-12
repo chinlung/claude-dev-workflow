@@ -20,6 +20,8 @@ plugins/<name>/
 
 `plugin.json` 欄位（照既有 plugin）：`name`、`version`、`description`、`author`、`license`、`repository`、`homepage`、`keywords`。
 
+> **SKILL.md frontmatter description ≤ 1536 字元**：Claude Code 送進 skill 清單的 per-skill description 有字元上限（預設 1536，超過**靜默截斷尾端**）——auto-trigger 條款寫在 description 裡的 plugin（如 openspec-superpowers-workflow）超標會讓尾端條款直接消失。編修後用 `python3 -c "import re;print(len(re.search(r'^description: (.*)$',open('<SKILL.md>').read(),re.M).group(1)))"` 量一次。
+
 ## 2. 註冊進 marketplace
 
 編輯 `.claude-plugin/marketplace.json`：

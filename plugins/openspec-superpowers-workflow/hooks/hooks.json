@@ -1,0 +1,17 @@
+{
+  "description": "skip-gate:openspec 專案內首次程式碼編輯且無 active change 時,deny 一次並要求在回覆中逐項核對八項契約面後重試(一 session 一次,全面 fail-open)",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/skip-gate.sh\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

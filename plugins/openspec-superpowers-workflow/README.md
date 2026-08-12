@@ -10,7 +10,7 @@
 
 ## 概述
 
-這個 plugin 只包含一個 skill：`openspec-superpowers-workflow`。當 skill 偵測到使用者在進行功能開發任務（propose / brainstorm / plan / implement / review / reconcile / archive）時會被自動觸發，引導 Claude 依六階段推進，並嚴格禁止常見的反模式（如 Phase 5 code review 期間改 spec、Phase 6 reconcile 時用 patch 而非 clean rewrite、把 cross-cutting 規則塞進 feature spec 等）。
+這個 plugin 包含一個 skill（`openspec-superpowers-workflow`）與一個 PreToolUse hook（skip-gate，見下方專節）。當 skill 偵測到使用者在進行功能開發任務（propose / brainstorm / plan / implement / review / reconcile / archive）時會被自動觸發，引導 Claude 依六階段推進，並嚴格禁止常見的反模式（如 Phase 5 code review 期間改 spec、Phase 6 reconcile 時用 patch 而非 clean rewrite、把 cross-cutting 規則塞進 feature spec 等）。
 
 ## 六階段工作流程
 
@@ -60,7 +60,7 @@ skills/openspec-superpowers-workflow/
 
 ## 何時不適用
 
-- 無規格影響的小型 bug 修復 — 直接 TDD 修好，不走六階段
+- 無規格影響的小型 bug 修復 — 直接 TDD 修好，不走六階段（SKIP 前必須逐項核對八項契約面並在回覆中明示結論，見下方 skip-gate hook）
 - 純實驗性原型 — Phase 1 的正式 spec 會拖慢探索
 - 不使用 OpenSpec 的專案 — skill 會自動不觸發（偵測不到 `openspec/` 資料夾）
 
@@ -74,9 +74,18 @@ skills/openspec-superpowers-workflow/
 
 進入 skill 後它會先讀取當前專案狀態（`which openspec`、`ls openspec/`、`ls .claude/commands/opsx/`），依結果引導你走正確的 Phase。
 
+## Skip-gate Hook（1.4.0+）
+
+SKIP 判定曾在真實 session 中被「憑摘要句自由心證」繞過（變更實際觸碰跨模組行為、且落在已 spec 化能力域）。根因是 SKIP 屬「以不動作達成」的隱式決策，沒有 artifact 逼八項契約面核對真的發生。skip-gate hook 把它機器化為顯式程序：
+
+- **觸發條件**（全部成立才攔）：專案有 `openspec/` 目錄；`openspec/changes/` 無 active change（`archive/` 不算）；本次編輯的是專案內一般檔案（`openspec/`、`.claude/` 本身豁免——寫 proposal/spec 是 workflow 動作）；本 session 尚未攔過
+- **行為**：deny 該次編輯，要求在回覆中逐項核對八項契約面並明示結論後重試；同一並行批次的手足編輯會在批次窗（flag 建立後 5 秒）內一併被攔——否則首批多檔編輯只攔得住一個；窗外重試放行，一 session 只完整觸發一輪
+- **界線**：hook 只逼「判斷發生且留痕」，不驗證判斷內容（契約風險是語意判斷，機器判不了）；全面 fail-open——jq 缺失、輸入異常、不明工具形狀等任何錯誤路徑都放行，絕不卡死編輯；matcher 只綁核心編輯工具（Edit/Write/MultiEdit/NotebookEdit），MCP 檔案編輯工具（serena、morphllm 等）不經這些工具名，不在覆蓋面內
+- **測試**：`bash plugins/openspec-superpowers-workflow/tests/skip-gate.test.sh`（已接 CI；deny 路徑、flag 去重、archive 排除、路徑豁免均經 mutation 驗證）
+
 ## 版本
 
-1.0.0 — 初始發布。詳見 [CHANGELOG.md](./CHANGELOG.md)。
+詳見 [CHANGELOG.md](./CHANGELOG.md)。
 
 ## Validator
 

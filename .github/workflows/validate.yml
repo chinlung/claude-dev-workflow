@@ -26,3 +26,5 @@ jobs:
         run: bash plugins/session-reflect/tests/gate.test.sh
       - name: Run session-learning reminder tests
         run: bash plugins/session-learning/tests/reminder.test.sh
+      - name: Run openspec-superpowers-workflow skip-gate tests
+        run: bash plugins/openspec-superpowers-workflow/tests/skip-gate.test.sh

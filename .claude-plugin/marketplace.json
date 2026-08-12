@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "Claude Code plugins collection by scl",
-    "version": "1.10.2"
+    "version": "1.10.3"
   },
   "plugins": [
     {
@@ -39,8 +39,8 @@
     {
       "name": "openspec-superpowers-workflow",
       "source": "./plugins/openspec-superpowers-workflow",
-      "description": "OpenSpec + Superpowers 六階段功能開發工作流程 - 強制規格生命週期（WHAT）與開發紀律（HOW）嚴格角色分離，避免規格漂移",
-      "version": "1.3.1",
+      "description": "OpenSpec + Superpowers 六階段功能開發工作流程 - 強制規格生命週期（WHAT）與開發紀律（HOW）嚴格角色分離，避免規格漂移；附 skip-gate hook 將 SKIP 判定機器化為顯式程序",
+      "version": "1.4.0",
       "keywords": ["openspec", "superpowers", "workflow", "spec-driven", "tdd", "code-review", "reconciliation"]
     },
     {
