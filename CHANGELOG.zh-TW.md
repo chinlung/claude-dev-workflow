@@ -5,6 +5,17 @@
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [1.10.4] - 2026-08-13
+
+### Changed
+
+- **openspec-superpowers-workflow 1.4.0 → 1.4.1** — frontmatter 改為 strict-YAML 合法（description 以雙引號包裹；unquoted scalar 內 "touches none of: public API" 的 colon+space 自 1.3.0 起即令 `claude plugin validate --strict` 失敗，而寬鬆的 runtime 實際載入正常）。引號安全性由 live 前例證實（superpowers 的 brainstorming 磁碟帶引號、清單顯示無引號）；`--strict` 現通過，內容 byte-identical。
+
+### Notes
+
+- Marketplace patch bump 1.10.3 → 1.10.4。
+- Repo 基礎設施：本地 PostToolUse 閘門（`scripts/hooks/validate-on-plugin-edit.cjs`）現亦於 `hooks/` 編輯時觸發，並在 node runner 之外執行所有 `plugins/*/tests/*.test.sh` bash suite——先前 bash hook 邏輯僅在 CI 有機器閘門，hook 壞掉要到 push 才現形。自帶 9 條斷言測試（`scripts/hooks/validate-on-plugin-edit.test.sh`）接入 CI。
+
 ## [1.10.3] - 2026-08-13
 
 ### Changed

@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.1] - 2026-08-13
+
+### Fixed
+
+- **Frontmatter is now strict-YAML valid: the description scalar is double-quoted.** The unquoted plain scalar contained "touches none of: public API" — a colon+space sequence strict YAML rejects — so `claude plugin validate --strict` failed on this skill since 1.3.0, misleadingly claiming it "loads with empty metadata" while the lenient runtime parser demonstrably loaded it in full (the validator-vs-runtime contradiction was itself the reason to fix). Quoting proven safe by live precedent: superpowers 6.2.0's brainstorming skill ships a double-quoted description on disk and renders unquoted in the active skill listing. `--strict` now passes; description content is byte-identical.
+
 ## [1.4.0] - 2026-08-13
 
 ### Added

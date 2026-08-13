@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.4] - 2026-08-13
+
+### Changed
+
+- **openspec-superpowers-workflow 1.4.0 → 1.4.1** — frontmatter made strict-YAML valid (description scalar double-quoted; the unquoted colon+space in "touches none of: public API" had failed `claude plugin validate --strict` since 1.3.0 while the lenient runtime loaded it fine). Quoting proven safe by live precedent (superpowers' brainstorming ships quoted and renders unquoted); `--strict` now passes with content byte-identical.
+
+### Notes
+
+- Marketplace patch bump 1.10.3 → 1.10.4.
+- Repo infra: the local PostToolUse gate (`scripts/hooks/validate-on-plugin-edit.cjs`) now also triggers on `hooks/` edits and runs every `plugins/*/tests/*.test.sh` bash suite in addition to the node runner — previously bash hook logic was machine-gated only in CI, so a broken hook script surfaced at push instead of at edit time. Own 9-assertion suite (`scripts/hooks/validate-on-plugin-edit.test.sh`) wired into CI.
+
 ## [1.10.3] - 2026-08-13
 
 ### Changed
