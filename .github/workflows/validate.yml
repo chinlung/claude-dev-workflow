@@ -28,3 +28,5 @@ jobs:
         run: bash plugins/session-learning/tests/reminder.test.sh
       - name: Run openspec-superpowers-workflow skip-gate tests
         run: bash plugins/openspec-superpowers-workflow/tests/skip-gate.test.sh
+      - name: Run validate-on-plugin-edit hook tests
+        run: bash scripts/hooks/validate-on-plugin-edit.test.sh
