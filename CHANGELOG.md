@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.5] - 2026-08-13
+
+### Changed
+
+- **openspec-superpowers-workflow 1.4.1 → 1.4.2** — batch window survives non-BSD `stat`. The BSD-first `stat -f %m` "succeeds" with non-numeric output on GNU/uutils (Ubuntu CI; nix devshells shadowing `stat` on macOS), skipping the fallback and crashing the arithmetic under `set -u` (expansion errors bypass the ERR trap) — hook exited 1, harness allowed the edit, batch window effectively dead on those machines. Caught by CI red + the first live end-to-end test within the hour. Now `-c %Y` first, `-f %m` fallback, digits-only whitelist on both operands; non-numeric degrades to allow. Suite grows to 24 assertions with fake-stat cases pinning both directions.
+
+### Notes
+
+- Marketplace patch bump 1.10.4 → 1.10.5.
+
 ## [1.10.4] - 2026-08-13
 
 ### Changed

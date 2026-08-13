@@ -60,8 +60,14 @@ fi
 flag_file="${TMPDIR:-/tmp}/claude-openspec-skip-gate-${session_id}"
 if [ -f "$flag_file" ]; then
   now=$(date +%s) || allow
-  mtime=$(stat -f %m "$flag_file" 2>/dev/null || stat -c %Y "$flag_file" 2>/dev/null) || allow
-  if [ -n "$mtime" ] && [ $((now - mtime)) -lt "$BATCH_WINDOW_SECS" ]; then deny; fi
+  # stat 語意跨實作不一致:GNU/uutils 的 -c %Y 是 mtime、-f 是 filesystem 模式
+  # (可能「成功」印出非數字,live 實測踩中);BSD/macOS 只認 -f %m。
+  # 先試 -c 再退 -f,且兩個輸出都過數字白名單——非數字一律優雅降級 allow,
+  # 絕不讓它進算術展開(set -u 下算術吃到識別字會直接爆炸且不走 ERR trap)。
+  mtime=$(stat -c %Y "$flag_file" 2>/dev/null || stat -f %m "$flag_file" 2>/dev/null) || allow
+  case "$now" in ''|*[!0-9]*) allow ;; esac
+  case "$mtime" in ''|*[!0-9]*) allow ;; esac
+  if [ $((now - mtime)) -lt "$BATCH_WINDOW_SECS" ]; then deny; fi
   allow
 fi
 

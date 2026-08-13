@@ -127,6 +127,26 @@ p=$WORK/p10; make_proj "$p" no-changes; t=$WORK/t10; mkdir -p "$t"
 out=$(run_gate "$(input_json s10 "$p" "$p/src/a.php")" "$t" "$p")
 check "10 無 changes/ 目錄 → deny" "$out" '"permissionDecision":"deny"'
 
+# 3d) stat 輸出非數字(GNU/uutils 對 -f %m 的 filesystem 語意,live 實測踩中)
+#     → 批次窗優雅降級 allow,絕不可崩潰(算術展開吃到非數字會 set -u 爆炸)
+p=$WORK/p3d; make_proj "$p"; t=$WORK/t3d; mkdir -p "$t"
+fake=$WORK/fakebin-nonnum; mkdir -p "$fake"
+printf '#!/bin/bash\necho "  File: /x"\nexit 0\n' > "$fake/stat"; chmod +x "$fake/stat"
+out=$(run_gate "$(input_json s3d "$p" "$p/src/a.php")" "$t" "$p")
+check "3d 前置:首次 deny(不經 stat)" "$out" '"permissionDecision":"deny"'
+rc=0
+out=$(printf '%s' "$(input_json s3d "$p" "$p/src/b.php")" | TMPDIR="$t" CLAUDE_PROJECT_DIR="$p" PATH="$fake:$PATH" bash "$GATE" 2>/dev/null) || rc=$?
+check "3d 非數字 stat → exit 0 不崩潰" "$rc" '^0$'
+check_empty "3d 非數字 stat → 優雅降級 allow" "$out"
+
+# 3e) stat 輸出合法 epoch(fake stat 固定回傳 now)→ 批次窗續 deny(跨平台決定性)
+p=$WORK/p3e; make_proj "$p"; t=$WORK/t3e; mkdir -p "$t"
+fake2=$WORK/fakebin-num; mkdir -p "$fake2"
+printf '#!/bin/bash\ndate +%%s\nexit 0\n' > "$fake2/stat"; chmod +x "$fake2/stat"
+out=$(run_gate "$(input_json s3e "$p" "$p/src/a.php")" "$t" "$p")
+out=$(printf '%s' "$(input_json s3e "$p" "$p/src/b.php")" | TMPDIR="$t" CLAUDE_PROJECT_DIR="$p" PATH="$fake2:$PATH" bash "$GATE" 2>/dev/null) || true
+check "3e 數字 stat → 批次窗續 deny" "$out" '"permissionDecision":"deny"'
+
 # 11) session_id 含路徑穿越字元 → 消毒後 flag 仍落在 TMPDIR 內
 p=$WORK/p11; make_proj "$p"; t=$WORK/t11; mkdir -p "$t"
 out=$(run_gate "$(input_json 's11/../evil' "$p" "$p/src/a.php")" "$t" "$p")

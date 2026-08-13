@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.2] - 2026-08-13
+
+### Fixed
+
+- **Batch window survives non-BSD `stat`: numeric whitelist before arithmetic.** The window read the flag's mtime via `stat -f %m || stat -c %Y` — BSD-first. On GNU/uutils coreutils (Ubuntu CI, and macOS projects whose nix devshell shadows `stat`), `-f` means *filesystem* mode: the call "succeeds" printing non-numeric text, the fallback never runs, and the non-numeric value hits `$((now - mtime))` — under `set -u` an arithmetic expansion error kills the shell *without* running the ERR trap, so the hook died with exit 1 (harness treated it as non-blocking → net allow, noisy error; the batch window was effectively dead on those machines). Caught twice within the hour by both machine layers: CI red on ubuntu (assertion 3a) and the first live end-to-end test (`列 64: File: 未綁定的變數`). Fix: try `-c %Y` first, fall back to `-f %m`, and pass both `now` and `mtime` through a digits-only whitelist — anything non-numeric degrades gracefully to allow instead of crashing. Two new fixture cases pin the contract cross-platform: a fake non-numeric `stat` must exit 0 and allow; a fake numeric `stat` must keep denying inside the window (suite now 24 assertions).
+
 ## [1.4.1] - 2026-08-13
 
 ### Fixed

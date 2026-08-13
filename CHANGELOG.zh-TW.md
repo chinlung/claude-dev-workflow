@@ -5,6 +5,16 @@
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [1.10.5] - 2026-08-13
+
+### Changed
+
+- **openspec-superpowers-workflow 1.4.1 → 1.4.2** — 批次窗在非 BSD `stat` 下存活。BSD 優先的 `stat -f %m` 在 GNU/uutils（Ubuntu CI；macOS 上被 nix devshell 遮蔽的 `stat`）會「成功」輸出非數字（`-f` 是 filesystem 模式），fallback 被跳過、非數字進入算術展開——`set -u` 下展開錯誤不走 ERR trap，hook 以 exit 1 崩潰（harness 視為 non-blocking 放行編輯，批次窗在這類機器上實質失效）。一小時內被兩層機器閘門逮到：CI 紅（斷言 3a）＋首次 live 實測（`列 64: File: 未綁定的變數`）。修法：改 `-c %Y` 優先、`-f %m` fallback，兩運算元過純數字白名單——非數字一律優雅降級放行而非崩潰。測試增至 24 條斷言，fake-stat 案例釘死雙向契約。
+
+### Notes
+
+- Marketplace patch bump 1.10.4 → 1.10.5。
+
 ## [1.10.4] - 2026-08-13
 
 ### Changed
