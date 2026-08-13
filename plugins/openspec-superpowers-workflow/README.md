@@ -82,6 +82,7 @@ SKIP 判定曾在真實 session 中被「憑摘要句自由心證」繞過（變
 - **行為**：deny 該次編輯，要求在回覆中逐項核對八項契約面並明示結論後重試；同一並行批次的手足編輯會在批次窗（flag 建立後 5 秒）內一併被攔——否則首批多檔編輯只攔得住一個；窗外重試放行，一 session 只完整觸發一輪
 - **界線**：hook 只逼「判斷發生且留痕」，不驗證判斷內容（契約風險是語意判斷，機器判不了）；全面 fail-open——jq 缺失、輸入異常、不明工具形狀等任何錯誤路徑都放行，絕不卡死編輯；matcher 只綁核心編輯工具（Edit/Write/MultiEdit/NotebookEdit），MCP 檔案編輯工具（serena、morphllm 等）不經這些工具名，不在覆蓋面內
 - **測試**：`bash plugins/openspec-superpowers-workflow/tests/skip-gate.test.sh`（已接 CI；deny 路徑、flag 去重、archive 排除、路徑豁免均經 mutation 驗證）
+- **Live 實測**：1.4.2 已於真實 session end-to-end 驗證（2026-08-13）——首批並行雙 Edit 一併被攔、逐面聲明後重試乾淨放行、非 BSD `stat` 環境（nix devshell）無崩潰、flag 於同 session 跨 plugin reload 存續
 
 ## 版本
 
