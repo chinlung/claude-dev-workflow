@@ -5,6 +5,12 @@
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [1.10.6] - 2026-09-02
+
+### Fixed
+
+- **code-audit-rigor 2.0.0 → 2.0.1** — `/review-branch` 的審查範圍納入工作樹。前置清單原本只取已 commit 的 `merge-base...HEAD` diff，commit 前自審時最新的未 commit 工作被沉默略過、覆蓋核對表卻仍全綠（表只跟餵它的機械清單一樣完整，清單漏一個來源就一起錯）。範圍改為已 commit diff ∪ `git diff --name-only HEAD` ∪ untracked（`--focus` 三者皆套用）；被刪除的檔案維持 reviewed、不自動 skipped；每個檔案記錄**必填**的 `source`（`committed`／`working-tree`／`untracked`——缺值即 validator 拒收，schema↔validator 一致性閘門釘住 enum）。skill 的 Phase 1 同步對齊三個來源。suite 125 → 130 條，紅燈先行確認。
+
 ## [1.10.5] - 2026-08-13
 
 ### Changed

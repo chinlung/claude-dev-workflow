@@ -12,11 +12,12 @@
       "minItems": 1,
       "items": {
         "type": "object",
-        "required": ["file", "status"],
+        "required": ["file", "status", "source"],
         "properties": {
           "file": { "type": "string", "minLength": 1 },
           "status": { "type": "string", "enum": ["reviewed", "skipped"] },
-          "skipReason": { "type": "string", "minLength": 1 }
+          "skipReason": { "type": "string", "minLength": 1 },
+          "source": { "type": "string", "enum": ["committed", "working-tree", "untracked"] }
         },
         "if": { "properties": { "status": { "const": "skipped" } }, "required": ["status"] },
         "then": { "required": ["skipReason"] }

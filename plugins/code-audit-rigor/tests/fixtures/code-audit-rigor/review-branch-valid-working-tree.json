@@ -1,0 +1,21 @@
+{
+  "branch": "feature/user-export",
+  "scopedFiles": [
+    { "file": "src/export.ts", "status": "reviewed", "source": "committed" },
+    { "file": "src/utils/csv.ts", "status": "reviewed", "source": "working-tree" },
+    { "file": "src/utils/csv-escape.ts", "status": "reviewed", "source": "untracked" },
+    { "file": "docs/export-api.md", "status": "skipped", "skipReason": "Documentation only; no code logic.", "source": "working-tree" }
+  ],
+  "suggestions": [
+    {
+      "file": "src/utils/csv-escape.ts",
+      "line": 7,
+      "quotedCode": "return value.replace(/\"/g, '\"\"');",
+      "description": "Untracked helper does not neutralise leading =, +, -, @ — CSV formula injection when opened in a spreadsheet.",
+      "severity": "MEDIUM"
+    }
+  ],
+  "verifications": [
+    { "id": "V-001", "verdict": "PASS", "notes": "Confirmed on the working-tree version: no formula-prefix guard; export.ts passes user-supplied cell values straight through." }
+  ]
+}

@@ -2,6 +2,19 @@
 
 All notable changes to the `code-audit-rigor` plugin will be documented in this file.
 
+## [2.0.1] - 2026-09-02
+
+### Fixed
+
+- **`/review-branch` now scopes the working tree, not just committed history.** The pre-flight file list was `git diff <merge-base>...HEAD --name-only` alone, so a pre-commit self-review — the command's primary use — silently reviewed only the branch's earlier commits while the latest uncommitted work stayed outside the coverage table, which still reported all green. Scope is now the union of the committed branch diff, `git diff --name-only HEAD` (staged + unstaged) and `git ls-files --others --exclude-standard` (untracked); `--focus <pathspec>` applies to all three; the working-tree version is what gets reviewed; the three commands run from the repo root (`ls-files` is cwd-relative and subtree-only) and exclude the command's own `review-branch-results.json`; deleted files stay **reviewed** — the deletion itself is the change to judge (`git show <merge-base>:<path>` / `git show HEAD:<path>`, then callers) — never auto-skipped. The `code-audit-rigor` skill's Phase 1 listed the working-tree diff but not untracked files; it is aligned to the same three sources in this release.
+
+  **Why it went unnoticed:** the coverage table is only as complete as the mechanical list feeding it. A list that omits a source of change produces a table that is internally consistent and still wrong. Found 2026-09-02 while auditing the security-review policy in the maintainer's config repo, whose CLAUDE.md claimed the command "can see uncommitted changes".
+
+### Added
+
+- `scopedFiles[].source` (`committed` | `working-tree` | `untracked`) in `review-branch-results.json` — records which version of each file was reviewed. **Required**: a result file without it is indistinguishable from a committed-only run, `/review-branch` is the only producer, and nothing re-validates older result files, so there is no compatibility case to keep it optional. `validate-review-branch-results.cjs` rejects a missing or out-of-enum value (`SOURCE_ENUM`; the repo-root schema↔validator consistency gate pins the enum *value set* to the schema — the enforcement itself is what the fixtures and mutations guard). Fixtures: `review-branch-valid-working-tree.json`, `review-branch-invalid-bad-source.json`, `source` added to the three pre-existing review-branch fixtures; three mutations on the new base (bad enum / wrong type / missing), looked up by path rather than index. Suite 125 → 130 checks, all green. Red-first: with schema and validator both still at 2.0.0, the bad-source fixture and the `source` mutations failed and nothing else moved; adding the schema enum before the validator constant fails one more check, the consistency gate.
+- The final report's coverage table gains a source column.
+
 ## [2.0.0] - 2026-07-26
 
 ### Removed

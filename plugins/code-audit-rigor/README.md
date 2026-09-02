@@ -7,7 +7,7 @@
 `code-audit-rigor` ships two layers that share the same `rules/` packs:
 
 **Routine commands** (since 1.2.0):
-- `/review-branch [base-branch]` — two-round branch review: Phase 1 suggestions (with per-file-type rule injection) → Phase 2 per-suggestion sub-agent verification (quotedCode grep anchoring first) → Phase 3 report with a mandatory coverage reconciliation table
+- `/review-branch [base-branch] [--focus <pathspec>]` — two-round branch review: Phase 1 suggestions (with per-file-type rule injection) → Phase 2 per-suggestion sub-agent verification (quotedCode grep anchoring first) → Phase 3 report with a mandatory coverage reconciliation table. Scope is the union of the committed branch diff (`merge-base...HEAD`), working-tree modifications and untracked files, so a pre-commit self-review sees the work you have not committed yet (2.0.1; each scoped file carries a `source` of `committed` / `working-tree` / `untracked`)
 - `/review-pr <PR#>` — fetch all three GitHub comment endpoints (`pulls/comments`, `pulls/reviews`, `issues/comments`), classify, fix security/logic issues with verification tests, commit and reply
 
 **Deep-audit skill** — a quantitative checklist for situations where intuition is insufficient:

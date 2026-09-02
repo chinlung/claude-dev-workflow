@@ -1,6 +1,6 @@
 {
   "name": "code-audit-rigor",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Code review & audit toolkit — routine two-round review commands (/review-branch, /review-pr) sharing path-matched language rule packs, plus quantitative decision frameworks (EV calculation, score-based calibration, STRIDE+CWE classification) and deterministic engineering guarantees (mechanical scope/coverage reconciliation, quoted-code reference anchoring) for high-stakes audits where intuition is insufficient. The toolkit is auto-fix-free and injection-safe by design: it reports and verifies, never rewrites your code — for finding-to-patch work use the claude-security plugin's suggest-patches job.",
   "author": {
     "name": "scl@hanchih.com"

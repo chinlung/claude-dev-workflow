@@ -1,7 +1,7 @@
 {
   "branch": "feature/rate-limiting",
   "scopedFiles": [
-    { "file": "src/middleware/rate-limiter.ts", "status": "reviewed" }
+    { "file": "src/middleware/rate-limiter.ts", "status": "reviewed", "source": "committed" }
   ],
   "suggestions": [
     {

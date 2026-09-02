@@ -5,6 +5,10 @@ const fs = require('fs');
 const path = require('path');
 
 const FILE_STATUS_ENUM = ['reviewed', 'skipped'];
+// Where the reviewed version of a scoped file came from (2.0.1). Required: a result file
+// without it is indistinguishable from a committed-only run, and /review-branch is the
+// only producer (no consumer re-validates older result files).
+const SOURCE_ENUM = ['committed', 'working-tree', 'untracked'];
 const SEVERITY_ENUM = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'INFO'];
 const VERDICT_ENUM = ['PASS', 'FAIL', 'SKIP'];
 
@@ -31,6 +35,9 @@ function validate(data) {
         }
         if (f.status === 'skipped' && (!f.skipReason || typeof f.skipReason !== 'string')) {
           errors.push(`${p}.skipReason required when status is 'skipped'`);
+        }
+        if (!SOURCE_ENUM.includes(f.source)) {
+          errors.push(`${p}.source required, must be one of: ${SOURCE_ENUM.join(', ')}`);
         }
       });
     }

@@ -550,7 +550,7 @@ Skill 啟動時 Claude 先讀 `SKILL.md`，辨認當前 Phase 後再讀 `phases.
 
 | 指令 | 功能 |
 |---|---|
-| `/review-branch [base-branch]` | 兩輪分支審查：Phase 1 建議清單（注入 per-file-type 規則）→ Phase 2 逐建議子代理驗證（先做 quotedCode grep 錨定）→ Phase 3 報告（必附 coverage 核對表） |
+| `/review-branch [base-branch] [--focus <pathspec>]` | 兩輪分支審查：Phase 1 建議清單（注入 per-file-type 規則）→ Phase 2 逐建議子代理驗證（先做 quotedCode grep 錨定）→ Phase 3 報告（必附 coverage 核對表）。審查範圍＝已 commit 分支 diff ∪ 工作樹修改 ∪ 未追蹤檔（2.0.1） |
 | `/review-pr <PR號>` | 抓取 GitHub 全部 3 個評論 endpoint（`pulls/comments`、`pulls/reviews`、`issues/comments`），分類、修復安全性/邏輯問題並附驗證測試、commit 並回覆 |
 
 兩者的規則解析鏈：專案 `.reviewrules/` → 使用者 `~/.claude/review-rules/` → plugin 內建 `${CLAUDE_PLUGIN_ROOT}/rules/`（機器無關）。

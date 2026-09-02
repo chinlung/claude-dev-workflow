@@ -9,7 +9,17 @@ argument-hint: "[base-branch] [--focus <pathspec>]"
 
 1. `git branch --show-current` 確認當前分支
 2. 用 `git merge-base HEAD <base-branch>` 找到分歧點
-3. `git diff <merge-base>...HEAD --name-only` 取得所有變更檔案清單——**此清單是覆蓋核對表的唯一基準**（Phase 3 必須逐檔核銷），不可事後憑記憶重建。若帶 `--focus <pathspec>`（如 `--focus 'src/auth/**'`），改用 `git diff <merge-base>...HEAD --name-only -- <pathspec>`，只審符合路徑的變更——大 PR 省 token + 範圍紀律；此時覆蓋核對表的基準即為**過濾後**的清單
+3. 在 **repo 根目錄**（先 `cd "$(git rev-parse --show-toplevel)"`——`ls-files` 只列 cwd 子樹且路徑相對 cwd，在子目錄跑會與 diff 的根相對路徑拼不起來、untracked 檔沉默消失）以三個機械來源的**聯集**取得變更檔案清單——**此清單是覆蓋核對表的唯一基準**（Phase 3 必須逐檔核銷），不可事後憑記憶重建：
+   - 已 commit 的分支變更：`git diff <merge-base>...HEAD --name-only`
+   - 工作樹修改（已 stage 與未 stage 皆含）：`git diff --name-only HEAD`
+   - 未追蹤的新檔：`git ls-files --others --exclude-standard --full-name`，排除本命令自身的產物 `review-branch-results.json`（修完再跑一輪自審時它會是 untracked；建議專案 `.gitignore` 加上它）
+
+   三者去重後每個路徑只留**一筆**，`source` 依**磁碟現況**判定（寫入 Phase 3 的 `scopedFiles[].source`，必填）：
+   - 檔案在磁碟上且未被追蹤（含 `git rm --cached` 後仍留在磁碟者——這種路徑會同時出現在第二、三個清單）→ `untracked`
+   - 檔案在磁碟上且同時出現在已 commit 與工作樹清單 → `working-tree`；僅出現在已 commit 清單 → `committed`
+   - 檔案不在磁碟上（被刪除）→ 依來源記 `committed`（分支 commit 刪除）或 `working-tree`（工作樹刪除、未 commit），**仍須 reviewed、不可自動 skipped**：用 `git show <merge-base>:<path>`（committed）或 `git show HEAD:<path>`（working-tree）讀被刪內容、查呼叫點確認刪除安全——ORM 動態關聯、magic method、字串類名的呼叫點 grep 零命中不算證據
+
+   **審查對象一律是磁碟上的工作樹版本**（Read 讀到的即是），不是 HEAD 版本。若帶 `--focus <pathspec>`（如 `--focus 'src/auth/**'`），三個命令都加 `-- <pathspec>`，只審符合路徑的變更——大 PR 省 token + 範圍紀律；此時覆蓋核對表的基準即為**過濾後**的清單。（2.0.0（含）以前只取已 commit diff，commit 前自審時最新的未 commit 工作被沉默略過而覆蓋表仍全綠——2.0.1 修正）
 4. 若無 `$ARGUMENTS`（或僅提供 `--focus`），自動偵測 base branch（依序嘗試 `main`、`master`）
 
 ## 前置：解析適用審查規則（path-matched rule packs）
@@ -73,8 +83,9 @@ Phase 2 完成後，將審查結果寫入 `review-branch-results.json`，須符�
 {
   "branch": "<branch-name>",
   "scopedFiles": [
-    { "file": "src/foo.ts", "status": "reviewed" },
-    { "file": "docs/bar.md", "status": "skipped", "skipReason": "純文件，無程式邏輯" }
+    { "file": "src/foo.ts", "status": "reviewed", "source": "working-tree" },
+    { "file": "src/foo.test.ts", "status": "reviewed", "source": "untracked" },
+    { "file": "docs/bar.md", "status": "skipped", "skipReason": "純文件，無程式邏輯", "source": "committed" }
   ],
   "suggestions": [
     {
@@ -94,7 +105,7 @@ Phase 2 完成後，將審查結果寫入 `review-branch-results.json`，須符�
 
 欄位合約：
 - `branch`：當前分支名稱（非空字串）
-- `scopedFiles`：前置步驟 3 機械清單中的**所有**檔案；`status` 為 `reviewed` 或 `skipped`；`skipped` 時必須附 `skipReason`（Coverage 核對表的機器可讀版本）
+- `scopedFiles`：前置步驟 3 機械清單中的**所有**檔案；`status` 為 `reviewed` 或 `skipped`；`skipped` 時必須附 `skipReason`（Coverage 核對表的機器可讀版本）；`source`（必填）為 `committed|working-tree|untracked`——沒有 `source` 的結果檔與退化回 committed-only 的執行在機器層無法區分，所以 validator 拒收
 - `suggestions`：所有第一輪建議（含誤報），每項包含 `file`、`line`（整數 ≥ 1）、`quotedCode`（Phase 2 錨定驗證用的逐字引用）、`description`、`severity`（`CRITICAL|HIGH|MEDIUM|LOW|INFO`）
 - `verifications`：Phase 2 每個子代理的驗證結果；`verdict` 為 `PASS|FAIL|SKIP`；可附 `notes`
 
@@ -142,10 +153,11 @@ node ${CLAUDE_PLUGIN_ROOT}/validators/coverage-reconcile.cjs review-branch-resul
 ```markdown
 ## Coverage
 
-| 檔案 | 狀態 |
-|------|------|
-| src/foo.ts | reviewed |
-| docs/bar.md | skipped（純文件，無程式邏輯） |
+| 檔案 | 來源 | 狀態 |
+|------|------|------|
+| src/foo.ts | working-tree | reviewed |
+| src/foo.test.ts | untracked | reviewed |
+| docs/bar.md | committed | skipped（純文件，無程式邏輯） |
 ```
 
 每個清單中的檔案必須出現在 reviewed 或 skipped(原因) 其中一欄；有檔案兩欄都不在 = 審查不完整，回頭補審，不可直接交報告。

@@ -198,7 +198,7 @@ The `stride` and `cwe` fields are required for security findings, optional other
 
 ### Phase 1: Scope definition (mechanical, not from memory)
 Set the file list explicitly before starting. **The in-scope file list MUST come from a mechanical source** — never reconstructed from memory or inferred from the conversation:
-- Diff-based audit: `git diff --name-only <base>...HEAD` (plus `git diff --name-only HEAD` for working-tree changes)
+- Diff-based audit, run from the repo root: `git diff --name-only <base>...HEAD` ∪ `git diff --name-only HEAD` (working-tree changes) ∪ `git ls-files --others --exclude-standard --full-name` (untracked new files — the likeliest home of a brand-new vulnerability; `ls-files` is cwd-relative and subtree-only, hence the repo root)
 - Commit-based audit: `git show --name-only <sha>`
 - Module-based audit: `Glob` over the stated directories, or an explicit user-provided list
 

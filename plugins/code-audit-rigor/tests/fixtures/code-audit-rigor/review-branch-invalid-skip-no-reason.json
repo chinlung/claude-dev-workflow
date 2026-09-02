@@ -1,7 +1,7 @@
 {
   "branch": "feature/caching",
   "scopedFiles": [
-    { "file": "src/cache.ts", "status": "skipped" }
+    { "file": "src/cache.ts", "status": "skipped", "source": "committed" }
   ],
   "suggestions": [],
   "verifications": []

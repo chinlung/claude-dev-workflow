@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.6] - 2026-09-02
+
+### Fixed
+
+- **code-audit-rigor 2.0.0 → 2.0.1** — `/review-branch` scope now includes the working tree. The pre-flight list was the committed `merge-base...HEAD` diff only, so a pre-commit self-review silently skipped the latest uncommitted work while the coverage table stayed green (the table is only as complete as the mechanical list feeding it). Scope is now committed diff ∪ `git diff --name-only HEAD` ∪ untracked, `--focus` applying to all three; deleted files stay reviewed rather than auto-skipped; each scoped file records a required `source` (`committed` / `working-tree` / `untracked` — the validator rejects a missing value, the schema↔validator consistency gate pins the enum). The skill's Phase 1 is aligned to the same three sources. Suite 125 → 130 checks, red-first verified.
+
 ## [1.10.5] - 2026-08-13
 
 ### Changed

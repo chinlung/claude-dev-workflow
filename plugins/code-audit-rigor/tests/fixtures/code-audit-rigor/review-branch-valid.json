@@ -1,8 +1,8 @@
 {
   "branch": "feature/rate-limiting",
   "scopedFiles": [
-    { "file": "src/middleware/rate-limiter.ts", "status": "reviewed" },
-    { "file": "src/middleware/auth.ts", "status": "skipped", "skipReason": "Out of scope for this review." }
+    { "file": "src/middleware/rate-limiter.ts", "status": "reviewed", "source": "committed" },
+    { "file": "src/middleware/auth.ts", "status": "skipped", "skipReason": "Out of scope for this review.", "source": "committed" }
   ],
   "suggestions": [
     {

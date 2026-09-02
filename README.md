@@ -552,7 +552,7 @@ A review & audit toolkit: two routine review commands and a **quantitative revie
 
 | Command | What it does |
 |---|---|
-| `/review-branch [base-branch]` | Two-round branch review: Phase 1 suggestions (per-file-type rule injection) → Phase 2 per-suggestion sub-agent verification (quotedCode grep anchoring first) → Phase 3 report with mandatory coverage reconciliation table |
+| `/review-branch [base-branch] [--focus <pathspec>]` | Two-round branch review: Phase 1 suggestions (per-file-type rule injection) → Phase 2 per-suggestion sub-agent verification (quotedCode grep anchoring first) → Phase 3 report with mandatory coverage reconciliation table. Scope = committed branch diff ∪ working-tree changes ∪ untracked files (2.0.1) |
 | `/review-pr <PR#>` | Fetch all three GitHub comment endpoints (`pulls/comments`, `pulls/reviews`, `issues/comments`), classify, fix security/logic issues with verification tests, commit and reply |
 
 Both resolve rules via project `.reviewrules/` → user `~/.claude/review-rules/` → plugin built-in `${CLAUDE_PLUGIN_ROOT}/rules/` (machine-independent).

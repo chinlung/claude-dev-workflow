@@ -353,6 +353,20 @@ function main() {
   run(rbV, path.join(carF, 'review-branch-valid.json'), true);
   run(rbV, path.join(carF, 'review-branch-invalid-skip-no-reason.json'), false);
   run(rbV, path.join(carF, 'review-branch-invalid-noninteger-line.json'), false);
+  // 2.0.1: scope = committed ∪ working-tree ∪ untracked; each scoped file carries `source`.
+  run(rbV, path.join(carF, 'review-branch-valid-working-tree.json'), true);
+  run(rbV, path.join(carF, 'review-branch-invalid-bad-source.json'), false);
+  // Look entries up by path, not by index, so a reordered fixture cannot silently retarget a mutation.
+  const rbEntry = (o, file) => {
+    const e = o.scopedFiles.find(f => f.file === file);
+    if (!e) throw new Error(`review-branch-valid-working-tree.json drifted: no scopedFiles entry for ${file}`);
+    return e;
+  };
+  runMutations(rbV, path.join(carF, 'review-branch-valid-working-tree.json'), 'review-branch-results', [
+    { label: 'scopedFiles.source outside enum', mutate: o => { rbEntry(o, 'src/export.ts').source = 'staged'; } },
+    { label: 'scopedFiles.source wrong type', mutate: o => { rbEntry(o, 'src/utils/csv.ts').source = 3; } },
+    { label: 'scopedFiles entry loses source', mutate: o => { delete rbEntry(o, 'src/utils/csv-escape.ts').source; } },
+  ]);
 
   // ── Code Audit Rigor: review-pr-comments ──────────────────────────────────
   console.log('\n## Code Audit Rigor — review-pr-comments validator');
