@@ -44,7 +44,7 @@ If the project is not initialized, run `openspec init .` (note: use `.` for the 
 
 ## Non-negotiable rules
 
-1. **Never modify spec files during Phase 5 code review.** All feedback → `review-notes.md` with `[REQUIREMENT|DESIGN|CODE|CONSTITUTION]` tag + Y/N.
+1. **Never modify spec files during Phase 5 code review.** All feedback → `review-notes.md` with `[REQUIREMENT|DESIGN|CODE|CONSTITUTION]` tag + Y/N. Tag by the artifact the fix lands in, not by the nature of the problem; Y means "spec/design/constitution must change in Phase 6", never "already fixed" — so `[CODE] Y` does not exist, even if a project's own notes header says otherwise. If asked to edit a spec now, say explicitly that you are not doing it and that it is recorded for Phase 6.
 2. **Never create separate Superpowers design/plan files.** Outputs OVERWRITE OpenSpec's `design.md` / `tasks.md` in place.
 3. **Phase 6 reconciliation = clean rewrite**, not incremental patches. Goal: specs read as if you knew everything from the start.
 4. **`tasks.md` is never modified during reconciliation** — it's execution history.

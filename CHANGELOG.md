@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.7] - 2026-09-14
+
+### Changed
+
+- **openspec-superpowers-workflow 1.4.2 → 1.5.0** — `review-notes.md` is seeded with a semantics header (entry format, tag set, "Y = an OpenSpec artifact must change in Phase 6, never 'handled'") instead of being created empty; Phase 5 must decline an explicit "edit the spec now" request out loud rather than silently rerouting it; `[CODE] Y` declared non-existent and `[CONSTITUTION]` restricted to new cross-feature rules; the fix-landing-point rule lifted into SKILL.md rule 1. Driven by 62 real archived changes (54 `[CODE] Y` entries, 30 after the 1.3.1 rule) and a local eval suite that reproduced both failures on 1.4.2 (misleading-header case 3/3 with the plugin loaded; silent-reroute 1/3).
+
+### Notes
+
+- Marketplace patch bump 1.10.6 → 1.10.7.
+
 ## [1.10.6] - 2026-09-02
 
 ### Fixed

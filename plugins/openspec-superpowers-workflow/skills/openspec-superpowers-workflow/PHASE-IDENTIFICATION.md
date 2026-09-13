@@ -71,7 +71,7 @@
    - 只有 `proposal.md` + `specs/` → Phase 1 完成，待 Phase 2
    - `design.md` 已有實質內容（不是 placeholder）→ Phase 2 完成，待 Phase 3
    - `tasks.md` 已有任務清單 → Phase 3 完成，待 Phase 4
-   - 有 `review-notes.md` 且有內容 → Phase 5 進行中
+   - `review-notes.md` 已有 `## Round N` 條目 → Phase 5 進行中（1.5.0 起 Phase 1 建檔即含語意標頭，只有標頭不算內容）
 
 2. **不要假設**：不要根據資料夾名稱推測應該做什麼；根據**資料夾內容**的完成狀態決定下一步。
 

@@ -62,7 +62,18 @@ The OpenSpec validator enforces that **every `### Requirement:` block MUST conta
    - `specs/<capability>/spec.md` — requirements with SHALL/MUST + scenarios (**primary user-reviewed artifact**, one file per capability listed in proposal)
    - `design.md` — **placeholder draft only**; Phase 2 will overwrite it entirely. Write a minimal stub noting it is a draft
    - `tasks.md` — **placeholder draft only**; Phase 3 will overwrite it entirely. Write a minimal stub noting it is a draft
-3. Create empty `review-notes.md` in the same folder for Phase 5 to populate later (OpenSpec does not generate this — do it with `Write`)
+3. Create `review-notes.md` in the same folder for Phase 5 to populate later (OpenSpec does not generate this — do it with `Write`). **Not an empty file**: seed it with exactly this header so the tag / Y-N semantics are pinned for whoever writes Phase 5 entries later (possibly a different session — projects that started from an empty file drifted into "Y = already handled" and mis-tagged every `[CODE]` fix as Y):
+   ```markdown
+   # Review Notes — <feature-name>
+
+   <!-- Phase 5 log. One line per review comment, appended under a `## Round N - [Review Type] (YYYY-MM-DD)` heading:
+        - [REQUIREMENT|DESIGN|CODE|CONSTITUTION] Y/N - description
+        Y/N answers ONE question: "must an OpenSpec artifact be updated in Phase 6?" — it does NOT mean "handled / fixed".
+          [CODE] is therefore always N, even when the fix is already committed.
+          [CONSTITUTION] Y = a NEW cross-feature rule to add to the project constitution; do not log "existing rules were followed".
+        Tag by the artifact the fix lands in (spec → REQUIREMENT, design.md → DESIGN, code only → CODE), not by the nature of the problem.
+        Never edit proposal.md / specs/ / design.md / tasks.md during review — record here, reconcile in Phase 6. -->
+   ```
 4. **Fast local pre-check (optional, lenient)**: run this plugin's bundled validator on the change folder to catch a missing artifact (any of `proposal.md` / `design.md` / `tasks.md` / `review-notes.md`, or no `specs/**/spec.md`) or an empty SHALL/MUST first paragraph *before* the authoritative CLI — it is fast and needs no OpenSpec install:
    ```bash
    node ${CLAUDE_PLUGIN_ROOT}/skills/openspec-superpowers-workflow/validators/validate-openspec-workflow.cjs openspec/changes/<feature-name>
@@ -155,6 +166,8 @@ After brainstorming completes, OVERWRITE `openspec/changes/<feature-name>/design
 - Fix the code as requested by reviewers
 - Record ALL feedback in `openspec/changes/<feature-name>/review-notes.md`
 - **NEVER modify spec files** (proposal.md, specs/, design.md, tasks.md) during review
+- **When a reviewer or the user explicitly asks you to edit a spec file *now*, decline out loud.** Your reply must say, in plain words, that the spec is not being changed during review, why (Phase 6 does a clean rewrite from the Y items, so an in-review patch would be overwritten and would blur original intent from after-the-fact edits), and that the request is recorded as a `[REQUIREMENT]`/`[DESIGN]` Y entry. Silently rerouting the request — recording it correctly but never telling the person their instruction was not followed — is a violation: they will believe the spec was edited.
+- **If an existing `review-notes.md` header or earlier rounds define Y/N differently** (e.g. "Y = handled this round"), do not adopt that convention. Write your entries with the semantics below and add one line noting the discrepancy; leave earlier rounds' text as-is.
 
 ### review-notes.md format:
 ```markdown
@@ -168,9 +181,9 @@ After brainstorming completes, OVERWRITE `openspec/changes/<feature-name>/design
 - `[DESIGN]` — Architecture change, API change, data model change
   → Mark Y (needs spec update)
 - `[CODE]` — Style fix, naming, refactor, performance optimization, bug fix
-  → Mark N (code-only, no spec update needed)
+  → Mark N (code-only, no spec update needed). **`[CODE] Y` does not exist**: Y means "an OpenSpec artifact must change in Phase 6", never "this was fixed" — a finished code fix is still `[CODE] N`
 - `[CONSTITUTION]` — Cross-cutting concern that applies to ALL features
-  → Mark Y (needs constitution update, NOT this feature's spec)
+  → Mark Y (needs constitution update, NOT this feature's spec). Only for a **new** rule to add; "the change complies with existing rule X" is not an entry at all
 
 **Tag by the artifact the fix lands in, not by the nature of the problem.**
 The reconciliation gate (RECONCILIATION-CRITERIA C1) routes strictly by tag:

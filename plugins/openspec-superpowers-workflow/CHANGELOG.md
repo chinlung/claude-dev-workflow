@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-09-14
+
+### Added
+
+- **`review-notes.md` is seeded with a semantics header instead of being created empty.** Phase 1 step 3 now writes a fixed HTML-comment header that pins the entry format, the tag set, and the one question Y/N answers ("must an OpenSpec artifact change in Phase 6?"). Evidence from 62 real archived changes across two projects: files that started empty grew their own header ("Y/N = handled this round"), and 54 entries were written as `[CODE] Y` — 30 of them *after* the 1.3.1 fix-landing-point rule shipped — so the rule existed but nothing pinned the semantics at the moment an entry is written, often by a later session. A new eval case (`08-template-misleads-yn`: an existing file whose header defines Y as "handled") reproduced the drift on 1.4.2 in 3/3 runs with the plugin loaded — the agent tagged the spec-impact item correctly and *still* wrote `[CODE] Y` for finished code fixes, i.e. it followed the project's header over the playbook.
+
+### Changed
+
+- **Phase 5: declining an explicit "edit the spec now" request must be said out loud.** New rule in phases.md and in SKILL.md rule 1: when a reviewer or the user asks to change a spec file during review, the reply states that it is not being changed, why (Phase 6 clean rewrite would overwrite an in-review patch and blur original intent from after-the-fact edits), and that the item is recorded as a Y entry. Eval `02-spec-wording-vs-impl` caught the silent-reroute variant on 1.4.2 (1/3 runs: notes correct, spec untouched, but the reply never said the instruction was not followed).
+- **Phase 5: an existing notes header with different Y/N semantics is not adopted** — write entries per the playbook, add one line noting the discrepancy, leave earlier rounds as-is.
+- **Tag semantics tightened in phases.md and SKILL.md rule 1**: `[CODE] Y` is declared non-existent (a finished code fix is still `[CODE] N`); `[CONSTITUTION]` is only for a *new* cross-feature rule, "complies with existing rule X" is not an entry (real notes had used it as a compliance remark, 4 lines with no Y/N). The fix-landing-point sentence is lifted from phases.md into SKILL.md rule 1 so it is present when the tag is written, not only when the playbook section happens to be re-read.
+- OUTPUT-CONTRACTS.md Phase 1 rows updated from "empty" to "header stub"; validator unchanged (existence check only, header absence never blocks).
+- PHASE-IDENTIFICATION.md: the "Phase 5 in progress" signal is now "`review-notes.md` has `## Round N` entries", not "has content" — with the seeded header every fresh Phase 1 folder has content, so the old wording would have misread Phase 1 as Phase 5 (caught in pre-commit self-review).
+
+### Notes
+
+- Local eval suite (Phase 5 flow, 8 cases, `runs: 3`, with/without ablation, sonnet judge — kept out of the repo because cases are de-identified rewrites of client review notes): baseline on 1.4.2 mean Δ +0.59 with case 02 at 0.90 and case 08 at 0.47/0.47 (Δ 0). Post-change figures are recorded in the commit that ships this version.
+
 ## [1.4.2] - 2026-08-13
 
 ### Fixed

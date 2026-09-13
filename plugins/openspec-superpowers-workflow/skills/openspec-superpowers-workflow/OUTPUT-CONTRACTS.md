@@ -10,7 +10,7 @@
 
 | Phase | 必要產出 | 覆蓋定義 | 非覆蓋 / 延後項目 |
 |---|---|---|---|
-| 1 | `proposal.md`, `specs/*/spec.md`, `design.md`（stub）, `tasks.md`（stub）, `review-notes.md`（empty） | 所有功能需求 | 跨功能限制（constitution）、詳細設計 |
+| 1 | `proposal.md`, `specs/*/spec.md`, `design.md`（stub）, `tasks.md`（stub）, `review-notes.md`（header stub） | 所有功能需求 | 跨功能限制（constitution）、詳細設計 |
 | 2 | `design.md`（overwritten, final） | Phase 1 需求的架構覆蓋 | 實作細節、任務分解 |
 | 3 | `tasks.md`（overwritten, final） | 所有設計決策映射到可執行任務 | 跨功能任務（constitution）、測試策略細節 |
 | 4 | 程式碼、測試 | 每個任務有測試（TDD RED→GREEN），每個 SPEC 需求有對應測試 | 效能基準、end-to-end 測試（除非 spec 要求） |
@@ -29,7 +29,7 @@
 | `specs/<capability>/spec.md` | `### Requirement:` 區塊每個第一段含 SHALL 或 MUST | `openspec validate --strict` 通過 |
 | `design.md` | Stub（說明將由 Phase 2 覆寫） | 存在即可；Phase 1 不要求完整設計 |
 | `tasks.md` | Stub（說明將由 Phase 3 覆寫） | 存在即可；Phase 1 不要求完整任務 |
-| `review-notes.md` | 空白檔案，供 Phase 5 使用 | 存在即可 |
+| `review-notes.md` | 僅含 `phases.md` Phase 1 步驟 3 規定的語意標頭（釘住 tag 與 Y/N 定義），供 Phase 5 使用 | 存在即可；標頭缺失不阻擋，但 Phase 5 條目仍須依 `phases.md` 語意 |
 
 ### 覆蓋定義
 

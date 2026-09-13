@@ -501,7 +501,7 @@ Stop hook 刻意使用 command 類型（shell 腳本）而非 prompt 類型，�
 
 ## 不可妥協的六條硬規則
 
-1. **Phase 5 期間絕不修改 spec 檔**。所有審查意見 → `review-notes.md` 加 tag + Y/N
+1. **Phase 5 期間絕不修改 spec 檔**。所有審查意見 → `review-notes.md` 加 tag + Y/N（Y = Phase 6 須更新某 OpenSpec artifact，絕非「已修好」——`[CODE] Y` 不存在；1.5.0 起建檔即預填標頭釘住此語意）。被要求現在改 spec 時明講拒絕並記錄
 2. **Superpowers 絕不新建自己的 design / plan 檔**。輸出一律覆寫 OpenSpec 的 `design.md` / `tasks.md` 原位
 3. **Phase 6 reconcile 必須 clean rewrite**。目標是讓 spec 讀起來像「一開始就知道」，而非修訂史
 4. **`tasks.md` 在 reconcile 時凍結** — 它是執行歷史，不是當前規格

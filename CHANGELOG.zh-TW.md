@@ -5,6 +5,16 @@
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [1.10.7] - 2026-09-14
+
+### Changed
+
+- **openspec-superpowers-workflow 1.4.2 → 1.5.0** — `review-notes.md` 不再建空檔，改預填語意標頭（條目格式、tag 集合、「Y = Phase 6 須更新某 OpenSpec artifact，絕非『已處理』」）；Phase 5 被明確要求「現在改 spec」時必須明講拒絕，不得默默改道；`[CODE] Y` 宣告不存在、`[CONSTITUTION]` 限用於新增跨功能規則；「tag 看修改落點」提升到 SKILL.md 硬規則 1。依據：兩專案 62 份真實歸檔 change（54 條 `[CODE] Y`，其中 30 條在 1.3.1 規則之後）＋本機 eval suite 在 1.4.2 重現兩種失敗（誤導標頭題載入 plugin 仍 3/3 中招；默默改道 1/3）。
+
+### Notes
+
+- Marketplace patch bump 1.10.6 → 1.10.7。
+
 ## [1.10.6] - 2026-09-02
 
 ### Fixed

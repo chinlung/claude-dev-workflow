@@ -503,7 +503,7 @@ This plugin ships a single auto-triggered skill (no slash command) — it activa
 
 ## Six Non-Negotiable Rules
 
-1. **Never modify spec files during Phase 5 code review.** All feedback → `review-notes.md` with tag + Y/N.
+1. **Never modify spec files during Phase 5 code review.** All feedback → `review-notes.md` with tag + Y/N (Y = an OpenSpec artifact must change in Phase 6, never "already fixed" — `[CODE] Y` does not exist; since 1.5.0 the file is seeded with a header pinning this). If asked to edit a spec now, decline out loud and record it.
 2. **Never create separate Superpowers design/plan files.** Outputs OVERWRITE OpenSpec's `design.md` / `tasks.md` in place.
 3. **Phase 6 reconciliation = clean rewrite.** Goal: specs read as if you knew everything from the start, not a changelog.
 4. **`tasks.md` is frozen during reconciliation** — it is execution history, not current spec.
