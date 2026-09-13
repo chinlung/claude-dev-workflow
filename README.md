@@ -514,11 +514,17 @@ This plugin ships a single auto-triggered skill (no slash command) — it activa
 
 ```
 skills/openspec-superpowers-workflow/
-├── SKILL.md      # 58 lines — trigger map + phase table + 6 rules (always loaded)
-└── phases.md     # 290+ lines — full playbook, tag semantics, gotchas (loaded on demand)
+├── SKILL.md                    # 61 lines — trigger map + SKIP clause + phase table + 6 rules (always loaded)
+├── PHASE-IDENTIFICATION.md     # 95 lines — phase decision tree + SKIP procedure (loaded when phase is unclear)
+├── phases.md                   # 330 lines — full playbook, tag semantics, gotchas (loaded on demand)
+├── SUPERPOWERS-HANDOFF.md      # 140 lines — Phase 2/3/4 sync-back templates, sidecar-file anti-patterns
+├── OUTPUT-CONTRACTS.md         # 218 lines — per-phase output contracts, requirement-writing examples
+├── RECONCILIATION-CRITERIA.md  # 116 lines — Phase 6 pre-archive gate checklist
+└── validators/
+    └── validate-openspec-workflow.cjs  # lenient change-folder pre-check
 ```
 
-When the skill activates, Claude first reads `SKILL.md`, identifies which phase applies, then reads the relevant section of `phases.md`. Context budget stays controlled even with a detailed playbook.
+When the skill activates, Claude first reads `SKILL.md`, identifies which phase applies, then loads only the reference that phase needs (`PHASE-IDENTIFICATION.md` when the phase is unclear, the relevant section of `phases.md`, `SUPERPOWERS-HANDOFF.md` for Phase 2/3/4 handoffs, `RECONCILIATION-CRITERIA.md` before archiving). Context budget stays controlled even with ~900 lines of playbook.
 
 ## Problems It Solves
 
@@ -537,8 +543,8 @@ With this skill:
 ## Not For
 
 - Single-module changes with clear acceptance criteria and no contract surface — public API / data contract / schema / migration / backward compatibility / security boundaries / concurrency / cross-module behavior (do it with bare superpowers skills directly; judge by contract risk, not LOC). Since 1.4.0 a skip decision must enumerate all eight surfaces explicitly in the reply — the plugin's skip-gate PreToolUse hook denies the session's first code edit once to force that check
-- Pure prototyping where formal Phase 1 specs would slow exploration
-- Projects that do not use OpenSpec (the skill detects absence of `openspec/` and stays dormant)
+
+The contract-surface judgment above is the only skip criterion — there is no separate exemption category (prototyping, for instance, is judged by the same surfaces). Triggering also does **not** depend on `openspec/` already existing: proposing / adding / refining a feature triggers the skill, and in an uninitialized project its prerequisite check guides you to run `openspec init .`.
 
 ---
 

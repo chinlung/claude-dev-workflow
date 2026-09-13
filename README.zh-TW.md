@@ -512,11 +512,17 @@ Stop hook 刻意使用 command 類型（shell 腳本）而非 prompt 類型，�
 
 ```
 skills/openspec-superpowers-workflow/
-├── SKILL.md      # 58 行 — trigger map + phase 表 + 6 條硬規則（常駐載入）
-└── phases.md     # 290+ 行 — 完整 playbook、tag 語意、gotcha（需要時才載入）
+├── SKILL.md                    # 61 行 — trigger map + SKIP 條款 + phase 表 + 6 條硬規則（常駐載入）
+├── PHASE-IDENTIFICATION.md     # 95 行 — Phase 判定決策樹 + SKIP 判定程序（Phase 不明時載入）
+├── phases.md                   # 330 行 — 完整 playbook、tag 語意、gotcha（需要時才載入）
+├── SUPERPOWERS-HANDOFF.md      # 140 行 — Phase 2/3/4 sync-back 範本、sidecar 檔 anti-pattern
+├── OUTPUT-CONTRACTS.md         # 218 行 — 各 Phase 產出契約、requirement 寫法正反例
+├── RECONCILIATION-CRITERIA.md  # 116 行 — Phase 6 歸檔前核查清單
+└── validators/
+    └── validate-openspec-workflow.cjs  # change folder 寬鬆 pre-check
 ```
 
-Skill 啟動時 Claude 先讀 `SKILL.md`，辨認當前 Phase 後再讀 `phases.md` 對應段落，即使有詳細 playbook 也不會爆 context。
+Skill 啟動時 Claude 先讀 `SKILL.md`，辨認當前 Phase 後只載入該 Phase 需要的 reference（Phase 不明讀 `PHASE-IDENTIFICATION.md`、playbook 讀 `phases.md` 對應段落、Phase 2/3/4 交接讀 `SUPERPOWERS-HANDOFF.md`、歸檔前讀 `RECONCILIATION-CRITERIA.md`），即使有近 900 行 playbook 也不會爆 context。
 
 ## 解決的問題
 
@@ -535,8 +541,8 @@ Skill 啟動時 Claude 先讀 `SKILL.md`，辨認當前 Phase 後再讀 `phases.
 ## 不適用情境
 
 - 單一模組、驗收明確、且無任何契約面的變更——public API / data contract / schema / migration / 向後相容 / 安全權限邊界 / 並行一致性 / 跨模組行為（直接用裸 superpowers skills；看契約風險不看 LOC）。1.4.0 起 SKIP 判定必須在回覆中逐項明示八面結論——plugin 的 skip-gate PreToolUse hook 會 deny 本 session 首次程式碼編輯一次以強制此核對
-- 純原型探索（Phase 1 的正式 spec 會拖慢探索）
-- 不使用 OpenSpec 的專案（skill 偵測不到 `openspec/` 會自動不觸發）
+
+SKIP 的唯一依據是上述契約面判定，沒有其他豁免類別（例如原型探索本身不構成豁免，仍依契約面判定）。**觸發也不以專案已有 `openspec/` 資料夾為前提**：提出／新增／精煉 feature 即觸發；專案尚未初始化時，skill 的前置檢查會引導執行 `openspec init .`。
 
 ---
 

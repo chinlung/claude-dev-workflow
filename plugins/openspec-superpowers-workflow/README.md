@@ -36,11 +36,17 @@
 
 ```
 skills/openspec-superpowers-workflow/
-├── SKILL.md      # 58 行：trigger 條件、phase map、六條硬規則（常駐載入）
-└── phases.md     # 290+ 行：完整六階段 playbook、tag 分類細節、路徑慣例、anti-pattern（需要時才載入）
+├── SKILL.md                    # 61 行：trigger 條件、SKIP 條款、phase map、六條硬規則（常駐載入）
+├── PHASE-IDENTIFICATION.md     # 95 行：Phase 判定決策樹、SKIP 判定程序（Phase 不明時載入）
+├── phases.md                   # 330 行：完整六階段 playbook、tag 分類細節、路徑慣例、anti-pattern（需要時才載入）
+├── SUPERPOWERS-HANDOFF.md      # 140 行：Phase 2/3/4 sync-back 範本、sidecar 檔 anti-pattern
+├── OUTPUT-CONTRACTS.md         # 218 行：各 Phase 產出契約、requirement 寫法正反例、deferred 項慣例
+├── RECONCILIATION-CRITERIA.md  # 116 行：Phase 6 歸檔前核查清單
+└── validators/
+    └── validate-openspec-workflow.cjs  # change folder 寬鬆 pre-check（見下方 Validator）
 ```
 
-觸發時 Claude 先讀 `SKILL.md`，確認當前 Phase 後再讀 `phases.md` 的對應段落，避免一次吃下 350 行拖慢 context。
+觸發時 Claude 先讀 `SKILL.md`，確認當前 Phase 後只載入該 Phase 需要的 reference（Phase 不明讀 `PHASE-IDENTIFICATION.md`、playbook 讀 `phases.md` 對應段落、Phase 2/3/4 交接讀 `SUPERPOWERS-HANDOFF.md`、Phase 6 歸檔前讀 `RECONCILIATION-CRITERIA.md`），避免一次吃下近 900 行拖慢 context。
 
 ## 解決的問題
 
@@ -60,9 +66,9 @@ skills/openspec-superpowers-workflow/
 
 ## 何時不適用
 
-- 無規格影響的小型 bug 修復 — 直接 TDD 修好，不走六階段（SKIP 前必須逐項核對八項契約面並在回覆中明示結論，見下方 skip-gate hook）
-- 純實驗性原型 — Phase 1 的正式 spec 會拖慢探索
-- 不使用 OpenSpec 的專案 — skill 會自動不觸發（偵測不到 `openspec/` 資料夾）
+- 單一模組、驗收明確、且不觸碰任何契約面（public API / data contract / schema / migration / 向後相容 / 安全權限邊界 / 並行一致性 / 跨模組行為）的變更，例如無規格影響的小型 bug 修復 — 直接用裸 superpowers skills 以 TDD 修好，不走六階段；看契約風險，不看 LOC 或檔案數。SKIP 前必須逐項核對八項契約面並在回覆中明示結論（見下方 skip-gate hook）
+
+SKIP 的唯一依據是上述契約面判定，沒有其他豁免類別（例如「原型探索」本身不構成豁免，仍依契約面判定）。**觸發也不以專案已有 `openspec/` 資料夾為前提**：只要是提出／新增／精煉 feature 等 trigger 條件即觸發；專案尚未初始化時，skill 會在前置檢查引導執行 `openspec init .`。
 
 ## 用法提示
 
