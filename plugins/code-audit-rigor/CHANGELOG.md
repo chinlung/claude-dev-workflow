@@ -2,6 +2,14 @@
 
 All notable changes to the `code-audit-rigor` plugin will be documented in this file.
 
+## [2.0.2] - 2026-09-15
+
+### Fixed
+
+- **`/review-branch` resolves the base against the fetched remote-tracking branch, never the local base branch.** Pre-flight step 2 now runs `git fetch origin <base>` and computes the merge-base against `origin/<base>`, recording its SHA; only a missing remote or a failed fetch falls back to the local branch, and the report must say so. Auto-detection (step 4) starts from `origin/HEAD` (`git remote set-head origin -a` when unset) before trying local `main`/`master`. The final report opens with a `基準：origin/<base> @ <sha>` line so a reader can see which baseline the file list was computed against.
+
+  **Why:** a local base branch can sit on a commit that was never pushed, or lag the remote by several commits. The merge-base computed from it moves, the mechanical file list omits every file changed in between, and the coverage table — which reconciles against that very list — stays all green. Found 2026-09-15 in a Laravel repo whose local release branch was one unpushed commit ahead and two behind the remote: 15 files never entered the review scope, and the gap surfaced only because `/security-review` uses `origin/HEAD` as its baseline. Same failure class as 2.0.1 (an incomplete list yields a consistent, wrong table); this closes the remaining input that could drift.
+
 ## [2.0.1] - 2026-09-02
 
 ### Fixed

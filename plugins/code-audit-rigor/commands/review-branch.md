@@ -8,7 +8,7 @@ argument-hint: "[base-branch] [--focus <pathspec>]"
 ## 前置：確認分支與差異（機械化清單）
 
 1. `git branch --show-current` 確認當前分支
-2. 用 `git merge-base HEAD <base-branch>` 找到分歧點
+2. **解析 base ref——一律用 fetch 後的遠端追蹤分支，不信本機 base 分支**（base 名稱來自 `$ARGUMENTS` 或步驟 4 的自動偵測）：先 `git fetch origin <base-branch>`，再用 `git merge-base HEAD origin/<base-branch>` 找分歧點，並記下 `git rev-parse origin/<base-branch>` 的 SHA 供最終報告標頭。無 `origin` 或 fetch 失敗（離線）時才退回本機 `<base-branch>`，且報告標頭必須註明「未 fetch，以本機 base 為準」。本機 base 分支可能停在從未推送的 commit、或落後遠端數個 commit——以它算出的清單會整批漏掉那些檔案，而覆蓋核對表對照的正是這份清單，所以仍會全綠
 3. 在 **repo 根目錄**（先 `cd "$(git rev-parse --show-toplevel)"`——`ls-files` 只列 cwd 子樹且路徑相對 cwd，在子目錄跑會與 diff 的根相對路徑拼不起來、untracked 檔沉默消失）以三個機械來源的**聯集**取得變更檔案清單——**此清單是覆蓋核對表的唯一基準**（Phase 3 必須逐檔核銷），不可事後憑記憶重建：
    - 已 commit 的分支變更：`git diff <merge-base>...HEAD --name-only`
    - 工作樹修改（已 stage 與未 stage 皆含）：`git diff --name-only HEAD`
@@ -20,7 +20,7 @@ argument-hint: "[base-branch] [--focus <pathspec>]"
    - 檔案不在磁碟上（被刪除）→ 依來源記 `committed`（分支 commit 刪除）或 `working-tree`（工作樹刪除、未 commit），**仍須 reviewed、不可自動 skipped**：用 `git show <merge-base>:<path>`（committed）或 `git show HEAD:<path>`（working-tree）讀被刪內容、查呼叫點確認刪除安全——ORM 動態關聯、magic method、字串類名的呼叫點 grep 零命中不算證據
 
    **審查對象一律是磁碟上的工作樹版本**（Read 讀到的即是），不是 HEAD 版本。若帶 `--focus <pathspec>`（如 `--focus 'src/auth/**'`），三個命令都加 `-- <pathspec>`，只審符合路徑的變更——大 PR 省 token + 範圍紀律；此時覆蓋核對表的基準即為**過濾後**的清單。（2.0.0（含）以前只取已 commit diff，commit 前自審時最新的未 commit 工作被沉默略過而覆蓋表仍全綠——2.0.1 修正）
-4. 若無 `$ARGUMENTS`（或僅提供 `--focus`），自動偵測 base branch（依序嘗試 `main`、`master`）
+4. 若無 `$ARGUMENTS`（或僅提供 `--focus`），自動偵測 base branch：先取 `origin/HEAD`（`git symbolic-ref -q refs/remotes/origin/HEAD`，缺時 `git remote set-head origin -a` 補上），無 remote 才依序嘗試本機 `main`、`master`；偵測到的名稱同樣走步驟 2 的 fetch 與 `origin/<base-branch>` 規則
 
 ## 前置：解析適用審查規則（path-matched rule packs）
 
@@ -133,6 +133,8 @@ node ${CLAUDE_PLUGIN_ROOT}/validators/coverage-reconcile.cjs review-branch-resul
 兩個驗證都必須通過（`VALID` 和 `PASS`）才能進入最終 Markdown 表格。
 
 ### 最終 Markdown 報告
+
+報告開頭先列一行審查基準，讓讀者一眼看出清單是對哪個基準算的：`基準：origin/<base-branch> @ <sha>`（退回本機時寫 `基準：本機 <base-branch> @ <sha>（未 fetch）`）。
 
 僅呈現「已驗證」的建議（`verdict: PASS`），格式為 markdown 表格：
 
