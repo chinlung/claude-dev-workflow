@@ -75,6 +75,21 @@ find plugins/<name> -type f | sort
 
 裝起來實測：`/plugin marketplace add ...`（或 update）→ `/plugin install <name>@scl-claude-plugins` → `/reload-plugins` → 確認 skill 出現在清單、（若有）MCP 工具以 `mcp__plugin_<name>_<server>__*` 出現。
 
+## 6.5 用 Claude Code 在本 repo 工作：被執行的腳本不可由 sandbox 內的 Bash 寫入
+
+`.claude/settings.json` 的本地 PostToolUse hook 由 harness **在 sandbox 之外**、以你的權限執行，它會跑 `scripts/validate-fixtures.cjs` 與每個 `plugins/*/tests/*.test.sh`，後者再執行 `plugins/*/hooks/*.sh`、runner 再執行各 validator。這些檔案若能被 sandbox 內的 Bash 寫入，等於「自動放行的寫入」換到「sandbox 外的執行」。因此同一份 settings 以 `sandbox.filesystem.denyWrite` 擋下整個被執行閉包：
+
+- `scripts`、`plugins/*/tests`、`plugins/*/hooks`、`plugins/*/validators`（glob，新 plugin 自動涵蓋）
+- 兩個不在慣例目錄的 validator：`plugins/openspec-superpowers-workflow/skills/openspec-superpowers-workflow/validators`、`plugins/security-audit/skills/security-audit/validate-findings.cjs`
+
+實務影響：
+
+- **改這些檔一律用 Edit／Write 工具**（走權限確認），`perl -pi`、`sed -i`、`>` 重導向在 sandbox 內會得到 `Operation not permitted`——那是這條防護在運作，不是程式碼回歸。
+- 測試本身不受影響：各 suite 只寫 `$TMPDIR` 下的暫存目錄。
+- 對真實 repo 做突變驗證時，要破壞的若是 manifest／CHANGELOG／`SKILL.md`（不在閉包內）仍可用 Bash；要破壞的若是 hook 或測試腳本本身，改用 Edit 工具再還原。
+- **git 也是 sandbox 內的行程**：`git pull`／`merge`／`checkout`／`stash pop`／`rebase` 只要需要改寫上述目錄裡的檔案，就會以 `error: unable to unlink old '<path>': Operation not permitted` 半途失敗（exit 255）。實測（2026-09-17）失敗時**工作樹未變、index 卻已更新**，`git status` 會出現 `MM` 這種兩邊不一致的狀態。避開：這類 git 操作在 sandbox 外跑——輸入框用 `!` 前綴，或讓 agent 走 sandbox 繞過（仍經權限確認）。復原：`git reset -q HEAD -- <path>` 把 index 拉回、再於 sandbox 外重做該操作。只動其他路徑的 git 操作（含 commit、push、改 manifest／文件的 checkout）不受影響。
+- **新增「會被 hook 或 runner 執行」的檔案時，若它不落在上述目錄，必須同步把路徑加進 `denyWrite`**（目前無機器檢查，漏加＝該檔不受保護）。
+
 ## 7. 維護「wrapper 型」plugin 的上游相依
 
 `openspec-superpowers-workflow` 以**概念名稱**引用 superpowers skills（如 `/subagent-driven-development`、`/brainstorming`、`/writing-plans`），不綁特定 prompt 檔。好處是執行行為自動跟著上游走；風險是**上游出 major 版時，wrapper 的 `phases.md` 描述會悄悄過時**——文件與實際脫節，形成「comment 寫願景非事實」的信任陷阱（reviewer 讀文件就以為流程如此）。
