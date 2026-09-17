@@ -24,11 +24,16 @@ const ROOT = path.resolve(__dirname, '..');
 let passed = 0;
 let failed = 0;
 const failures = [];
+// Every script this runner spawns, recorded AT THE SPAWN SITES rather than re-derived by
+// scanning this file's source: the denyWrite gate needs what is actually executed, and a
+// regex over `P('…')` literals would silently miss a validator path built any other way.
+const spawned = new Set();
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 /** Run a validator against a fixture; assert exit code matches expectation. */
 function run(validator, fixture, expectValid) {
+  spawned.add(validator);
   const label = `${path.relative(ROOT, validator)} ← ${path.relative(ROOT, fixture)}`;
   if (!fs.existsSync(validator)) {
     console.error(`  ✗  ${label}: validator not found`);
@@ -74,6 +79,7 @@ let tmpCounter = 0;
  * error, never as a validator rejection (that was the old fail-open).
  */
 function execValidatorOnObject(validator, obj) {
+  spawned.add(validator);
   const tmp = path.join(os.tmpdir(), `validate-fixtures-mut-${process.pid}-${tmpCounter++}.json`);
   // Write OUTSIDE the exit-capturing try: a write failure is a harness/environment
   // error, not a validator rejection — it must propagate, never be scored as a pass.
@@ -366,6 +372,115 @@ function registrationProblems(entries, manifests) {
   return problems;
 }
 
+/**
+ * Sandbox write-protection of the local hook's executed closure. The PostToolUse hook in
+ * .claude/settings.json is run by the harness OUTSIDE the agent's Bash sandbox, so every
+ * file it ends up executing must be un-writable from inside it (sandbox.filesystem.denyWrite),
+ * or an auto-approved sandboxed write buys unsandboxed execution. `executed` is a list of
+ * ROOT-relative paths; `patterns` is the denyWrite array.
+ *
+ * Deliberately understands only two pattern shapes: a root-relative literal path, covering
+ * itself and everything beneath it, and `*` within ONE path segment. Both were probed against
+ * the real sandbox (2026-09-17) in the POSITIVE direction — the literal `scripts` and the
+ * star-glob over the plugin test dirs do deny the files beneath them. (Spelling that glob out
+ * here would put a star-slash in this block comment and close it.) That `*` stops at a
+ * segment boundary was not probed but is what the runtime's rule generator does on macOS
+ * (Claude Code 2.1.274: a glob becomes a Seatbelt regex with * → [^/]*, a literal becomes a
+ * subpath rule), so there this matcher and the sandbox agree. Anything else (`**`, braces,
+ * `?`, classes, absolute or ~ paths, ./x, x/) is reported as unverifiable rather than guessed at.
+ *
+ * WHAT A GREEN HERE DOES NOT MEAN — it verifies the CONFIG lists the path, nothing more:
+ *  - Enforcement cannot be tested from here (CI has no sandbox; the hook runs outside one).
+ *  - On Linux/WSL the same runtime DROPS every glob write pattern ("Skipping glob write pattern
+ *    on Linux"), so a star-glob entry protects nothing there while this check stays green.
+ *  - A star-glob entry denies only paths matching its regex. Read from the rule generator (not
+ *    executed): renaming a directory that already contains tests/ INTO plugins/ touches only
+ *    the path `plugins/<new>`, which no rule matches; and a plugin dir protected only by globs
+ *    can itself be renamed away. A literal entry has neither hole — its subpath rule covers
+ *    every path beneath it, and its ancestors are pinned against unlink.
+ *  The live check below additionally reports symlinks on the hook's enumeration path, which
+ *  the hook follows and no path rule reaches.
+ */
+function denyWriteProblems(executed, patterns) {
+  const problems = [];
+  const matchers = [];
+  for (const raw of patterns) {
+    if (typeof raw !== 'string' || raw === '') { problems.push(`denyWrite entry ${JSON.stringify(raw)} is not a non-empty string`); continue; }
+    // No normalising of ./x or x/ into x: those spellings were never probed against the sandbox.
+    const p = raw;
+    if (/^[/~]/.test(p) || /\*\*|[?{}[\]]/.test(p) || p.split('/').some((s) => s === '' || s === '.' || s === '..')) {
+      problems.push(`denyWrite entry "${raw}" uses a form this check cannot verify (only root-relative literals and single-segment * are understood)`);
+      continue;
+    }
+    // One anchored regex per segment: * → [^/]*, everything else literal.
+    matchers.push(p.split('/').map((seg) => new RegExp(`^${seg.split('*').map((s) => s.replace(/[.+^$()|\\]/g, '\\$&')).join('[^/]*')}$`)));
+  }
+  for (const file of executed) {
+    const segs = file.split('/');
+    // Only a clean root-relative path can be matched: `..`, an absolute path or an empty segment
+    // would otherwise be swallowed by a leading `*` and reported as covered.
+    if (segs.some((s) => s === '' || s === '.' || s === '..')) {
+      problems.push(`${file} is not a clean root-relative path, so its coverage cannot be verified`);
+      continue;
+    }
+    // A pattern covers the path it names and everything beneath it: every pattern segment must
+    // match the path segment at the same depth (whole segments — `scripts` ≠ `scripts-extra`).
+    const covered = matchers.some((m) => m.length <= segs.length && m.every((re, i) => re.test(segs[i])));
+    if (!covered) problems.push(`${file} is executed outside the sandbox but no sandbox.filesystem.denyWrite entry covers it`);
+  }
+  return problems;
+}
+
+/**
+ * Which repo script does a command hook run? Returns { script } (ROOT-relative) or { problem }.
+ * Accepts exactly ONE shape — `node "$CLAUDE_PROJECT_DIR/<path>"` (quotes and ${} optional) —
+ * and calls everything else unverifiable. Token-scraping a free-form command is a false-green
+ * machine: a second script chained with &&, a .py, a path with a space, or a mistyped path that
+ * does not exist yet would all be silently dropped — and "does not exist yet" is the worst case
+ * here, not a harmless one: an unprotected path the sandbox can create is a path the hook will run.
+ */
+function hookScriptOf(command) {
+  const m = /^node\s+"?\$\{?CLAUDE_PROJECT_DIR\}?"?\/([\w.@/-]+)"?$/.exec(String(command).trim());
+  if (!m || m[1].split('/').some((s) => s === '' || s === '.' || s === '..')) {
+    return { problem: `cannot verify what this hook runs (only \`node "$CLAUDE_PROJECT_DIR/<path>"\` is understood): ${command}` };
+  }
+  return { script: m[1] };
+}
+
+/**
+ * The plugin-side files the local hook ends up executing, enumerated the way the HOOK does it —
+ * by name, following symlinks — not with Dirent.isDirectory(), which is false for a symlink and
+ * would skip exactly the entry the hook goes on to run. Returns { files, problems }: `files` are
+ * ROOT-relative suites (plugins/<p>/tests/<x>.test.sh) and hook scripts (everything in plugins/<p>/hooks
+ * except .json wiring data); a symlink anywhere on those paths is a problem, because what it
+ * points at lies outside anything a denyWrite path rule names.
+ */
+function enumerateHookExecuted(root) {
+  const files = [];
+  const problems = [];
+  const isLink = (p) => { try { return fs.lstatSync(p).isSymbolicLink(); } catch { return false; } };
+  const isDir = (p) => { try { return fs.statSync(p).isDirectory(); } catch { return false; } };
+  const link = (rel, follows) => problems.push(`${rel} is a symlink — ${follows ? 'the hook follows it, and ' : ''}what it points at is not covered by denyWrite`);
+  const pluginsDir = path.join(root, 'plugins');
+  for (const name of isDir(pluginsDir) ? fs.readdirSync(pluginsDir) : []) {
+    const pluginDir = path.join(pluginsDir, name);
+    if (isLink(pluginDir)) { link(`plugins/${name}`, true); continue; }
+    if (!isDir(pluginDir)) continue;
+    for (const [sub, keep] of [['tests', (f) => f.endsWith('.test.sh')], ['hooks', (f) => !f.endsWith('.json')]]) {
+      const dir = path.join(pluginDir, sub);
+      if (isLink(dir)) { link(`plugins/${name}/${sub}`, true); continue; }
+      if (!isDir(dir)) continue;
+      for (const f of fs.readdirSync(dir)) {
+        if (!keep(f)) continue;
+        const file = path.join(dir, f);
+        if (isLink(file)) link(`plugins/${name}/${sub}/${f}`, false);
+        else if (!isDir(file)) files.push(`plugins/${name}/${sub}/${f}`);
+      }
+    }
+  }
+  return { files, problems };
+}
+
 /** Report a problem list as one check. */
 function expectNoProblems(label, problems) {
   if (problems.length === 0) { console.log(`  ✓  ${label}`); passed++; return; }
@@ -452,6 +567,74 @@ function main() {
     }
   }
 
+  {
+    // (f) denyWrite gate MUST flag an executed file no pattern covers, and must not over-read globs.
+    const pats = ['scripts', 'plugins/*/tests', 'plugins/x/skills/x/validate.cjs'];
+    const cases = [
+      ['literal dir covers files beneath it; * covers one segment; literal file covers itself', ['scripts/a.cjs', 'scripts/hooks/b.cjs', 'plugins/p/tests/t.test.sh', 'plugins/x/skills/x/validate.cjs'], pats, 0],
+      ['an executed file outside every pattern', ['plugins/p/skills/p/validators/v.cjs'], pats, 1],
+      ['* must NOT span segments (plugins/*/tests does not cover plugins/a/b/tests)', ['plugins/a/b/tests/t.test.sh'], pats, 1],
+      ['a literal must match whole segments (scripts does not cover scripts-extra/)', ['scripts-extra/x.cjs'], pats, 1],
+      ['an unsupported pattern is reported, not guessed at — even when everything else is covered', ['scripts/a.cjs'], ['scripts', 'plugins/**/tests'], 1],
+      ['an absolute or ~ pattern is unsupported in project settings', ['scripts/a.cjs'], ['scripts', '~/x', '/abs/y'], 2],
+      ['no denyWrite at all', ['scripts/a.cjs', 'plugins/p/tests/t.test.sh'], [], 2],
+      // an executed path that is not a clean root-relative path must never be "covered" (a leading * would swallow it)
+      ['executed path escaping the root, absolute, or with an empty segment is unverifiable', ['../outside.sh', '/abs/x.sh', 'a//b.sh'], ['*'], 3],
+      ['un-probed spellings of a pattern (./x, x/) are unverifiable, not normalised into a pass', ['scripts/a.cjs'], ['./scripts', 'scripts/'], 3],
+    ];
+    for (const [what, ex, pt, want] of cases) {
+      const label = `canary: denyWrite gate — ${what}`;
+      const got = denyWriteProblems(ex, pt).length;
+      if (got === want) { console.log(`  ✓  ${label}`); passed++; }
+      else { console.error(`  ✗  ${label}: expected ${want} problem(s), got ${got}`); failed++; failures.push(label); }
+    }
+  }
+  {
+    // (h) enumeration MUST find real suites/hook scripts and MUST report a symlinked plugin dir,
+    //     a symlinked tests/ dir and a symlinked suite — the three places the hook would follow one.
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'vf-enum-'));
+    try {
+      const mk = (rel, body) => { const f = path.join(tmp, rel); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, body); };
+      mk('repo/plugins/real/tests/a.test.sh', 'x');
+      mk('repo/plugins/real/tests/fixtures/data.json', '{}');
+      mk('repo/plugins/real/hooks/h.sh', 'x');
+      mk('repo/plugins/real/hooks/hooks.json', '{}');
+      mk('repo/plugins/second/.keep', '');
+      mk('elsewhere/tests/x.test.sh', 'x');
+      fs.symlinkSync(path.join(tmp, 'elsewhere'), path.join(tmp, 'repo/plugins/linked-plugin'));
+      fs.symlinkSync(path.join(tmp, 'elsewhere/tests'), path.join(tmp, 'repo/plugins/second/tests'));
+      fs.symlinkSync(path.join(tmp, 'elsewhere/tests/x.test.sh'), path.join(tmp, 'repo/plugins/real/tests/linked.test.sh'));
+      const got = enumerateHookExecuted(path.join(tmp, 'repo'));
+      const files = 'canary: hook enumeration finds exactly the real suite and hook script (not fixtures, not hooks.json)';
+      const links = 'canary: hook enumeration reports a symlinked plugin dir, tests/ dir and suite file';
+      const wantFiles = ['plugins/real/hooks/h.sh', 'plugins/real/tests/a.test.sh'];
+      if (JSON.stringify([...got.files].sort()) === JSON.stringify(wantFiles)) { console.log(`  ✓  ${files}`); passed++; }
+      else { console.error(`  ✗  ${files}: got ${JSON.stringify(got.files)}`); failed++; failures.push(files); }
+      if (got.problems.length === 3) { console.log(`  ✓  ${links}`); passed++; }
+      else { console.error(`  ✗  ${links}: expected 3 problems, got ${JSON.stringify(got.problems)}`); failed++; failures.push(links); }
+    } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+  }
+  {
+    // (g) hook-command parsing MUST accept only the one verifiable shape, and keep a path that does not exist.
+    const cases = [
+      ['node "$CLAUDE_PROJECT_DIR/scripts/hooks/h.cjs"', 'scripts/hooks/h.cjs'],
+      ['node ${CLAUDE_PROJECT_DIR}/scripts/hooks/h.cjs', 'scripts/hooks/h.cjs'],
+      ['node "$CLAUDE_PROJECT_DIR"/scripts/hooks/h.cjs', 'scripts/hooks/h.cjs'],
+      ['node "$CLAUDE_PROJECT_DIR/tools/not-created-yet.cjs"', 'tools/not-created-yet.cjs'],
+      ['node "$CLAUDE_PROJECT_DIR/scripts/h.cjs" && node "$CLAUDE_PROJECT_DIR/tools/second.cjs"', null],
+      ['python3 "$CLAUDE_PROJECT_DIR/tools/x.py"', null],
+      ['node scripts/hooks/h.cjs', null],
+      ['node "$CLAUDE_PROJECT_DIR/../elsewhere/h.cjs"', null],
+      ['make validate', null],
+    ];
+    for (const [cmd, want] of cases) {
+      const label = `canary: hook command — ${want ? `accepts and keeps "${want}"` : `rejects as unverifiable: ${cmd}`}`;
+      const r = hookScriptOf(cmd);
+      const ok = want ? r.script === want : typeof r.problem === 'string' && r.script === undefined;
+      if (ok) { console.log(`  ✓  ${label}`); passed++; }
+      else { console.error(`  ✗  ${label}: got ${JSON.stringify(r)}`); failed++; failures.push(label); }
+    }
+  }
   {
     // (e) registration gate MUST flag a planted orphan dir and a planted name mismatch.
     const entries = [{ name: 'a', dir: 'plugins/a' }, { name: 'remote', dir: null }];
@@ -755,6 +938,54 @@ function main() {
   checkSchemaConsistency([P('plugins/code-audit-rigor/schema/review-pr-comments.schema.json')], prV, 'review-pr-comments');
   checkSchemaConsistency([P('plugins/multi-agent-debate/schema/debate-output.schema.json')], debateV, 'debate-output');
   checkSchemaConsistency([P('plugins/multi-agent-debate/schema/prior-debate.schema.json')], priorV, 'prior-debate');
+
+  // ── Sandbox write-protection of the hook's executed closure ──────────────────
+  // LAST on purpose: `spawned` is only complete once every validator above has run.
+  console.log('\n## Sandbox — denyWrite covers everything the local hook executes');
+  {
+    const label = 'every file the out-of-sandbox hook executes is covered by sandbox.filesystem.denyWrite';
+    const rel = (abs) => path.relative(ROOT, abs).split(path.sep).join('/');
+    const settingsFile = P('.claude', 'settings.json');
+    let settings;
+    try { settings = JSON.parse(fs.readFileSync(settingsFile, 'utf8')); } catch (e) { settings = e; }
+    if (settings instanceof Error) {
+      expectNoProblems(label, [`cannot read ${rel(settingsFile)} — ${settings.message}`]);
+    } else {
+      const problems = [];
+      // 1. what the harness runs directly: the script(s) named by each command hook.
+      const hookScripts = [];
+      let commandHooks = 0;
+      const events = settings && typeof settings.hooks === 'object' && settings.hooks !== null ? Object.values(settings.hooks) : [];
+      for (const groups of events) {
+        for (const group of Array.isArray(groups) ? groups : []) {
+          for (const h of Array.isArray(group && group.hooks) ? group.hooks : []) {
+            if (!h || h.type !== 'command' || typeof h.command !== 'string') continue;
+            commandHooks++;
+            // Fail closed, and keep a script that does not exist yet (see hookScriptOf).
+            const r = hookScriptOf(h.command);
+            if (r.problem) problems.push(r.problem); else hookScripts.push(r.script);
+          }
+        }
+      }
+      if (commandHooks === 0) {
+        // Says only what was checked: other settings keys (statusLine.command, apiKeyHelper, …) and
+        // .mcp.json also launch processes outside the sandbox and are NOT examined here.
+        console.log(`  ✓  ${label} (no command hooks in ${rel(settingsFile)} — this check had nothing to verify)`);
+        passed++;
+      } else {
+        // 2. what that hook goes on to execute. scripts/hooks/validate-on-plugin-edit.cjs spawns this
+        //    runner and every plugins/*/tests/*.test.sh; the suites invoke the plugin hook scripts;
+        //    this runner spawns the validators recorded in `spawned`. That the hook spawns exactly
+        //    those is knowledge written down here, not derived — change the hook, change this.
+        const pluginSide = enumerateHookExecuted(ROOT);
+        problems.push(...pluginSide.problems);
+        const executed = new Set([...hookScripts, rel(__filename), ...[...spawned].map(rel), ...pluginSide.files]);
+        const fsCfg = settings.sandbox && settings.sandbox.filesystem;
+        const patterns = fsCfg && Array.isArray(fsCfg.denyWrite) ? fsCfg.denyWrite : [];
+        expectNoProblems(`${label} (${executed.size} files)`, [...problems, ...denyWriteProblems([...executed].sort(), patterns)]);
+      }
+    }
+  }
 
   // ── Summary ────────────────────────────────────────────────────────────────
   console.log(`\n=== Summary: ${passed} passed, ${failed} failed ===`);
