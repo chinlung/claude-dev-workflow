@@ -261,6 +261,85 @@ function checkSchemaConsistency(schemaPaths, validatorPath, group) {
   }
 }
 
+// ── repo-structure gates (plugin layout + version bookkeeping) ────────────────
+//
+// Both are pure: they take a directory / parsed data and return a list of problem
+// strings, so the self-test canaries can feed them a planted defect without touching
+// the real repo.
+
+/**
+ * A plugin's `commands/<X>.md` and a skill whose effective name is `<X>` resolve to the
+ * same qualified name `<plugin>:<X>`; the command shadows the skill and the skill body
+ * never loads (session-reflect 1.0.0 shipped exactly this; `claude plugin validate`
+ * does not catch it). Effective skill name = SKILL.md frontmatter `name`, else dir name.
+ */
+function findCommandSkillCollisions(pluginDir) {
+  const ls = (d) => (fs.existsSync(d) ? fs.readdirSync(d, { withFileTypes: true }) : []);
+  const commands = new Set(
+    ls(path.join(pluginDir, 'commands')).filter((e) => e.isFile() && e.name.endsWith('.md')).map((e) => e.name.slice(0, -3)),
+  );
+  const problems = [];
+  for (const e of ls(path.join(pluginDir, 'skills'))) {
+    if (!e.isDirectory()) continue;
+    const skillMd = path.join(pluginDir, 'skills', e.name, 'SKILL.md');
+    let name = e.name;
+    if (fs.existsSync(skillMd)) {
+      const fm = /^---\r?\n([\s\S]*?)\r?\n---/.exec(fs.readFileSync(skillMd, 'utf8'));
+      const m = fm && /^name:\s*(.+?)\s*$/m.exec(fm[1]);
+      if (m) name = m[1].replace(/^(['"])(.*)\1$/, '$2');
+    }
+    if (commands.has(name)) problems.push(`commands/${name}.md shadows skills/${e.name}/ (both resolve to :${name})`);
+  }
+  return problems;
+}
+
+const SEMVER = /^\d+\.\d+\.\d+$/;
+const cmpSemver = (a, b) => {
+  const [x, y] = [a, b].map((v) => v.split('.').map(Number));
+  return x[0] - y[0] || x[1] - y[1] || x[2] - y[2];
+};
+
+/**
+ * Version bookkeeping. `pluginVersions` maps plugin name → its plugin.json version
+ * (undefined = no manifest); `changelogs` maps file label → text.
+ *   (1) each marketplace entry version === that plugin's plugin.json version
+ *   (2) metadata.version === the top `## [x.y.z]` heading of every changelog
+ *   (3) changelog headings are semver, unique and strictly decreasing — (2) alone
+ *       misses a merge that keeps two `## [1.10.7]` sections, since the top one still
+ *       equals a (wrongly auto-merged) metadata.version.
+ * Known residue: two releases folded into ONE section is not statically detectable.
+ */
+function versionProblems(marketplace, pluginVersions, changelogs) {
+  const problems = [];
+  for (const entry of marketplace.plugins || []) {
+    const pv = pluginVersions[entry.name];
+    if (pv === undefined) problems.push(`marketplace entry "${entry.name}": no plugin.json found`);
+    else if (entry.version !== pv) problems.push(`marketplace entry "${entry.name}" is ${entry.version} but plugin.json is ${pv}`);
+  }
+  const meta = marketplace.metadata && marketplace.metadata.version;
+  for (const [label, text] of Object.entries(changelogs)) {
+    const heads = [...text.matchAll(/^## \[([^\]]+)\]/gm)].map((m) => m[1]);
+    if (heads.length === 0) { problems.push(`${label}: no "## [x.y.z]" heading`); continue; }
+    if (heads[0] !== meta) problems.push(`${label}: top heading [${heads[0]}] != marketplace metadata.version ${meta}`);
+    for (let i = 0; i < heads.length; i++) {
+      if (!SEMVER.test(heads[i])) { problems.push(`${label}: heading [${heads[i]}] is not x.y.z`); continue; }
+      if (i > 0 && SEMVER.test(heads[i - 1]) && cmpSemver(heads[i - 1], heads[i]) <= 0) {
+        problems.push(`${label}: heading [${heads[i - 1]}] is followed by [${heads[i]}] (must be strictly decreasing, no duplicates)`);
+      }
+    }
+  }
+  return problems;
+}
+
+/** Report a problem list as one check. */
+function expectNoProblems(label, problems) {
+  if (problems.length === 0) { console.log(`  ✓  ${label}`); passed++; return; }
+  console.error(`  ✗  ${label}`);
+  problems.forEach((p) => console.error(`     ${p}`));
+  failed++;
+  failures.push(label);
+}
+
 // ── path helpers ──────────────────────────────────────────────────────────────
 
 const P = (...parts) => path.join(ROOT, ...parts);
@@ -300,6 +379,80 @@ function main() {
       if (badExit !== 0) { console.log(`  ✓  ${real}`); passed++; }
       else { console.error(`  ✗  ${real}: expected non-zero, got 0`); failed++; failures.push(real); }
     } catch (e) { console.error(`  ✗  ${real}: ${e.message}`); failed++; failures.push(real); }
+  }
+  {
+    // (c) collision gate MUST flag a planted commands/<X>.md ↔ skill-named-<X> pair — incl. a
+    //     skill whose frontmatter name differs from its directory — and stay quiet on a clean plugin.
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'vf-collision-'));
+    try {
+      const mk = (rel, body) => { const f = path.join(tmp, rel); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, body); };
+      mk('bad/commands/reflect.md', 'x');
+      mk('bad/skills/some-dir/SKILL.md', '---\nname: reflect\ndescription: d\n---\n');
+      mk('clean/commands/run.md', 'x');
+      mk('clean/skills/reflect/SKILL.md', '---\nname: reflect\ndescription: d\n---\n');
+      const planted = 'canary: collision gate detects a command shadowing a skill (frontmatter name ≠ dir name)';
+      const quiet = 'canary: collision gate stays quiet on a plugin with distinct command/skill names';
+      if (findCommandSkillCollisions(path.join(tmp, 'bad')).length === 1) { console.log(`  ✓  ${planted}`); passed++; }
+      else { console.error(`  ✗  ${planted}: planted collision NOT reported`); failed++; failures.push(planted); }
+      if (findCommandSkillCollisions(path.join(tmp, 'clean')).length === 0) { console.log(`  ✓  ${quiet}`); passed++; }
+      else { console.error(`  ✗  ${quiet}: false positive`); failed++; failures.push(quiet); }
+    } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+  }
+  {
+    // (d) version gate MUST flag each planted drift, and exactly that drift.
+    const ok = { metadata: { version: '1.2.0' }, plugins: [{ name: 'p', version: '0.1.0' }] };
+    const log = '## [1.2.0] - d\n\n## [1.1.0] - d\n';
+    const cases = [
+      ['consistent data → no problems', ok, { p: '0.1.0' }, { CL: log }, 0],
+      ['entry version ≠ plugin.json', ok, { p: '0.1.1' }, { CL: log }, 1],
+      ['metadata.version ≠ top changelog heading', ok, { p: '0.1.0' }, { CL: '## [1.3.0] - d\n\n## [1.2.0] - d\n' }, 1],
+      ['duplicate changelog heading (two releases claiming one number)', ok, { p: '0.1.0' }, { CL: '## [1.2.0] - d\n\n## [1.2.0] - d\n\n## [1.1.0] - d\n' }, 1],
+      ['entry without a plugin.json', ok, {}, { CL: log }, 1],
+    ];
+    for (const [what, mp, pv, cl, want] of cases) {
+      const label = `canary: version gate — ${what}`;
+      const got = versionProblems(mp, pv, cl).length;
+      if (got === want) { console.log(`  ✓  ${label}`); passed++; }
+      else { console.error(`  ✗  ${label}: expected ${want} problem(s), got ${got}`); failed++; failures.push(label); }
+    }
+  }
+
+  // ── Repo structure ───────────────────────────────────────────────────────────
+  console.log('\n## Repo structure — command/skill name collisions + version bookkeeping');
+  {
+    const pluginDirs = fs.readdirSync(P('plugins'), { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
+    const collisions = [];
+    for (const name of pluginDirs) findCommandSkillCollisions(P('plugins', name)).forEach((c) => collisions.push(`${name}: ${c}`));
+    expectNoProblems(`no command shadows a same-named skill (${pluginDirs.length} plugins)`, collisions);
+
+    // Load errors are reported as a named ✗ and the run continues (same convention as
+    // computeSchemaDrift / runMutations): this block sits ahead of every fixture check, and
+    // the local hook fires it on manifest edits — exactly when a JSON typo is likeliest. An
+    // uncaught throw would still exit non-zero but drop the summary and every later check,
+    // and a bare SyntaxError does not say WHICH of the plugin.json files broke.
+    const versionLabel = 'marketplace ↔ plugin.json ↔ CHANGELOG versions agree; headings strictly decreasing';
+    const loadErrors = [];
+    const load = (file, parse) => {
+      try { return parse(fs.readFileSync(file, 'utf8')); }
+      catch (e) { loadErrors.push(`cannot read ${path.relative(ROOT, file)} — ${e.message}`); return undefined; }
+    };
+    const marketplace = load(P('.claude-plugin', 'marketplace.json'), JSON.parse);
+    const changelogs = {};
+    for (const f of ['CHANGELOG.md', 'CHANGELOG.zh-TW.md']) { const t = load(P(f), String); if (t !== undefined) changelogs[f] = t; }
+    // Resolve each entry's manifest through its own `source`, not by assuming dir name === entry
+    // name, so "no plugin.json found" means what it says. Object-form sources (git/url) have no
+    // local manifest to compare — say so rather than crash in path.resolve.
+    const pluginVersions = {};
+    for (const entry of (marketplace && marketplace.plugins) || []) {
+      if (typeof entry.source !== 'string') { loadErrors.push(`marketplace entry "${entry.name}": non-path source, version not checkable here`); continue; }
+      const manifest = path.resolve(ROOT, entry.source, '.claude-plugin', 'plugin.json');
+      if (!fs.existsSync(manifest)) continue; // versionProblems reports the missing manifest
+      const parsed = load(manifest, JSON.parse);
+      if (parsed !== undefined) pluginVersions[entry.name] = parsed.version;
+    }
+    // Never feed partial data to versionProblems: a missing marketplace would make it report
+    // nothing (a misleading green) and a missing manifest would cascade into a second, wrong message.
+    expectNoProblems(versionLabel, loadErrors.length > 0 ? loadErrors : versionProblems(marketplace, pluginVersions, changelogs));
   }
 
   // ── Multi-Agent Debate ───────────────────────────────────────────────────────

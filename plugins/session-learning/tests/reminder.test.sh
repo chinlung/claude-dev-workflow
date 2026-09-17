@@ -8,7 +8,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REMINDER="$SCRIPT_DIR/../hooks/save-session-reminder.sh"
 PASS=0; FAIL=0
 
-WORK=$(mktemp -d)
+# 帶模板：無模板的 mktemp -d 在 macOS 會落到 /var/folders/.../T/，Claude Code sandbox 只准寫 $TMPDIR，致整套假紅
+TMPBASE="${TMPDIR:-/tmp}"
+WORK=$(mktemp -d "${TMPBASE%/}/reminder-test.XXXXXX")
 trap 'rm -rf "$WORK"' EXIT
 
 # make_transcript <path> <填充行數> <最後一行 JSON(可為空字串)>

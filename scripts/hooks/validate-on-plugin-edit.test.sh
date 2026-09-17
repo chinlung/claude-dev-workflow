@@ -8,7 +8,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HOOK="$SCRIPT_DIR/validate-on-plugin-edit.cjs"
 PASS=0; FAIL=0
 
-WORK=$(mktemp -d)
+# 帶模板：無模板的 mktemp -d 在 macOS 會落到 /var/folders/.../T/，Claude Code sandbox 只准寫 $TMPDIR，致整套假紅
+TMPBASE="${TMPDIR:-/tmp}"
+WORK=$(mktemp -d "${TMPBASE%/}/plugin-edit-hook-test.XXXXXX")
 trap 'rm -rf "$WORK"' EXIT
 
 check() { # <名稱> <實際> <期望子字串>
@@ -69,6 +71,39 @@ fi
 r=$WORK/r5; make_root "$r"
 rc=0; printf 'not-json' | CLAUDE_PROJECT_DIR="$r" RAN_LOG="$r/ran.log" node "$HOOK" >/dev/null 2>&1 || rc=$?
 check "5 壞輸入 fail-open exit 0" "$rc" '^0$'
+
+# 6) repo 結構閘門(command/skill 同名碰撞、版本記帳)守護的檔案 → 觸發 node runner
+i=0
+for rel in plugins/x/commands/c.md plugins/x/skills/s/SKILL.md plugins/x/.claude-plugin/plugin.json \
+           .claude-plugin/marketplace.json CHANGELOG.md CHANGELOG.zh-TW.md; do
+  i=$((i+1)); r=$WORK/r6-$i; make_root "$r"
+  run_hook "$r" "$r/$rel"
+  check "6 $rel 觸發 node runner" "$(cat "$r/ran.log" 2>/dev/null)" 'runner'
+done
+
+# 7) 閘門不讀的檔案 → no-op:plugin 層 CHANGELOG、skill 目錄下其他 md,以及形似但不在
+#    plugins/<name>/ 底下的 commands/skills/manifest(專案 .claude/、docs/、plugin 內的 marketplace.json)
+i=0
+for rel in plugins/x/CHANGELOG.md plugins/x/skills/s/notes.md docs/CHANGELOG.md \
+           .claude/commands/x.md docs/skills/foo/SKILL.md plugins/x/.claude-plugin/marketplace.json; do
+  i=$((i+1)); r=$WORK/r7-$i; make_root "$r"
+  run_hook "$r" "$r/$rel"
+  if [ -f "$r/ran.log" ]; then
+    FAIL=$((FAIL+1)); echo "FAIL: 7 $rel 不應觸發 — ran.log: $(cat "$r/ran.log")"
+  else
+    PASS=$((PASS+1)); echo "PASS: 7 $rel 零執行"
+  fi
+done
+
+# 8) 專案根之外、但路徑同樣含 plugins/<name>/commands/ 的檔案(marketplace 快取 clone 即此形狀)→ no-op
+#    守住「子字串式錨定」的退化:比對必須是 root-relative
+r=$WORK/r8; make_root "$r"
+run_hook "$r" "$WORK/outside/plugins/x/commands/c.md"
+if [ -f "$r/ran.log" ]; then
+  FAIL=$((FAIL+1)); echo "FAIL: 8 專案根之外的 plugins/x/commands 不應觸發 — ran.log: $(cat "$r/ran.log")"
+else
+  PASS=$((PASS+1)); echo "PASS: 8 專案根之外零執行"
+fi
 
 # ---- summary ----
 echo "----"
