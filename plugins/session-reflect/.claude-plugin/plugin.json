@@ -1,6 +1,6 @@
 {
   "name": "session-reflect",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Session 收尾回顧建議系統 - Stop hook 廉價閘門 + 兩段 triage,回顧本次任務與交談,經證據錨點與對抗式驗證後提出最多 5 個可執行建議,互動勾選執行,未選入 backlog",
   "author": {
     "name": "scl@hanchih.com"

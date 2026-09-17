@@ -10,7 +10,7 @@
 /plugin install session-reflect@scl-claude-plugins
 ```
 
-That's it. At the end of any substantive session the Stop hook fires once, and Claude reviews the session before letting it end. Run `/reflect` anytime to trigger the same review manually.
+That's it. At the end of any substantive session the Stop hook fires once, and Claude reviews the session before letting it end. Run `/session-reflect:reflect` anytime to trigger the same review manually.
 
 ## How it works
 
@@ -35,7 +35,7 @@ Stop event
 
 ## The backlog
 
-`.claude/reflect-backlog.md` in your project root. States: `[pending]` (deduped on later runs, re-open with `/reflect`) and `[rejected]` (kept forever as dedup evidence, so a suggestion you refused never comes back). Completed entries are deleted. The plugin never commits this file — versioning it is your call.
+`.claude/reflect-backlog.md` in your project root. States: `[pending]` (deduped on later runs, re-open with `/session-reflect:reflect`) and `[rejected]` (kept forever as dedup evidence, so a suggestion you refused never comes back). Completed entries are deleted. The plugin never commits this file — versioning it is your call.
 
 ## Design guarantees
 

@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.8] - 2026-09-17
+
+### Fixed
+
+- **session-reflect 1.0.0 → 1.0.1** — the review playbook now actually loads. The plugin shipped both `commands/reflect.md` and `skills/reflect/SKILL.md`, which resolve to the same qualified name `session-reflect:reflect`; the command shadowed the skill (the skill listing showed a single entry carrying the command's description), so a Skill-tool call returned the command body — whose only content was "call the `session-reflect:reflect` skill" — and the playbook never loaded. Both the manual path and the Stop-hook path (`reflect-gate.sh` asks for that same skill name) hit the self-reference; the model had to locate and Read `SKILL.md` by hand. Removed the redundant command: skills are user-invocable by default (`/session-reflect:reflect`), and `skills/` is the documented layout for new plugins. The qualified name is unchanged, so the gate's already-reflected pattern (`"skill":"session-reflect:reflect"`) and `tests/gate.test.sh` need no change.
+
+### Notes
+
+- Marketplace patch bump 1.10.7 → 1.10.8.
+- READMEs (root EN / zh-TW and the plugin's own) now name the manual trigger by its qualified form `/session-reflect:reflect` instead of the bare `/reflect`.
+- Not yet verified end-to-end: that a fresh session resolves `session-reflect:reflect` to the skill requires installing 1.0.1 and starting a new session.
+
 ## [1.10.7] - 2026-09-14
 
 ### Changed

@@ -5,6 +5,18 @@
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [1.10.8] - 2026-09-17
+
+### Fixed
+
+- **session-reflect 1.0.0 → 1.0.1** — 回顧 playbook 現在真的會被載入。plugin 同時附了 `commands/reflect.md` 與 `skills/reflect/SKILL.md`，兩者解析成同一個限定名稱 `session-reflect:reflect`；command 遮蔽了 skill（skill 清單只出現一條、描述是 command 的），於是以 Skill 工具呼叫時拿到的是 command 內文——而它唯一的內容就是「去呼叫 `session-reflect:reflect` skill」——playbook 從未載入。手動路徑與 Stop hook 路徑（`reflect-gate.sh` 要求的正是同一個 skill 名稱）都撞上這個自我指涉，模型只能自行找出 `SKILL.md` 手動 Read。移除多餘的 command：skill 預設即可由使用者呼叫（`/session-reflect:reflect`），且 `skills/` 是文件記載的新 plugin 標準結構。限定名稱不變，故閘門的已回顧偵測 pattern（`"skill":"session-reflect:reflect"`）與 `tests/gate.test.sh` 皆無須更動。
+
+### Notes
+
+- Marketplace patch 版號 1.10.7 → 1.10.8。
+- README（根目錄中英文與 plugin 自身）的手動觸發指令改寫為限定名稱 `/session-reflect:reflect`，不再使用裸 `/reflect`。
+- 尚未端到端驗證：新 session 是否將 `session-reflect:reflect` 解析到 skill，須安裝 1.0.1 並開新 session 才能確認。
+
 ## [1.10.7] - 2026-09-14
 
 ### Changed
