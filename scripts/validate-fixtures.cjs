@@ -261,9 +261,9 @@ function checkSchemaConsistency(schemaPaths, validatorPath, group) {
   }
 }
 
-// ── repo-structure gates (plugin layout + version bookkeeping) ────────────────
+// ── repo-structure gates (plugin layout + version bookkeeping + registration) ─────────────────
 //
-// Both are pure: they take a directory / parsed data and return a list of problem
+// All are pure: they take a directory / parsed data and return a list of problem
 // strings, so the self-test canaries can feed them a planted defect without touching
 // the real repo.
 
@@ -326,6 +326,41 @@ function versionProblems(marketplace, pluginVersions, changelogs) {
       if (i > 0 && SEMVER.test(heads[i - 1]) && cmpSemver(heads[i - 1], heads[i]) <= 0) {
         problems.push(`${label}: heading [${heads[i - 1]}] is followed by [${heads[i]}] (must be strictly decreasing, no duplicates)`);
       }
+    }
+  }
+  return problems;
+}
+
+/**
+ * Marketplace registration. `entries` is [{ name, dir }] — `dir` the ROOT-relative directory
+ * an entry's `source` resolves to (null for a non-path source); `manifests` maps each
+ * `plugins/<p>` dir that HAS a plugin.json → { name } when it parsed, or { unreadable: true }.
+ * (Scope: only dirs directly under plugins/ — an entry whose source points elsewhere gets no
+ * name check here; the version gate still covers it.)
+ *   (1) orphan: a plugin dir with a manifest that no entry points at. The version gate walks
+ *       entries only, so an unregistered plugin is invisible to it — and it is uninstallable.
+ *   (2) an entry's name must equal its plugin.json `name`: the entry name is what users
+ *       install, the manifest name is what namespaces the plugin's skills/commands.
+ * "Unreadable" and "readable but nameless" are deliberately distinct: only the former is
+ * skipped. For a REGISTERED dir the version gate has already named the unreadable file; for
+ * an ORPHAN nothing reports the broken JSON — the orphan report is the actionable failure,
+ * and the JSON error surfaces once the plugin is registered.
+ */
+function registrationProblems(entries, manifests) {
+  const problems = [];
+  const registered = new Set(entries.map((e) => e.dir).filter((d) => d !== null));
+  for (const dir of Object.keys(manifests)) {
+    if (!registered.has(dir)) problems.push(`${dir} has a plugin.json but no marketplace entry's source points at it`);
+  }
+  for (const entry of entries) {
+    const m = entry.dir !== null ? manifests[entry.dir] : undefined;
+    if (!m || m.unreadable) continue;
+    // Explicit type check, not a bare `!==`: when the entry AND the manifest both lack a name,
+    // undefined !== undefined is false and the pair would pass as "equal".
+    if (typeof m.name !== 'string' || m.name === '') {
+      problems.push(`${entry.dir}/.claude-plugin/plugin.json has no string "name" (marketplace entry "${entry.name}")`);
+    } else if (m.name !== entry.name) {
+      problems.push(`marketplace entry "${entry.name}" points at ${entry.dir}, whose plugin.json is named "${m.name}"`);
     }
   }
   return problems;
@@ -417,8 +452,28 @@ function main() {
     }
   }
 
+  {
+    // (e) registration gate MUST flag a planted orphan dir and a planted name mismatch.
+    const entries = [{ name: 'a', dir: 'plugins/a' }, { name: 'remote', dir: null }];
+    const cases = [
+      ['every manifest dir registered, names equal → no problems', entries, { 'plugins/a': { name: 'a' } }, 0],
+      ['orphan: a plugin dir with a manifest and no entry', entries, { 'plugins/a': { name: 'a' }, 'plugins/b': { name: 'b' } }, 1],
+      ['entry name ≠ plugin.json name', entries, { 'plugins/a': { name: 'not-a' } }, 1],
+      ['unreadable manifest of a REGISTERED dir is left to the version gate, not double-reported', entries, { 'plugins/a': { unreadable: true } }, 0],
+      ['readable manifest with no "name" key (or a mistyped one) is a problem, not a skip', entries, { 'plugins/a': {} }, 1],
+      // guards the typeof check: with a plain `!==`, undefined !== undefined is false and this slips through
+      ['entry AND manifest both lack a name', [{ name: undefined, dir: 'plugins/a' }], { 'plugins/a': { name: undefined } }, 1],
+    ];
+    for (const [what, en, mf, want] of cases) {
+      const label = `canary: registration gate — ${what}`;
+      const got = registrationProblems(en, mf).length;
+      if (got === want) { console.log(`  ✓  ${label}`); passed++; }
+      else { console.error(`  ✗  ${label}: expected ${want} problem(s), got ${got}`); failed++; failures.push(label); }
+    }
+  }
+
   // ── Repo structure ───────────────────────────────────────────────────────────
-  console.log('\n## Repo structure — command/skill name collisions + version bookkeeping');
+  console.log('\n## Repo structure — command/skill name collisions + version bookkeeping + marketplace registration');
   {
     const pluginDirs = fs.readdirSync(P('plugins'), { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
     const collisions = [];
@@ -439,20 +494,66 @@ function main() {
     const marketplace = load(P('.claude-plugin', 'marketplace.json'), JSON.parse);
     const changelogs = {};
     for (const f of ['CHANGELOG.md', 'CHANGELOG.zh-TW.md']) { const t = load(P(f), String); if (t !== undefined) changelogs[f] = t; }
+    // Shape, not just syntax: valid JSON of the wrong shape (`plugins` an object, a null element,
+    // a manifest that is `null`) would otherwise throw a TypeError below — the same summary-dropping
+    // crash the load() helper exists to prevent. Normalise ONCE here for both gates. A malformed
+    // element is REPORTED, never silently dropped: a filtered-out entry would mean one fewer thing
+    // checked under a green light.
+    const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+    const entryList = [];
+    let marketplaceUsable = false;
+    if (marketplace !== undefined) {
+      if (!isObj(marketplace)) loadErrors.push('.claude-plugin/marketplace.json is not a JSON object');
+      else if (!Array.isArray(marketplace.plugins)) loadErrors.push('.claude-plugin/marketplace.json: "plugins" is not an array');
+      else {
+        marketplaceUsable = true;
+        marketplace.plugins.forEach((e, i) => {
+          if (isObj(e)) entryList.push(e);
+          else loadErrors.push(`.claude-plugin/marketplace.json: plugins[${i}] is not an object`);
+        });
+      }
+    }
     // Resolve each entry's manifest through its own `source`, not by assuming dir name === entry
     // name, so "no plugin.json found" means what it says. Object-form sources (git/url) have no
     // local manifest to compare — say so rather than crash in path.resolve.
     const pluginVersions = {};
-    for (const entry of (marketplace && marketplace.plugins) || []) {
+    for (const entry of entryList) {
       if (typeof entry.source !== 'string') { loadErrors.push(`marketplace entry "${entry.name}": non-path source, version not checkable here`); continue; }
       const manifest = path.resolve(ROOT, entry.source, '.claude-plugin', 'plugin.json');
       if (!fs.existsSync(manifest)) continue; // versionProblems reports the missing manifest
       const parsed = load(manifest, JSON.parse);
-      if (parsed !== undefined) pluginVersions[entry.name] = parsed.version;
+      if (parsed === undefined) continue; // load() already named the file
+      if (isObj(parsed)) pluginVersions[entry.name] = parsed.version;
+      else loadErrors.push(`${path.relative(ROOT, manifest)} is not a JSON object`);
     }
     // Never feed partial data to versionProblems: a missing marketplace would make it report
     // nothing (a misleading green) and a missing manifest would cascade into a second, wrong message.
     expectNoProblems(versionLabel, loadErrors.length > 0 ? loadErrors : versionProblems(marketplace, pluginVersions, changelogs));
+
+    // Registration walks the DIRECTORIES (the version gate above walks entries, so a plugin
+    // nobody registered never reaches it). Without a usable marketplace every dir would look
+    // orphaned — report that once instead of nine cascading orphans, and never pass silently.
+    const registrationLabel = 'every plugin dir is registered in the marketplace; entry names match plugin.json';
+    if (!marketplaceUsable) {
+      expectNoProblems(registrationLabel, ['cannot evaluate — .claude-plugin/marketplace.json unreadable or malformed (see the version check above)']);
+    } else {
+      const rel = (abs) => path.relative(ROOT, abs).split(path.sep).join('/');
+      const entries = entryList.map((e) => ({
+        name: e.name,
+        dir: typeof e.source === 'string' ? rel(path.resolve(ROOT, e.source)) : null,
+      }));
+      const manifests = {};
+      for (const name of pluginDirs) {
+        const manifest = P('plugins', name, '.claude-plugin', 'plugin.json');
+        if (!fs.existsSync(manifest)) continue;
+        // Unparseable / non-object → { unreadable: true }, which registrationProblems skips for the
+        // NAME check only (its docstring says who reports the file in the registered vs orphan case).
+        let m = { unreadable: true };
+        try { const p = JSON.parse(fs.readFileSync(manifest, 'utf8')); if (isObj(p)) m = { name: p.name }; } catch { /* stays unreadable */ }
+        manifests[`plugins/${name}`] = m;
+      }
+      expectNoProblems(registrationLabel, registrationProblems(entries, manifests));
+    }
   }
 
   // ── Multi-Agent Debate ───────────────────────────────────────────────────────

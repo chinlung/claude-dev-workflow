@@ -43,7 +43,7 @@ plugins/<name>/
   - 新增一個 plugin → **minor** bump（例：1.6.1 → 1.7.0）
   - 既有 plugin patch → **patch** bump（例：1.6.0 → 1.6.1）
 - 全域紀律：動到版本號時，**檢查所有含版本字串的檔案**（plugin.json、marketplace.json entry、兩份 CHANGELOG），不要只改一處。
-- **機器閘門**（`node scripts/validate-fixtures.cjs`，CI 與本地 PostToolUse hook 皆跑）：每個 marketplace entry 版號＝該 plugin 的 `plugin.json`；`metadata.version`＝兩份根 CHANGELOG 最上面的 `## [x.y.z]`；根 CHANGELOG 標題須為 x.y.z、不重複、嚴格遞減。**bump 前先 `git fetch` 對齊 `origin/main`**——在落後的基底上 bump 會與遠端撞號，而 `marketplace.json` 兩邊改成同一值時 git 會靜默自動合併、停在錯的版號（2026-09-17 實例；閘門現在會擋）。已知殘餘：兩個 release 被併進同一個段落，靜態檢查抓不到。plugin 層 `CHANGELOG.md` 不在閘門範圍。
+- **機器閘門**（`node scripts/validate-fixtures.cjs`，CI 與本地 PostToolUse hook 皆跑）：每個 marketplace entry 版號＝該 plugin 的 `plugin.json`；`metadata.version`＝兩份根 CHANGELOG 最上面的 `## [x.y.z]`；根 CHANGELOG 標題須為 x.y.z、不重複、嚴格遞減。**bump 前先 `git fetch` 對齊 `origin/main`**——在落後的基底上 bump 會與遠端撞號，而 `marketplace.json` 兩邊改成同一值時 git 會靜默自動合併、停在錯的版號（2026-09-17 實例；閘門現在會擋）。已知殘餘：兩個 release 被併進同一個段落，靜態檢查抓不到。plugin 層 `CHANGELOG.md` 不在閘門範圍。另有**註冊閘門**：`plugins/` 下每個有 `plugin.json` 的目錄都必須被某個 marketplace entry 的 `source` 指到（第 2 節那一步漏做即紅——版本閘門只走 entries，沒註冊的 plugin 它根本看不到），且 entry 的 `name` 須等於該 `plugin.json` 的 `name`（前者是使用者安裝用的名字，後者決定 skill／command 的命名空間）。
 - 同一 plugin 內 `commands/<X>.md` 與有效名稱為 `<X>` 的 skill（`SKILL.md` frontmatter `name`，缺省為目錄名）不得並存——兩者解析成同一個 `<plugin>:<X>`，command 會遮蔽 skill、skill 本體永不載入，`claude plugin validate` 不會報（session-reflect 1.0.0 實例）；同一閘門會擋。
 
 ## 5.（選用）夾帶 MCP server
