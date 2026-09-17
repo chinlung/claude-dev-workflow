@@ -379,27 +379,26 @@ function registrationProblems(entries, manifests) {
  * or an auto-approved sandboxed write buys unsandboxed execution. `executed` is a list of
  * ROOT-relative paths; `patterns` is the denyWrite array.
  *
- * Deliberately understands only two pattern shapes: a root-relative literal path, covering
- * itself and everything beneath it, and `*` within ONE path segment. Both were probed against
- * the real sandbox (2026-09-17) in the POSITIVE direction — the literal `scripts` and the
- * star-glob over the plugin test dirs do deny the files beneath them. (Spelling that glob out
- * here would put a star-slash in this block comment and close it.) That `*` stops at a
- * segment boundary was not probed but is what the runtime's rule generator does on macOS
- * (Claude Code 2.1.274: a glob becomes a Seatbelt regex with * → [^/]*, a literal becomes a
- * subpath rule), so there this matcher and the sandbox agree. Anything else (`**`, braces,
- * `?`, classes, absolute or ~ paths, ./x, x/) is reported as unverifiable rather than guessed at.
+ * Accepts exactly ONE pattern shape: a root-relative literal path, which covers itself and
+ * everything beneath it. Probed against the real sandbox (2026-09-17): the literal `scripts`
+ * denies writes to files beneath it, denies creating a new file beneath it, and (from the
+ * 2.1.274 rule generator) becomes a Seatbelt `subpath` rule with every ancestor pinned against
+ * unlink — so a literal cannot be renamed away, and nothing can be renamed or symlinked in
+ * beneath it.
  *
- * WHAT A GREEN HERE DOES NOT MEAN — it verifies the CONFIG lists the path, nothing more:
- *  - Enforcement cannot be tested from here (CI has no sandbox; the hook runs outside one).
+ * Every star entry is REJECTED, not merely unsupported — a policy, backed by two facts:
  *  - On Linux/WSL the same runtime DROPS every glob write pattern ("Skipping glob write pattern
- *    on Linux"), so a star-glob entry protects nothing there while this check stays green.
- *  - A star-glob entry denies only paths matching its regex. Read from the rule generator (not
- *    executed): renaming a directory that already contains tests/ INTO plugins/ touches only
- *    the path `plugins/<new>`, which no rule matches; and a plugin dir protected only by globs
- *    can itself be renamed away. A literal entry has neither hole — its subpath rule covers
- *    every path beneath it, and its ancestors are pinned against unlink.
- *  The live check below additionally reports symlinks on the hook's enumeration path, which
- *  the hook follows and no path rule reaches.
+ *    on Linux"), so a star entry protects nothing there while looking configured.
+ *  - On macOS a star entry denies only paths matching its regex. Probed 2026-09-17: with the
+ *    star-glob over the plugin test dirs in force, `mv <dir-containing-tests>` INTO plugins/
+ *    SUCCEEDED — a rename is checked only on its destination path `plugins/<new>`, which no
+ *    regex matched, and the whole subtree came along unchecked. A literal has no such hole.
+ * Anything else (`**`, braces, `?`, classes, absolute or ~ paths, ./x, x/, `..`) is reported
+ * as unverifiable rather than guessed at.
+ *
+ * A green here verifies the CONFIG lists the path; enforcement itself cannot be tested from
+ * here (CI has no sandbox; the hook runs outside one). The live check below additionally
+ * reports symlinks on the hook's enumeration path, which the hook follows.
  */
 function denyWriteProblems(executed, patterns) {
   const problems = [];
@@ -408,12 +407,16 @@ function denyWriteProblems(executed, patterns) {
     if (typeof raw !== 'string' || raw === '') { problems.push(`denyWrite entry ${JSON.stringify(raw)} is not a non-empty string`); continue; }
     // No normalising of ./x or x/ into x: those spellings were never probed against the sandbox.
     const p = raw;
-    if (/^[/~]/.test(p) || /\*\*|[?{}[\]]/.test(p) || p.split('/').some((s) => s === '' || s === '.' || s === '..')) {
-      problems.push(`denyWrite entry "${raw}" uses a form this check cannot verify (only root-relative literals and single-segment * are understood)`);
+    if (p.includes('*')) {
+      problems.push(`denyWrite entry "${raw}" is a glob — globs are dropped on Linux and do not deny renaming a subtree in on macOS; list a literal directory instead`);
       continue;
     }
-    // One anchored regex per segment: * → [^/]*, everything else literal.
-    matchers.push(p.split('/').map((seg) => new RegExp(`^${seg.split('*').map((s) => s.replace(/[.+^$()|\\]/g, '\\$&')).join('[^/]*')}$`)));
+    if (/^[/~]/.test(p) || /[?{}[\]]/.test(p) || p.split('/').some((s) => s === '' || s === '.' || s === '..')) {
+      problems.push(`denyWrite entry "${raw}" uses a form this check cannot verify (only root-relative literal paths are understood)`);
+      continue;
+    }
+    // Literal segments, compared whole (`scripts` ≠ `scripts-extra`).
+    matchers.push(p.split('/'));
   }
   for (const file of executed) {
     const segs = file.split('/');
@@ -425,7 +428,7 @@ function denyWriteProblems(executed, patterns) {
     }
     // A pattern covers the path it names and everything beneath it: every pattern segment must
     // match the path segment at the same depth (whole segments — `scripts` ≠ `scripts-extra`).
-    const covered = matchers.some((m) => m.length <= segs.length && m.every((re, i) => re.test(segs[i])));
+    const covered = matchers.some((m) => m.length <= segs.length && m.every((seg, i) => seg === segs[i]));
     if (!covered) problems.push(`${file} is executed outside the sandbox but no sandbox.filesystem.denyWrite entry covers it`);
   }
   return problems;
@@ -568,18 +571,18 @@ function main() {
   }
 
   {
-    // (f) denyWrite gate MUST flag an executed file no pattern covers, and must not over-read globs.
-    const pats = ['scripts', 'plugins/*/tests', 'plugins/x/skills/x/validate.cjs'];
+    // (f) denyWrite gate MUST flag an executed file no literal covers, and MUST reject every glob —
+    //     a star entry is dropped on Linux and, on macOS, does not deny renaming a subtree in (probed 2026-09-17).
+    const pats = ['scripts', 'plugins', 'plugins/x/skills/x/validate.cjs'];
     const cases = [
-      ['literal dir covers files beneath it; * covers one segment; literal file covers itself', ['scripts/a.cjs', 'scripts/hooks/b.cjs', 'plugins/p/tests/t.test.sh', 'plugins/x/skills/x/validate.cjs'], pats, 0],
-      ['an executed file outside every pattern', ['plugins/p/skills/p/validators/v.cjs'], pats, 1],
-      ['* must NOT span segments (plugins/*/tests does not cover plugins/a/b/tests)', ['plugins/a/b/tests/t.test.sh'], pats, 1],
+      ['a literal dir covers everything beneath it; a literal file covers itself', ['scripts/a.cjs', 'scripts/hooks/b.cjs', 'plugins/p/tests/t.test.sh', 'plugins/p/deep/er/h.sh', 'plugins/x/skills/x/validate.cjs'], pats, 0],
+      ['an executed file outside every literal', ['tools/v.cjs'], pats, 1],
       ['a literal must match whole segments (scripts does not cover scripts-extra/)', ['scripts-extra/x.cjs'], pats, 1],
-      ['an unsupported pattern is reported, not guessed at — even when everything else is covered', ['scripts/a.cjs'], ['scripts', 'plugins/**/tests'], 1],
+      ['a single-segment star entry is rejected even though it would have matched', ['plugins/p/tests/t.test.sh'], ['scripts', 'plugins/*/tests'], 2],
+      ['a ** entry is rejected', ['scripts/a.cjs'], ['scripts', 'plugins/**/tests'], 1],
       ['an absolute or ~ pattern is unsupported in project settings', ['scripts/a.cjs'], ['scripts', '~/x', '/abs/y'], 2],
       ['no denyWrite at all', ['scripts/a.cjs', 'plugins/p/tests/t.test.sh'], [], 2],
-      // an executed path that is not a clean root-relative path must never be "covered" (a leading * would swallow it)
-      ['executed path escaping the root, absolute, or with an empty segment is unverifiable', ['../outside.sh', '/abs/x.sh', 'a//b.sh'], ['*'], 3],
+      ['executed path escaping the root, absolute, or with an empty segment is unverifiable', ['../outside.sh', '/abs/x.sh', 'a//b.sh'], ['scripts'], 3],
       ['un-probed spellings of a pattern (./x, x/) are unverifiable, not normalised into a pass', ['scripts/a.cjs'], ['./scripts', 'scripts/'], 3],
     ];
     for (const [what, ex, pt, want] of cases) {

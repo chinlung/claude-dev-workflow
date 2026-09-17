@@ -3,11 +3,7 @@
     "filesystem": {
       "denyWrite": [
         "scripts",
-        "plugins/*/tests",
-        "plugins/*/hooks",
-        "plugins/*/validators",
-        "plugins/openspec-superpowers-workflow/skills/openspec-superpowers-workflow/validators",
-        "plugins/security-audit/skills/security-audit/validate-findings.cjs"
+        "plugins"
       ]
     }
   },

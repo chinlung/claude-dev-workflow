@@ -75,33 +75,31 @@ find plugins/<name> -type f | sort
 
 裝起來實測：`/plugin marketplace add ...`（或 update）→ `/plugin install <name>@scl-claude-plugins` → `/reload-plugins` → 確認 skill 出現在清單、（若有）MCP 工具以 `mcp__plugin_<name>_<server>__*` 出現。
 
-## 6.5 用 Claude Code 在本 repo 工作：被執行的腳本不可由 sandbox 內的 Bash 寫入
+## 6.5 用 Claude Code 在本 repo 工作：`scripts/` 與 `plugins/` 整棵樹不可由 sandbox 內的 Bash 寫入
 
-`.claude/settings.json` 的本地 PostToolUse hook 由 harness **在 sandbox 之外**、以你的權限執行，它會跑 `scripts/validate-fixtures.cjs` 與每個 `plugins/*/tests/*.test.sh`，後者再執行 `plugins/*/hooks/*.sh`、runner 再執行各 validator。這些檔案若能被 sandbox 內的 Bash 寫入，等於「自動放行的寫入」換到「sandbox 外的執行」。因此同一份 settings 以 `sandbox.filesystem.denyWrite` 擋下整個被執行閉包：
+`.claude/settings.json` 的本地 PostToolUse hook 由 harness **在 sandbox 之外**、以你的權限執行，它會跑 `scripts/validate-fixtures.cjs` 與每個 `plugins/*/tests/*.test.sh`，後者再執行 `plugins/*/hooks/*.sh`、runner 再執行各 validator。這些檔案若能被 sandbox 內的 Bash 寫入，等於「自動放行的寫入」換到「sandbox 外的執行」。因此同一份 settings 以 `sandbox.filesystem.denyWrite` 列出**兩條字面路徑**：`scripts`、`plugins`——整棵子樹，涵蓋其下一切。
 
-- `scripts`、`plugins/*/tests`、`plugins/*/hooks`、`plugins/*/validators`（glob，新 plugin 自動涵蓋——**但 glob 條目有三個已知限制，見本節末「已知限制」**）
-- 兩個不在慣例目錄的 validator：`plugins/openspec-superpowers-workflow/skills/openspec-superpowers-workflow/validators`、`plugins/security-audit/skills/security-audit/validate-findings.cjs`
+同一類的另一個位置——`.git/hooks`（sandbox 內若可寫，放個 `pre-commit` 進去，下次在 sandbox 外 `git commit` 就以使用者權限執行）——**不必列**：Claude Code runtime 預設已強制拒寫 `.git/hooks` 與 `.git/config`（2.1.274 binary：`**/.git/hooks/**` 為固定 deny，`allowGitConfig` 選項說明即寫明「keeping .git/hooks protected」）。曾短暫列入過一版，安全審查指出它是多餘的、且「探測被擋」證明不了它有作用，故移除；記在這裡是為了讓日後的人不要再把它當成缺口。
+
+**為什麼是字面、不是 glob**（2026-09-17 實測與 2.1.274 binary 規則產生器）：字面條目變成 Seatbelt `subpath` 規則，涵蓋其下所有路徑、釘住各層祖先不得 unlink，在其下建檔、建 symlink、把外面的目錄改名搬進來全部被擋。glob 條目（如 `plugins/*/tests`）只擋「路徑匹配 regex」的操作——**實測**把一個已含 `tests/p.txt` 的目錄 `mv` 進 `plugins/zzp` 成功，因為 rename 只檢查目的路徑 `plugins/zzp`（不匹配三層的 regex），整棵子樹跟著進來未經檢查；改成字面 `plugins` 後同一個操作 `Operation not permitted`。此外 Linux／WSL 上 runtime 會把帶 glob 的寫入條目**整條丟掉**（log：`Skipping glob write pattern on Linux`）。runner 的閘門因此把**任何含 `*` 的條目直接判紅**，機械化強制這個設計。
 
 實務影響：
 
-- **改這些檔一律用 Edit／Write 工具**（走權限確認），`perl -pi`、`sed -i`、`>` 重導向在 sandbox 內會得到 `Operation not permitted`——那是這條防護在運作，不是程式碼回歸。
-- 測試本身不受影響：各 suite 只寫 `$TMPDIR` 下的暫存目錄。
-- 對真實 repo 做突變驗證時，要破壞的若是 manifest／CHANGELOG／`SKILL.md`（不在閉包內）仍可用 Bash；要破壞的若是 hook 或測試腳本本身，改用 Edit 工具再還原。
-- **git 也是 sandbox 內的行程**：`git pull`／`merge`／`checkout`／`stash pop`／`rebase` 只要需要改寫上述目錄裡的檔案，就會以 `error: unable to unlink old '<path>': Operation not permitted` 半途失敗（exit 255）。實測（2026-09-17）失敗時**工作樹未變、index 卻已更新**，`git status` 會出現 `MM` 這種兩邊不一致的狀態。避開：這類 git 操作在 sandbox 外跑——輸入框用 `!` 前綴，或讓 agent 走 sandbox 繞過（仍經權限確認）。復原：`git reset -q HEAD -- <path>` 把 index 拉回、再於 sandbox 外重做該操作。只動其他路徑的 git 操作（含 commit、push、改 manifest／文件的 checkout）不受影響。
-- **新增「會被 hook 或 runner 執行」的檔案時，若它不落在上述目錄，必須同步把路徑加進 `denyWrite`**——漏加會被 runner 最後一項檢查擋下（CI 與本地 hook 皆跑）：它蒐集 settings 裡各 command hook 指到的腳本、runner 自己、runner **實際 spawn 過**的每個 validator（在 spawn 點記錄，不是掃原始碼）、`plugins/*/tests/*.test.sh` 與 `plugins/*/hooks/` 下的腳本（枚舉方式與 hook 一致：依名稱、會穿過 symlink），逐一確認被某條 `denyWrite` 涵蓋。凡是它驗不了的一律 fail-closed、不猜：
-  - **pattern** 只認得 root-relative 字面路徑（涵蓋其下一切）與單一路徑層級的 `*`；`**`、大括號、`?`、絕對路徑、`~`、`./x`、`x/` 一律回報「無法驗證」。
-  - **hook 指令**只認得 `node "$CLAUDE_PROJECT_DIR/<path>"` 這一種形狀；用 `&&` 串第二個腳本、改用 `python3`、寫相對路徑，都會被回報「無法驗證」而不是被默默略過。指到**還不存在**的腳本也會照樣拿去核對——在這裡「還不存在」是最糟的情況（未受保護、sandbox 內建得出來、hook 下次就會跑它）。
-  - hook 會穿過的 **symlink**（plugin 目錄、`tests/` 目錄、suite 檔）一律回報：它指向的東西不在任何 `denyWrite` 路徑規則之內。
+- **改 `scripts/`、`plugins/` 下任何檔一律用 Edit／Write 工具**（走權限確認）——含 `plugin.json`、`SKILL.md`、README、fixtures。`perl -pi`、`sed -i`、`>` 重導向在 sandbox 內會得到 `Operation not permitted`；那是這條防護在運作，不是程式碼回歸。
+- 測試本身不受影響：各 suite 只寫 `$TMPDIR` 下的暫存目錄；runner 的 canary 用 `mkdtemp`。
+- **對真實 repo 做突變驗證**：要破壞的若是根目錄的 `marketplace.json`／CHANGELOG（不在閉包內）仍可用 Bash 改再 `git checkout` 還原；要破壞的若在 `plugins/` 或 `scripts/` 下（含 `plugin.json`），改用「把 runner 與 settings 複製到 `$TMPDIR`、對副本動手」——settings 的突變驗證本來就該這樣做，因為改壞 live 設定等於真的解除保護。
+- **git 也是 sandbox 內的行程**：`git pull`／`merge`／`checkout`／`stash pop`／`rebase` 只要需要改寫 `scripts/`、`plugins/` 裡的檔案（幾乎每個 commit 都會），就會以 `error: unable to unlink old '<path>': Operation not permitted` 半途失敗（exit 255）。實測（2026-09-17）失敗時**工作樹未變、index 卻已更新**，`git status` 會出現 `MM` 這種兩邊不一致的狀態。避開：這類 git 操作在 sandbox 外跑——輸入框用 `!` 前綴，或讓 agent 走 sandbox 繞過（仍經權限確認）。復原：`git reset -q HEAD -- <path>` 把 index 拉回、再於 sandbox 外重做該操作。commit、push，以及只動根目錄檔案的 checkout 不受影響。
+- **新增「會被 hook 或 runner 執行」的檔案時，它必須落在 `scripts/` 或 `plugins/` 之下**，否則會被 runner 最後一項檢查擋下（CI 與本地 hook 皆跑）。該檢查蒐集 settings 裡各 command hook 指到的腳本、runner 自己、runner **實際 spawn 過**的每個 validator（在 spawn 點記錄，不是掃原始碼）、`plugins/*/tests/*.test.sh` 與 `plugins/*/hooks/` 下的腳本（枚舉方式與 hook 一致：依名稱、會穿過 symlink），逐一確認被某條 `denyWrite` 涵蓋。凡是它驗不了的一律 fail-closed、不猜：
+  - **pattern** 只認得 root-relative 字面路徑；含 `*` 的一律判紅；`?`、大括號、絕對路徑、`~`、`./x`、`x/`、`..` 回報「無法驗證」。
+  - **hook 指令**只認得 `node "$CLAUDE_PROJECT_DIR/<path>"` 這一種形狀；用 `&&` 串第二個腳本、改用 `python3`、寫相對路徑，都會被回報「無法驗證」而不是被默默略過。指到**還不存在**的腳本也會照樣拿去核對——「還不存在」在這裡是最糟的情況（未受保護、sandbox 內建得出來、hook 下次就會跑它）。
+  - hook 會穿過的 **symlink**（plugin 目錄、`tests/` 目錄、suite 檔）一律回報。字面 `plugins` 下建不了 symlink，這條是對「已 commit 進 repo 的 symlink」的兜底。
   - 「hook 會 spawn runner 與各 suite」這件事是寫死在檢查裡的知識、不是推導出來的——**改了 `scripts/hooks/validate-on-plugin-edit.cjs` 會執行的東西，就要同步改這項檢查**。測試腳本若以變數拼路徑間接呼叫其他腳本、或 validator 去 `require` repo 內其他程式碼，靜態蒐集也找不到。
 
-### 已知限制（綠燈**不**代表的事）
+### 仍然要知道的限制
 
-依據：閱讀 Claude Code 2.1.274 binary 內 sandbox runtime 的規則產生器；標「未執行」者為讀規則所得的推論，不是實測。
-
-1. **它驗的是設定有列，不是 sandbox 真的有擋**——CI 沒有 sandbox、hook 自己也跑在 sandbox 外。改動 `denyWrite` 的**寫法**後仍須手動探測一次（在 sandbox 內對被擋路徑 `: >> <path>` 應得 `Operation not permitted`，並對照一個不該被擋的路徑）。
-2. **Linux／WSL 上，帶 glob 的寫入條目會被 runtime 整條丟掉**（log：`Skipping glob write pattern on Linux`）。那三條 `plugins/*/…` 在 Linux 上什麼都沒保護，而這項檢查照樣綠燈。目前只在 macOS 上使用本 repo 才成立。
-3. **glob 條目只擋「路徑匹配其 regex」的操作**（未執行）：字面條目產生 `subpath` 規則、涵蓋其下一切並釘住各層祖先目錄；glob 條目只產生那條 regex 加上靜態前綴 `plugins` 本身。因此把一個**已含 `tests/x.test.sh`** 的目錄改名搬**進** `plugins/`，被檢查的只有 `plugins/<新名>` 這個路徑——不匹配任何規則；只靠 glob 保護的既有 plugin 目錄本身也能被改名移走。
-4. 上述 2、3 的根治是把 glob 換成字面的 `scripts`＋`plugins`（整棵樹）——代價是 `plugins/` 下**所有**檔案（含 `plugin.json`、`SKILL.md`、README）都只能用 Edit／Write 工具改，對 manifest 的突變驗證也得改用「複製到 `$TMPDIR` 的副本」來做。**此為待決事項。**
+1. **閘門驗的是設定有列，不是 sandbox 真的有擋**——CI 沒有 sandbox、hook 自己也跑在 sandbox 外。改動 `denyWrite` 後仍須手動探測一次：在 sandbox 內對被擋路徑 `: >> <path>` 應得 `Operation not permitted`，並對照一個不該被擋的根目錄檔案仍可寫。
+2. 閘門只看 `settings.hooks` 裡的 command hook。`statusLine.command`、`apiKeyHelper`、`.mcp.json` 的 stdio server 同樣在 sandbox 外執行，目前本 repo 都沒設，若日後加上，要自行把它們執行的檔案納入 `denyWrite`。
+3. 只讀專案的 `.claude/settings.json`；`settings.local.json`（gitignored）裡若自己加了 hook，閘門看不到。
 
 ## 7. 維護「wrapper 型」plugin 的上游相依
 
