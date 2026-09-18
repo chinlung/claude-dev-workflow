@@ -14,7 +14,7 @@
 | [Session 經驗學習](#session-經驗學習插件) | 漸進式保存對話中的有價值模式為 memory 或 skill | `/save-session` |
 | [OpenSpec + Superpowers 工作流程](#openspec--superpowers-工作流程插件) | 六階段功能開發，強制 OpenSpec / Superpowers 角色分離 | 自動觸發 skill |
 | [Code Audit Rigor](#code-audit-rigor-插件) | 審查工具箱：routine 兩輪審查指令 + 量化框架（EV、評分校準、STRIDE+CWE）+ 工程化保證（語言規則包、coverage 核銷、引用錨定） | `/review-branch`、`/review-pr` + 自動觸發 skill |
-| [CodeGraph](#codegraph-插件) | 編輯／審查前先查結構（callers、impact、trace）而非 grep | 自動觸發 skill |
+| [CodeGraph](#codegraph-插件) | 編輯／審查前先查結構（callers、impact、呼叫路徑）而非 grep | 自動觸發 skill |
 | [Security Audit](#security-audit-插件) | 六階段多代理流程，主動獵捕可被利用的漏洞（vendored 自 cloudflare/security-audit-skill） | 自動觸發 skill |
 | [Session Reflect](#session-reflect-插件) | Session 收尾回顧，提出最多 5 個經驗證的可執行改進建議 | `/session-reflect:reflect` + Stop hook |
 
@@ -623,45 +623,49 @@ Output 為結構化 JSON 風格 findings，依 EV 排序，含 dismissed finding
 
 # CodeGraph 插件
 
-單一 skill plugin，教 Claude 在結構性問題上**先查 [codegraph](https://www.npmjs.com/package/codegraph) tree-sitter 知識圖譜、再用 grep**。
+單一 skill plugin，教 Claude 在結構性問題上**先查 [codegraph](https://www.npmjs.com/package/@colbymchenry/codegraph) tree-sitter 知識圖譜、再用 grep**。
 
 ## 何時觸發
 
 - 專案有 `.codegraph/` 索引，且出現結構性問題（誰呼叫 X、改 Y 會壞什麼、X 怎麼流到 Y）
 - 準備 grep 呼叫點，或 edit / rename / remove 一個符號
-- `codegraph_*` MCP 工具呼叫回 "not found"（→ 該命令只在 CLI）
+- `codegraph_*` MCP 工具呼叫回 "not found"（→ 該工具未列出或已移除，改用 CLI）
 - 在新專案啟用 codegraph
 
 純文字搜尋（字串內容、註解、log 訊息）直接用 grep——此 skill 不為此而生。
 
 ## 兩條入口邊界（不直觀的重點）
 
-`codegraph serve --mcp` 只把**部分**命令導出成 `codegraph_*` MCP 工具，其餘只在 Bash CLI；誰都不是超集。
+自 codegraph 1.6.0 起，`codegraph serve --mcp` 預設**只列出 `codegraph_explore` 一個工具**——上游刻意精簡選單。其餘能力一律走 Bash CLI。
 
-| | 只在 MCP | 只在 CLI（`codegraph <cmd>`） | 兩邊都有 |
-|---|---|---|---|
-| | `trace`、`node`、`explore` | `callers`、`callees`、`impact`、`affected`、`status`、`files` | `search`/`query`、`context` |
+| | 入口 |
+|---|---|
+| `explore` | **MCP** `codegraph_explore` **與** CLI `codegraph explore`——同一個 handler、輸出相同 |
+| `node`、`query`、`callers`、`callees`、`impact`、`files`、`status` | **CLI**。MCP handler 仍在但不列出；在 server 設 `CODEGRAPH_MCP_TOOLS=explore,node,…` 可重新列出（該值吃的是 MCP 短名——`query` 在那裡叫 `search`；無法辨識的名稱會被靜默丟棄） |
+| `context`、`affected` | **只在 CLI** |
+| ~~`trace`~~、~~`codegraph_context`~~ | **已移除。**「X 怎麼流到 Y」現在是 `explore` 呼叫路徑輸出的一部分 |
 
-- **導覽 / 理解**（要看 code body、追 X→Y）→ MCP `context` / `trace` / `node` / `explore`
+- **導覽 / 理解**（要看 code body、X 怎麼流到 Y、概覽某區）→ MCP `codegraph_explore`
 - **分析 / 清單**（遞移影響、誰呼叫、受影響測試）→ CLI `impact` / `callers` / `callees` / `affected`
-- **重疊的 `context` / `search` 預設 MCP**（輸出為 LLM 調校、無 ANSI 噪音、免 shell round-trip）
+- **單一符號的本體＋呼叫者／被呼叫者**→ CLI `codegraph node <symbol>`
 
 ## 動作觸發
 
 | 動作 | 工具 |
 |---|---|
 | edit / rename / remove 符號前 | `codegraph impact <symbol>`（CLI） |
-| 改 method 前，誰呼叫？ | `codegraph callers <symbol>`（CLI）或 `codegraph_node`（MCP） |
-| 接手不熟的程式碼 | `codegraph_context "<task>"`（MCP） |
-| 驗證「X 怎麼流到 Y」 | `codegraph_trace <from> <to>`（MCP） |
+| 改 method 前，誰呼叫？ | `codegraph callers <symbol>` 或 `codegraph node <symbol>`（CLI） |
+| 接手不熟的程式碼 | `codegraph_explore "<task>"`（MCP） |
+| 驗證「X 怎麼流到 Y」 | `codegraph_explore "how does X reach Y"`（MCP） |
+| 這次改動影響哪些測試？ | `codegraph affected [files...]`（CLI） |
 
 ## 可靠性 fallback
 
-某能力不是 MCP 工具時改用 CLI，絕不默默退回會漏掉動態 dispatch 呼叫點的半套 grep。PHP DI / facade callee 解析是已知弱項，只有那種情境才補 grep。
+`codegraph_*` 工具回 "not found" 代表它未列出或已移除、不是壞掉——改用對應的 CLI；不要重試，也絕不默默退回會漏掉動態 dispatch 呼叫點的半套 grep。缺索引時回報使用者，由使用者決定是否跑 `codegraph init`；agent 不自行建索引。PHP DI / facade callee 解析是已知弱項，只有那種情境才補 grep。
 
 ## 前置需求
 
-此 plugin **夾帶 codegraph MCP server**（`.mcp.json` → `codegraph serve --mcp`）：裝一次，MCP 工具處處可用，新專案只需 `codegraph init -i`（不必逐專案 `codegraph install`）。需 `codegraph` CLI 在全域 PATH；plugin 提供的工具前綴為 `mcp__plugin_codegraph_codegraph__<tool>`。allowlist snippet（兩種前綴）、gitignore 注意事項、已知坑（`CODEGRAPH_START/END` 區塊覆寫、`daemon.pid` gitignore 缺漏）見 `skills/codegraph/reference.md`。
+此 plugin **夾帶 codegraph MCP server**（`.mcp.json` → `codegraph serve --mcp`）：裝一次，MCP 工具處處可用，新專案只需 `codegraph init`（不必逐專案 `codegraph install`）。需 [`@colbymchenry/codegraph`](https://www.npmjs.com/package/@colbymchenry/codegraph) CLI 在全域 PATH（`npm i -g @colbymchenry/codegraph`——npm 上未加 scope 的 `codegraph` 是不相干的套件）；plugin 提供的工具為 `mcp__plugin_codegraph_codegraph__codegraph_explore`。allowlist snippet（兩種前綴）、用 `CODEGRAPH_MCP_TOOLS` 重新列出其餘 MCP 工具、gitignore 注意事項、已知坑（`CODEGRAPH_START/END` 區塊覆寫、`daemon.pid` gitignore 缺漏）見 `skills/codegraph/reference.md`。
 
 ---
 

@@ -5,6 +5,21 @@
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [1.10.9] - 2026-09-18
+
+### Changed
+
+- **codegraph 1.0.1 → 1.1.0** — skill 改以 codegraph CLI 1.6.0 為基準（原為 0.9.7）。上游 MCP server 現在預設只列出 `codegraph_explore`；`codegraph_trace`／`codegraph_context` 已移除，`explore`／`node` 多了 CLI 指令。skill 的入口對照表有四格錯誤，動作觸發段點名的三個 MCP 工具在預設的 1.6.0 server 上叫不到。全段以「一個 MCP 工具、其餘走 CLI」為骨架重寫。可靠性 fallback 不再於工具回 "not found" 時叫 agent 重試或跑 `codegraph init`（該工具是未列出或已移除、不是壞掉；建索引是使用者的決定）。`reference.md`：`init` 取代已 deprecated 的 `init -i`、allowlist 刪到只剩解析得到的項目、新增 `CODEGRAPH_MCP_TOOLS` 一節、新增 gotcha（`<未知子命令> --help` 回 exit 0）。細節與**未**重驗的項目見 `plugins/codegraph/CHANGELOG.md`。
+
+### Fixed
+
+- 根 README（中英文）：所有 codegraph npm 連結與前置需求改為指名帶 scope 的 `@colbymchenry/codegraph`。原有三個連結（英文兩處、中文一處）仍指向未加 scope 的 `codegraph` npm 套件——正是 codegraph 1.0.1 從 plugin 自身文件移除的那個不相干佔位套件；當時改了 plugin 內四處，沒改到根 README。
+
+### Notes
+
+- Marketplace patch 版號 1.10.8 → 1.10.9。
+- 根 README（中英文）與 plugin README 同步新的入口對照表與動作觸發。
+
 ## [1.10.8] - 2026-09-17
 
 ### Fixed

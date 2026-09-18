@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.9] - 2026-09-18
+
+### Changed
+
+- **codegraph 1.0.1 → 1.1.0** — skill re-baselined on codegraph CLI 1.6.0 (was 0.9.7). Upstream's MCP server now lists only `codegraph_explore` by default; `codegraph_trace` / `codegraph_context` are gone and `explore` / `node` gained CLI commands. The skill's entry-point table had four wrong cells and its proactive triggers named three MCP tools a default 1.6.0 server does not offer. Rewritten around "one MCP tool, everything else on the CLI". The reliability fallback no longer tells the agent to retry or run `codegraph init` when a tool is "not found" (the tool is unlisted or removed, not broken; indexing is the user's decision). `reference.md`: `init` replaces the deprecated `init -i`, allowlist trimmed to entries that resolve, new `CODEGRAPH_MCP_TOOLS` section, new gotcha (`<unknown-subcommand> --help` exits 0). Details and what was *not* re-verified: `plugins/codegraph/CHANGELOG.md`.
+
+### Fixed
+
+- Root READMEs (EN / zh-TW): every codegraph npm link and the prerequisite now name the scoped `@colbymchenry/codegraph`. Three links (two EN, one zh-TW) still pointed at the unscoped `codegraph` npm package — the unrelated placeholder that codegraph 1.0.1 removed from the plugin's own docs; that fix updated the plugin's four references and never reached the root READMEs.
+
+### Notes
+
+- Marketplace patch bump 1.10.8 → 1.10.9.
+- Root READMEs (EN / zh-TW) and the plugin README carry the new entry-point table and triggers.
+
 ## [1.10.8] - 2026-09-17
 
 ### Fixed
