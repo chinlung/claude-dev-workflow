@@ -72,20 +72,20 @@ r=$WORK/r5; make_root "$r"
 rc=0; printf 'not-json' | CLAUDE_PROJECT_DIR="$r" RAN_LOG="$r/ran.log" node "$HOOK" >/dev/null 2>&1 || rc=$?
 check "5 壞輸入 fail-open exit 0" "$rc" '^0$'
 
-# 6) repo 結構閘門(command/skill 同名碰撞、版本記帳、denyWrite 閉包)守護的檔案 → 觸發 node runner
+# 6) repo 結構閘門(command/skill 同名碰撞、版本記帳、plugin CHANGELOG 記帳、denyWrite 閉包)守護的檔案 → 觸發 node runner
 #    .claude/settings.json:denyWrite 閘門讀它;改 denyWrite 或 hook 指令正是該閘門最該跑的時刻
 i=0
 for rel in plugins/x/commands/c.md plugins/x/skills/s/SKILL.md plugins/x/.claude-plugin/plugin.json \
-           .claude-plugin/marketplace.json CHANGELOG.md CHANGELOG.zh-TW.md .claude/settings.json; do
+           plugins/x/CHANGELOG.md .claude-plugin/marketplace.json CHANGELOG.md CHANGELOG.zh-TW.md .claude/settings.json; do
   i=$((i+1)); r=$WORK/r6-$i; make_root "$r"
   run_hook "$r" "$r/$rel"
   check "6 $rel 觸發 node runner" "$(cat "$r/ran.log" 2>/dev/null)" 'runner'
 done
 
-# 7) 閘門不讀的檔案 → no-op:plugin 層 CHANGELOG、skill 目錄下其他 md,以及形似但不在
-#    plugins/<name>/ 底下的 commands/skills/manifest(專案 .claude/、docs/、plugin 內的 marketplace.json)
+# 7) 閘門不讀的檔案 → no-op:skill 目錄下其他 md,以及形似但不在 plugins/<name>/ 底下的
+#    commands/skills/manifest/CHANGELOG(專案 .claude/、docs/、plugin 內的 marketplace.json)
 i=0
-for rel in plugins/x/CHANGELOG.md plugins/x/skills/s/notes.md docs/CHANGELOG.md \
+for rel in plugins/x/skills/s/notes.md docs/CHANGELOG.md \
            .claude/commands/x.md docs/skills/foo/SKILL.md plugins/x/.claude-plugin/marketplace.json; do
   i=$((i+1)); r=$WORK/r7-$i; make_root "$r"
   run_hook "$r" "$r/$rel"

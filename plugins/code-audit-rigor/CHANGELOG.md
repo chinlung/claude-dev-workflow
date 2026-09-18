@@ -2,6 +2,14 @@
 
 All notable changes to the `code-audit-rigor` plugin will be documented in this file.
 
+## [2.0.4] - 2026-09-18
+
+### Added
+
+- **`/review-branch` and `/review-pr` machine-check that their own output artifact is git-ignored.** After writing `review-branch-results.json` / `review-pr-comments.json` the command runs `git check-ignore -q -- <artifact>; echo "check-ignore rc=$?"` and handles all three exit codes: `0` ignored → continue; `1` **not ignored** → first ask `git ls-files --error-unmatch` whether it is already *tracked* (a `.gitignore` line does nothing for a tracked file, `git rm --cached` has to come first), otherwise tell the user to add the line — neither command edits `.gitignore` itself, that being the project's own version-control setting; `128` not a git repo or git itself failed → skip, not an error. The `rc` is echoed on purpose: `-q` prints nothing and a trailing `; RC=$?` assignment exits 0 itself, so all three states would reach the agent as an identical "exit 0, no output" and default to passing — this change's own first draft shipped exactly that silent no-op and the self-review caught it. The path checked is the one just written to, because `git check-ignore` resolves a relative path against the shell's cwd, which need not be where the artifact landed.
+
+  **Why:** the command used to delegate "make sure this artifact never gets committed" to a one-off line in each project's `.gitignore` — that is, to memory. It does not hold up. This plugin's own repo shipped `/review-branch` for several releases with the artifact untracked but unignored, and the sibling `/debate`'s `debate-output.json` had the same gap the entire time; the line was added only on 2026-09-18, and the first pass here covered `/review-branch` and `/debate` while missing `/review-pr` entirely — a sweep over every command that writes a JSON artifact turned it up, the same "a batch operation drops one item and nothing errors" shape the maintainer's global rules warn about. Without the check, a reviewer has to notice an unrelated untracked file in `git status` before committing, which is exactly the "產物被誤掃進 commit" failure the maintainer's global rules exist to prevent. `git check-ignore` is an environment fact read from an exit code and the consumer is a user decision, so it belongs in the flow rather than in prose advice.
+
 ## [2.0.3] - 2026-09-18
 
 ### Fixed

@@ -5,6 +5,16 @@
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [1.10.11] - 2026-09-18
+
+### Added
+
+- **code-audit-rigor 2.0.3 → 2.0.4、multi-agent-debate 1.2.0 → 1.2.1** —— `/review-branch`、`/review-pr`、`/debate` 現在都會在繼續前機器檢查自己的輸出產物是否已被 git ignore：`git check-ignore -q -- <產物>; echo "check-ignore rc=$?"`，三種 exit code 各有處置——`0` 已 ignore → 繼續；`1` 未 ignore → 先用 `git ls-files --error-unmatch` 問「是否已被**追蹤**」，因為對已追蹤的檔案加 `.gitignore` 一行是無效的、得先 `git rm --cached`；`128` 不在 git repo 或 git 本身失敗（bare repo、路徑在 worktree 外、`GIT_DIR` 壞掉）→ 跳過、不視為錯誤。`rc` 刻意用 `echo` 印出：`-q` 不印任何東西，而結尾的 `; RC=$?` 賦值本身 exit 0，會讓三種狀態都以一模一樣的「exit 0、無輸出」抵達 agent、於是預設放行——本次變更的第一版正是這樣寫的，交付的步驟其實是個靜默 no-op，由自審抓出。三個命令都不會自行修改 `.gitignore`——那是專案自己的設定。先前三者都把這件事外包給「每個專案加一行」，也就是外包給記性，而本 repo 正是它撐不住的證據：`review-branch-results.json` 直到 1.10.10 才補上那一行，`review-pr-comments.json` 與 `debate-output.json` 則從未被 ignore 過——本次第一輪只修了三者中的兩個，漏掉的那個由覆蓋核對掃出。現在三者全部涵蓋；`prior-debate.json` 刻意排除，它是下一輪 `/debate` 的輸入、不是一次性產物。由本次 session 的 `/session-reflect:reflect` 發現，其對抗式驗證者並駁回了原本「把產物搬到別處」的提案：`.gitignore` 沒有前導斜線的條目在任意深度都 match，故既有那一行已經涵蓋搬家後的副本——搬家並不能擺脫對 `.gitignore` 設定的依賴，而唯一免設定的位置在 worktree 之外，那裡 `$TMPDIR` 在 sandbox 內外是不同目錄。細節見各 plugin 的 CHANGELOG。
+
+### Fixed
+
+- 兩份根 README 都列著可直接複製執行的 `node plugins/high-precision-dev/validators/validate-high-precision-output.cjs …`。該 validator 在 high-precision-dev 1.1.0 已作為死碼移除（原因見該 plugin 自己的 CHANGELOG：它驗的 JSON 形狀從來沒有任何 agent 產出過），但移除沒同步到根 README，照著做就撞到檔案不存在。與 1.10.9 修掉的 codegraph npm 連結是同一種形狀：plugin 層的修復留下根文件指向已不存在的東西。現在根文件與 `CONTRIBUTING.md` 提到的每一個 `plugins/**.cjs` 路徑都在磁碟上存在（整批掃過，非抽樣）。
+
 ## [1.10.10] - 2026-09-18
 
 ### Fixed
@@ -15,6 +25,7 @@
 
 - Marketplace patch 版號 1.10.9 → 1.10.10。
 - `.gitignore` 新增涵蓋 `/review-branch` 的輸出產物 `review-branch-results.json`。
+- Repo 基礎設施（不改任何 plugin 的出貨行為，故不再 bump）：第四個 repo 結構閘門，**plugin changelog 記帳** —— 每個存在的 `plugins/<p>/CHANGELOG.md` 最上面的 `## [x.y.z]` 須等於該 plugin 自己的 `plugin.json` 版號，並適用與根 CHANGELOG 相同的 semver／不重複／嚴格遞減規則；刻意不帶 changelog 的 plugin（session-learning、session-reflect）跳過、不強制。原版本閘門結構上無法涵蓋這件事——它把收到的每份 changelog 都拿 `metadata.version`（marketplace 的版號，不是 plugin 的）比對——所以 `plugins/<p>/CHANGELOG.md` 從不被任何閘門或 hook 讀取，`CONTRIBUTING.md` 把這點記為已知範圍限制。它已經付過兩次代價：dev-workflow 先後出貨 1.1.0 與 1.1.1，而 CHANGELOG 頂部還是 `[1.0.1]`（dfe8c1b／c920bd9，2026-03-07），5 天後才由 35c0a9c 人工發現，其修法是把版號**往下** revert 去對齊——而那次 revert 又把 description 一起 revert 錯，再過一個月才被 0631b24 抓到。現在兩份根 CHANGELOG 與每個 plugin 的都共用同一個 heading 規則函式，兩套規則不會再各自漂移。測試 167 → 175（7 個 canary + 1 個 live check），red-first，並對真實 repo 做突變驗證：只把 `plugins/codegraph/CHANGELOG.md` 的頂部標題改成 `[1.0.2]`，新閘門會點名該檔轉紅，而舊版本閘門維持綠——這個漂移對它是隱形的。本機 PostToolUse hook 現在也會在 `plugins/<p>/CHANGELOG.md` 觸發（斷言 22 → 23，red-first；`docs/CHANGELOG.md` 與 plugin 內部的 `marketplace.json` 仍為 no-op）。 閘門自身的保護力也經機器檢查：canary 是用手寫 map 驅動純函式的，所以當收集迴圈被突變成「什麼都收不到」時它們全部仍綠（175 passed、0 failed——一個已經悄悄停止讀取任何東西的閘門）。現在有一道**獨立於該迴圈**計算的覆蓋率地板，會逐一點名磁碟上它沒讀到的 changelog，同一個突變因此轉紅；另有一個 canary 斷言完整訊息而非只數數量，因為指錯檔案、或把權威寫成 `metadata.version` 而非 `plugin.json`，回傳的問題數同樣是 1。非字串的 `version` 改為回報而非跳過：版本閘門用 `!==` 比對 entry 與 manifest，一次正則換版若把兩邊的引號都吃掉，兩者會比對相等而放行，該 plugin 的 changelog 就沒有任何人在檢查了。
 
 ## [1.10.9] - 2026-09-18
 

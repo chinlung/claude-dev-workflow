@@ -5,6 +5,14 @@ All notable changes to the `multi-agent-debate` plugin will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-09-18
+
+### Added
+
+- **`/debate` machine-checks that `debate-output.json` is git-ignored.** The same three-state step `code-audit-rigor` 2.0.4 gained, added in the same pass: `git check-ignore -q -- <artifact>; echo "check-ignore rc=$?"` — `0` ignored → continue; `1` not ignored → ask `git ls-files --error-unmatch` whether it is already tracked (then `git rm --cached` first) before telling the user to add the line; `128` → skip. The `rc` must be echoed: `-q` prints nothing and a trailing `; RC=$?` assignment exits 0 itself, collapsing all three states into one indistinguishable "exit 0, no output". `prior-debate.json` is deliberately outside this check — it is the next run's input, not a throwaway artifact, so whether it is version-controlled is the project's call.
+
+  **Why:** this artifact is the evidence that "each project just adds one line" does not happen on its own — the plugin's own repo never ignored it, while the sibling `/review-branch` artifact got its line only on 2026-09-18. Fixing just the sibling would have left the demonstrated gap open, so both commands were changed together.
+
 ## [1.2.0] - 2026-07-01
 
 ### Added

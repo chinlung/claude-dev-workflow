@@ -13,8 +13,12 @@ node_modules/
 # Logs
 *.log
 
-# Review artifacts (code-audit-rigor /review-branch output)
+# Command output artifacts (code-audit-rigor /review-branch + /review-pr,
+# multi-agent-debate /debate). Each command machine-checks its own artifact with
+# git check-ignore, so a missing line here makes that command nag on every run.
 review-branch-results.json
+review-pr-comments.json
+debate-output.json
 
 # OS junk
 .DS_Store

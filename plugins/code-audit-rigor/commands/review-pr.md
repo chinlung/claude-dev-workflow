@@ -94,7 +94,23 @@ Phase 1 抓取並分類後，**在進入 Phase 3 修復前**，將所有評論�
 
 初次寫入時，`fix` 決策尚未實作修復，仍需填入明確的 pending evidence（例如 `"pending: Phase 3 尚未修復，完成後替換為 commit SHA 或測試結果"`）以通過非空檢查；Phase 3 完成後必須替換為實際 commit SHA、測試結果或 diff 證據。
 
-寫出 JSON 後，執行驗證（**Phase 3 修復前**必須通過）：
+寫檔後先確認它不會被 commit 進版控（這是命令的產物，不是專案內容）：
+
+```bash
+git check-ignore -q -- "<剛寫入的產物路徑>"; echo "check-ignore rc=$?"
+```
+
+**`rc` 必須 `echo` 出來才看得到**：`-q` 抑制輸出，而結尾若寫成 `; RC=$?`，賦值本身 exit 0 會把命令的 exit status 吃掉——`0`／`1`／`128` 三種狀態在工具回報上都變成一樣的「exit 0、無輸出」，最可能被當成 `rc=0` 放行（靜默 false-pass）。判定只認 `git check-ignore` 自身的 rc，不要接管線。**路徑用剛才寫檔的那一個**：`git check-ignore` 以 Bash 的 cwd 解析相對路徑，而產物可能是以絕對路徑寫出的，基準不一致會兩個方向都錯（已 ignore 卻報未 ignore，或未 ignore 卻放行）。
+
+三態處置：
+
+- `rc=0` — 已被 ignore，繼續。
+- `rc=1` — **未被 ignore**。先問「是否已經進版控」：`git ls-files --error-unmatch -- "<產物路徑>"` 成功即代表它已被追蹤，此時單加 `.gitignore` 一行**無效**（ignore 不影響已追蹤的檔案），須提醒使用者先 `git rm --cached <產物>` 再加那一行；否則只需在分類表格提醒加一行 `review-pr-comments.json`。`.gitignore` 是專案的版控設定，由使用者決定，**不要自行修改**。
+- `rc=128` — 不在 git repo，或 git 本身失敗（bare repo、路徑在 worktree 之外、`GIT_DIR` 壞掉皆為 128）。跳過此檢查，不視為錯誤。
+
+這一步存在的理由：把「確保產物不進版控」交給使用者的一次性記性會漏——本 plugin 所在的 repo 自己就漏過**三個**同類產物（`review-branch-results.json`、`review-pr-comments.json`、`debate-output.json`），直到 2026-09-18 才一次補齊。
+
+接著執行驗證（**Phase 3 修復前**必須通過）：
 
 ```bash
 node ${CLAUDE_PLUGIN_ROOT}/validators/validate-review-pr-comments.cjs review-pr-comments.json

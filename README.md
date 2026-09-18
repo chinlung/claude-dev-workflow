@@ -81,9 +81,6 @@ Individual validator examples:
 # Multi-Agent Debate
 node plugins/multi-agent-debate/validators/validate-debate-output.cjs path/to/debate-output.json
 
-# High-Precision Dev
-node plugins/high-precision-dev/validators/validate-high-precision-output.cjs path/to/output.json
-
 # OpenSpec + Superpowers (validates a change folder)
 node plugins/openspec-superpowers-workflow/skills/openspec-superpowers-workflow/validators/validate-openspec-workflow.cjs openspec/changes/<name>
 

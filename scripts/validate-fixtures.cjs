@@ -267,7 +267,7 @@ function checkSchemaConsistency(schemaPaths, validatorPath, group) {
   }
 }
 
-// ── repo-structure gates (plugin layout + version bookkeeping + registration) ─────────────────
+// ── repo-structure gates (plugin layout + version + plugin changelog bookkeeping + registration) ──
 //
 // All are pure: they take a directory / parsed data and return a list of problem
 // strings, so the self-test canaries can feed them a planted defect without touching
@@ -324,15 +324,57 @@ function versionProblems(marketplace, pluginVersions, changelogs) {
   }
   const meta = marketplace.metadata && marketplace.metadata.version;
   for (const [label, text] of Object.entries(changelogs)) {
-    const heads = [...text.matchAll(/^## \[([^\]]+)\]/gm)].map((m) => m[1]);
-    if (heads.length === 0) { problems.push(`${label}: no "## [x.y.z]" heading`); continue; }
-    if (heads[0] !== meta) problems.push(`${label}: top heading [${heads[0]}] != marketplace metadata.version ${meta}`);
-    for (let i = 0; i < heads.length; i++) {
-      if (!SEMVER.test(heads[i])) { problems.push(`${label}: heading [${heads[i]}] is not x.y.z`); continue; }
-      if (i > 0 && SEMVER.test(heads[i - 1]) && cmpSemver(heads[i - 1], heads[i]) <= 0) {
-        problems.push(`${label}: heading [${heads[i - 1]}] is followed by [${heads[i]}] (must be strictly decreasing, no duplicates)`);
-      }
+    problems.push(...changelogHeadingProblems(label, text, { value: meta, what: 'marketplace metadata.version' }));
+  }
+  return problems;
+}
+
+/**
+ * The three heading rules a changelog must satisfy: its top `## [x.y.z]` equals
+ * `expected.value`, and every heading is semver, unique and strictly decreasing.
+ * Shared by the root changelogs (expected: marketplace `metadata.version`) and by
+ * each plugin's own (expected: that plugin's `plugin.json` version) so the two
+ * cannot drift apart. `expected.what` names the authority in the message.
+ * Known residue (predates this extraction): a non-semver heading makes the decreasing check
+ * skip the NEXT comparison, because the guard requires the PREVIOUS heading to be semver —
+ * ['2.0.3','Unreleased','2.0.4'] reports the non-semver heading but not the order break.
+ */
+function changelogHeadingProblems(label, text, expected) {
+  const heads = [...text.matchAll(/^## \[([^\]]+)\]/gm)].map((m) => m[1]);
+  if (heads.length === 0) return [`${label}: no "## [x.y.z]" heading`];
+  const problems = [];
+  if (heads[0] !== expected.value) problems.push(`${label}: top heading [${heads[0]}] != ${expected.what} ${expected.value}`);
+  for (let i = 0; i < heads.length; i++) {
+    if (!SEMVER.test(heads[i])) { problems.push(`${label}: heading [${heads[i]}] is not x.y.z`); continue; }
+    if (i > 0 && SEMVER.test(heads[i - 1]) && cmpSemver(heads[i - 1], heads[i]) <= 0) {
+      problems.push(`${label}: heading [${heads[i - 1]}] is followed by [${heads[i]}] (must be strictly decreasing, no duplicates)`);
     }
+  }
+  return problems;
+}
+
+/**
+ * Plugin-level changelog bookkeeping. `pluginChangelogs` maps plugin dir name →
+ * { text, version }, `version` being that plugin's `plugin.json` version.
+ *   - a plugin that HAS plugins/<p>/CHANGELOG.md must carry its own version as the
+ *     top `## [x.y.z]` heading, with the same semver/unique/decreasing rules the
+ *     root changelogs get
+ *   - a plugin with NO CHANGELOG.md is absent from the map and unchecked:
+ *     session-learning and session-reflect deliberately ship without one
+ * The root gate cannot cover this — it compares every changelog it is handed
+ * against `metadata.version`, which is the marketplace's number, not the plugin's.
+ * Before this gate, plugins/<p>/CHANGELOG.md was read by no gate and no hook:
+ * bumping plugin.json while forgetting the changelog entry left CI green
+ * (dfe8c1b/c920bd9, 2026-03-07 — dev-workflow shipped 1.1.0/1.1.1 against a
+ * [1.0.1] top heading; caught by hand 5 days later in 35c0a9c).
+ * Scope is `CHANGELOG.md` only: no plugin ships a `CHANGELOG.zh-TW.md` (CONTRIBUTING §3 scopes
+ * bilingual docs to the repo root), so there is nothing to check today — but this collection
+ * loop and the hook's trigger regex both hard-code the filename and would have to change together.
+ */
+function pluginChangelogProblems(pluginChangelogs) {
+  const problems = [];
+  for (const [name, { text, version }] of Object.entries(pluginChangelogs)) {
+    problems.push(...changelogHeadingProblems(`plugins/${name}/CHANGELOG.md`, text, { value: version, what: 'plugin.json version' }));
   }
   return problems;
 }
@@ -571,6 +613,35 @@ function main() {
   }
 
   {
+    // (i) plugin changelog gate MUST flag each planted drift, and exactly that drift.
+    //     Counts alone are weak — a version that names the wrong file, or credits
+    //     metadata.version instead of plugin.json, still returns exactly 1 — so the last check
+    //     asserts the whole message. The "no changelog" decision lives in main()'s collection
+    //     loop, not here; the coverage floor there guards it, a canary on this pure function cannot.
+    const log = (...vs) => vs.map((v) => `## [${v}] - d\n`).join('\n');
+    const cases = [
+      ['top heading = plugin.json version → no problems', { p: { text: log('2.0.3', '2.0.2'), version: '2.0.3' } }, 0],
+      ['plugin.json bumped, changelog entry forgotten (the 2026-03-07 defect)', { p: { text: log('2.0.2', '2.0.1'), version: '2.0.3' } }, 1],
+      ['duplicate heading (two releases claiming one number)', { p: { text: log('2.0.3', '2.0.3', '2.0.2'), version: '2.0.3' } }, 1],
+      ['non-semver top heading — flagged twice (≠ version AND not x.y.z)', { p: { text: '## [Unreleased] - d\n', version: '2.0.3' } }, 2],
+      ['a changelog with no heading at all', { p: { text: '# Changelog\n', version: '2.0.3' } }, 1],
+      ['an empty map does not throw', {}, 0],
+      ['one plugin drifting does not mask another that is clean', { a: { text: log('1.0.0'), version: '1.0.0' }, b: { text: log('1.0.0'), version: '2.0.0' } }, 1],
+    ];
+    for (const [what, input, want] of cases) {
+      const label = `canary: plugin changelog gate — ${what}`;
+      const got = pluginChangelogProblems(input).length;
+      if (got === want) { console.log(`  ✓  ${label}`); passed++; }
+      else { console.error(`  ✗  ${label}: expected ${want} problem(s), got ${got}`); failed++; failures.push(label); }
+    }
+    const msgLabel = 'canary: plugin changelog gate — the message names the file and the authority';
+    const msgGot = pluginChangelogProblems({ a: { text: '## [1.0.0] - d\n', version: '2.0.0' } });
+    const msgWant = 'plugins/a/CHANGELOG.md: top heading [1.0.0] != plugin.json version 2.0.0';
+    if (msgGot.length === 1 && msgGot[0] === msgWant) { console.log(`  ✓  ${msgLabel}`); passed++; }
+    else { console.error(`  ✗  ${msgLabel}: got ${JSON.stringify(msgGot)}`); failed++; failures.push(msgLabel); }
+  }
+
+  {
     // (f) denyWrite gate MUST flag an executed file no literal covers, and MUST reject every glob —
     //     a star entry is dropped on Linux and, on macOS, does not deny renaming a subtree in (probed 2026-09-17).
     const pats = ['scripts', 'plugins', 'plugins/x/skills/x/validate.cjs'];
@@ -659,7 +730,7 @@ function main() {
   }
 
   // ── Repo structure ───────────────────────────────────────────────────────────
-  console.log('\n## Repo structure — command/skill name collisions + version bookkeeping + marketplace registration');
+  console.log('\n## Repo structure — command/skill name collisions + version bookkeeping + plugin changelog bookkeeping + marketplace registration');
   {
     const pluginDirs = fs.readdirSync(P('plugins'), { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
     const collisions = [];
@@ -715,6 +786,49 @@ function main() {
     // Never feed partial data to versionProblems: a missing marketplace would make it report
     // nothing (a misleading green) and a missing manifest would cascade into a second, wrong message.
     expectNoProblems(versionLabel, loadErrors.length > 0 ? loadErrors : versionProblems(marketplace, pluginVersions, changelogs));
+
+    // Each plugin's OWN changelog, anchored to its OWN plugin.json version — the gate above
+    // compares against metadata.version, so it structurally cannot cover this. Walks DIRECTORIES
+    // (like registration, not like the version gate) because a dir name need not equal an entry
+    // name. A missing or unparseable manifest is deferred, NOT dropped: for a REGISTERED plugin the
+    // version gate names the file, and for an unregistered dir the registration gate says "orphan"
+    // (it reports "not registered", not "broken JSON" — see registrationProblems' docstring).
+    const pluginChangelogLabel = 'each plugin CHANGELOG top heading = its own plugin.json version; headings strictly decreasing';
+    // Counted BEFORE and INDEPENDENTLY of the loop below: a floor computed inside the loop would be
+    // skipped by the same mutation it is meant to catch. The canaries exercise the pure function on
+    // hand-written maps, so they stay green even if this loop stops collecting — mutating the guard
+    // to `if (true) continue` left all 175 checks passing (verified 2026-09-18). Every changelog on
+    // disk must end up either checked or explicitly deferred, or the gate says so instead of ✓.
+    const changelogsOnDisk = pluginDirs.filter((name) => fs.existsSync(P('plugins', name, 'CHANGELOG.md')));
+    const pluginChangelogs = {};
+    const clLoadErrors = [];
+    const clDeferred = [];
+    for (const name of pluginDirs) {
+      const clPath = P('plugins', name, 'CHANGELOG.md');
+      if (!fs.existsSync(clPath)) continue; // no changelog — deliberately optional (session-learning, session-reflect)
+      const manifestPath = P('plugins', name, '.claude-plugin', 'plugin.json');
+      let m;
+      try { m = JSON.parse(fs.readFileSync(manifestPath, 'utf8')); }
+      catch { clDeferred.push(name); continue; } // missing or unparseable — owned by the two gates above
+      // A non-string version is NOT deferrable: the version gate compares entry vs manifest with
+      // `!==`, so a single regex bump that drops the quotes on BOTH sides (CONTRIBUTING §4 has you
+      // edit both in one pass) compares equal and passes, leaving this changelog unchecked by anyone.
+      if (!isObj(m) || typeof m.version !== 'string') {
+        clLoadErrors.push(`plugins/${name}/.claude-plugin/plugin.json: "version" is not a string — the version gate compares with !== and stays green when the marketplace entry holds the same non-string value`);
+        clDeferred.push(name);
+        continue;
+      }
+      try { pluginChangelogs[name] = { text: fs.readFileSync(clPath, 'utf8'), version: m.version }; }
+      catch (e) { clLoadErrors.push(`cannot read plugins/${name}/CHANGELOG.md — ${e.message}`); clDeferred.push(name); }
+    }
+    const clAccounted = new Set([...Object.keys(pluginChangelogs), ...clDeferred]);
+    const clUnread = changelogsOnDisk.filter((n) => !clAccounted.has(n));
+    if (clUnread.length) {
+      clLoadErrors.push(`never read ${clUnread.length} of ${changelogsOnDisk.length} plugin changelog(s) on disk (${clUnread.join(', ')}) — the collection loop is not reading what this gate claims to`);
+    }
+    // Concatenated, not short-circuited: one plugin's unreadable changelog does not make another
+    // plugin's data partial, so hiding every real drift behind one ENOENT would just cost a round trip.
+    expectNoProblems(pluginChangelogLabel, [...clLoadErrors, ...pluginChangelogProblems(pluginChangelogs)]);
 
     // Registration walks the DIRECTORIES (the version gate above walks entries, so a plugin
     // nobody registered never reaches it). Without a usable marketplace every dir would look

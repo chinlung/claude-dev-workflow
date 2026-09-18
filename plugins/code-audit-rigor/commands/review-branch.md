@@ -12,7 +12,7 @@ argument-hint: "[base-branch] [--focus <pathspec>]"
 3. 在 **repo 根目錄**（先 `cd "$(git rev-parse --show-toplevel)"`——`ls-files` 只列 cwd 子樹且路徑相對 cwd，在子目錄跑會與 diff 的根相對路徑拼不起來、untracked 檔沉默消失）以三個機械來源的**聯集**取得變更檔案清單——**此清單是覆蓋核對表的唯一基準**（Phase 3 必須逐檔核銷），不可事後憑記憶重建：
    - 已 commit 的分支變更：`git diff <merge-base>...HEAD --name-only`
    - 工作樹修改（已 stage 與未 stage 皆含）：`git diff --name-only HEAD`
-   - 未追蹤的新檔：`git ls-files --others --exclude-standard --full-name`，排除本命令自身的產物 `review-branch-results.json`（修完再跑一輪自審時它會是 untracked；建議專案 `.gitignore` 加上它）
+   - 未追蹤的新檔：`git ls-files --others --exclude-standard --full-name`，排除本命令自身的產物 `review-branch-results.json`（修完再跑一輪自審時它會是 untracked；Phase 3 寫檔後的 `git check-ignore` 步驟會確認它已被 ignore）
 
    三者去重後每個路徑只留**一筆**，`source` 依**磁碟現況**判定（寫入 Phase 3 的 `scopedFiles[].source`，必填）：
    - 檔案在磁碟上且未被追蹤（含 `git rm --cached` 後仍留在磁碟者——這種路徑會同時出現在第二、三個清單）→ `untracked`
@@ -109,7 +109,23 @@ Phase 2 完成後，將審查結果寫入 `review-branch-results.json`，須符�
 - `suggestions`：所有第一輪建議（含誤報），每項包含 `file`、`line`（整數 ≥ 1）、`quotedCode`（Phase 2 錨定驗證用的逐字引用）、`description`、`severity`（`CRITICAL|HIGH|MEDIUM|LOW|INFO`）
 - `verifications`：Phase 2 每個子代理的驗證結果；`verdict` 為 `PASS|FAIL|SKIP`；可附 `notes`
 
-寫出 JSON 後，執行驗證指令（必須通過才能進入最終 Markdown 表格）：
+寫檔後先確認它不會被 commit 進版控（這是命令的產物，不是專案內容）：
+
+```bash
+git check-ignore -q -- "<剛寫入的產物路徑>"; echo "check-ignore rc=$?"
+```
+
+**`rc` 必須 `echo` 出來才看得到**：`-q` 抑制輸出，而結尾若寫成 `; RC=$?`，賦值本身 exit 0 會把命令的 exit status 吃掉——`0`／`1`／`128` 三種狀態在工具回報上都變成一樣的「exit 0、無輸出」，最可能被當成 `rc=0` 放行（靜默 false-pass）。判定只認 `git check-ignore` 自身的 rc，不要接管線。**路徑用剛才寫檔的那一個**：`git check-ignore` 以 Bash 的 cwd 解析相對路徑，而產物可能是以絕對路徑寫出的，基準不一致會兩個方向都錯（已 ignore 卻報未 ignore，或未 ignore 卻放行）。
+
+三態處置：
+
+- `rc=0` — 已被 ignore，繼續。
+- `rc=1` — **未被 ignore**。先問「是否已經進版控」：`git ls-files --error-unmatch -- "<產物路徑>"` 成功即代表它已被追蹤，此時單加 `.gitignore` 一行**無效**（ignore 不影響已追蹤的檔案），須提醒使用者先 `git rm --cached <產物>` 再加那一行；否則只需在最終報告提醒加一行 `review-branch-results.json`。`.gitignore` 是專案的版控設定，由使用者決定，**不要自行修改**。
+- `rc=128` — 不在 git repo，或 git 本身失敗（bare repo、路徑在 worktree 之外、`GIT_DIR` 壞掉皆為 128）。跳過此檢查，不視為錯誤。
+
+這一步存在的理由：把「確保產物不進版控」交給使用者的一次性記性會漏——本 plugin 所在的 repo 自己就漏過**三個**同類產物（`review-branch-results.json`、`review-pr-comments.json`、`debate-output.json`），直到 2026-09-18 才一次補齊。
+
+接著執行驗證指令（必須通過才能進入最終 Markdown 表格）：
 
 ```bash
 node ${CLAUDE_PLUGIN_ROOT}/validators/validate-review-branch-results.cjs review-branch-results.json
