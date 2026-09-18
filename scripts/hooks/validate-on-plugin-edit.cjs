@@ -40,7 +40,7 @@ process.stdin.on('end', () => {
 
   const root = process.env.CLAUDE_PROJECT_DIR || process.cwd();
   // The runner's repo-structure gates (command/skill name collision, version bookkeeping,
-  // plugin changelog bookkeeping)
+  // plugin changelog bookkeeping, plugin dir completeness)
   // read exactly these — without them here a shadowing command or a version drift only
   // surfaces in CI. Matched ROOT-RELATIVE and fully anchored, not by substring: the gates
   // read fixed paths, so anything else is a pure mis-trigger costing a full ~5s suite run —
