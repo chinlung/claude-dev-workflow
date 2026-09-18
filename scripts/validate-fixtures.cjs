@@ -386,9 +386,16 @@ function pluginChangelogProblems(pluginChangelogs) {
 /**
  * Plugin directory completeness. `dirs` maps a plugins/<p> dir name to which of its parts exist,
  * as booleans: `{ manifest, changelog, readme, commands, skills, agents, hooks, manifestDir }`.
- *   - a dir WITH a manifest must also have CHANGELOG.md. The changelog gate is opt-in by file
- *     existence, so a deleted changelog would disarm it silently — and `rm` runs through Bash,
- *     which the PostToolUse hook (Edit|Write|MultiEdit) never sees.
+ *   - `symlinked` lists plugins/ entries that are symlinks. They are NOT in `dirs` at all, which
+ *     is the point: `Dirent.isDirectory()` is lstat semantics and false for a symlink, so every
+ *     gate walking pluginDirs skips such a plugin silently. Linking a plugin dir in is refused
+ *     rather than supported — the hook follows symlinks when it runs plugins/<p>/tests/*.test.sh,
+ *     so accepting them would widen an execution surface for no use case this repo has.
+ *   - a dir WITH a manifest must also have CHANGELOG.md and README.md. The changelog gate is
+ *     opt-in by file existence, so a deleted changelog would disarm it silently — and `rm` runs
+ *     through Bash, which the PostToolUse hook (Edit|Write|MultiEdit) never sees. README.md is
+ *     required by the same argument that required the changelog: CONTRIBUTING §1's template lists
+ *     both, and marks only `.mcp.json` / `reference.md` optional.
  *   - a dir WITHOUT a manifest but carrying any plugin component is a half-built plugin. Nothing
  *     else can see it: the version gate walks marketplace ENTRIES, and the registration gate only
  *     collects dirs that already have a manifest. `hooks/` matters most here — three shipped
@@ -396,15 +403,22 @@ function pluginChangelogProblems(pluginChangelogs) {
  *     enumerates as EXECUTED, so a manifest-less hooks dir would be run while counting as "not a
  *     plugin". Listing only changelog/commands/skills left the other five components invisible.
  * An empty or incidental directory (no manifest and no component) is not a plugin and is left alone.
- * Finding a component here is NOT a claim that every plugin must have it — that question (README.md
- * in particular) is separate, and this gate only fires when the manifest is absent.
+ * Finding a component in the half-built branch is NOT a claim that every plugin must have that
+ * component; which files are required is answered by the manifest branch above (CHANGELOG.md and
+ * README.md), and this branch only fires when the manifest is absent.
  */
-function pluginDirProblems(dirs) {
+function pluginDirProblems(dirs, symlinked = []) {
   const problems = [];
+  for (const name of symlinked) {
+    problems.push(`plugins/${name} is a symlink — a plugin dir must be a real directory: Dirent.isDirectory() is lstat semantics and returns false for a symlink, so every gate that walks pluginDirs skips it entirely (only the denyWrite gate notices, under a different name). Move the plugin into the repo rather than linking it in`);
+  }
   for (const [name, has] of Object.entries(dirs)) {
     if (has.manifest) {
       if (!has.changelog) {
         problems.push(`plugins/${name}/: has a plugin.json but no CHANGELOG.md — every plugin keeps its own (CONTRIBUTING §4), and without the file the changelog gate has nothing to check`);
+      }
+      if (!has.readme) {
+        problems.push(`plugins/${name}/: has a plugin.json but no README.md — CONTRIBUTING §1's template lists it next to CHANGELOG.md (only .mcp.json and reference.md are marked optional), and it is what a user reads after installing`);
       }
       continue;
     }
@@ -433,6 +447,58 @@ function pluginDirProblems(dirs) {
 function shapedCountProblems(shaped, expected, what) {
   if (shaped === expected) return [];
   return [`shaped ${shaped} of ${expected} ${what} — the collection loop is not reading what this gate claims to`];
+}
+
+/**
+ * The plugins/ inventory the dir-completeness gate judges, plus the wiring, in one testable place.
+ * Extracted because canaries that hand `pluginDirProblems` a written-out map cover the JUDGEMENT
+ * and not the COLLECTION: four mutations of the inline version — `symlinked` stubbed to `[]`,
+ * `isSymbolicLink()` swapped for `isFIFO()`, `readme` hardcoded `true`, and the second argument
+ * dropped at the call site — every one left the suite green, because a clean repo gives the
+ * judgement nothing to report either way. `pluginDirGateProblems` is what the gate calls, so the
+ * wiring is inside the canary's reach too.
+ *   - file parts use `statSync().isFile()`: `existsSync` is true for a DIRECTORY named README.md,
+ *     and README.md is the one required file with no downstream reader to catch that (a directory
+ *     named CHANGELOG.md trips the changelog gate's readFileSync with EISDIR, one named plugin.json
+ *     trips the version gate's load()).
+ *   - names come from readdir rather than an existsSync probe: on case-insensitive APFS
+ *     `existsSync('README.md')` is true for a file named `readme.md`, which would pass here and
+ *     fail on the case-sensitive filesystem CI runs on — green locally, red in CI.
+ */
+function pluginDirInventory(pluginsPath) {
+  const isFile = (f) => { try { return fs.statSync(f).isFile(); } catch { return false; } };
+  const isDir = (f) => { try { return fs.statSync(f).isDirectory(); } catch { return false; } };
+  const entries = fs.readdirSync(pluginsPath, { withFileTypes: true });
+  const dirs = entries.filter((e) => e.isDirectory()).map((e) => e.name);
+  // Symlinks are absent from `dirs` by isDirectory()'s lstat semantics — which is why they are
+  // listed separately: every gate that walks the dir list would skip them silently.
+  const symlinked = entries.filter((e) => e.isSymbolicLink()).map((e) => e.name);
+  const shapes = Object.create(null);
+  for (const name of dirs) {
+    const dir = path.join(pluginsPath, name);
+    const at = (...rel) => path.join(dir, ...rel);
+    const names = new Set(fs.readdirSync(dir));
+    const cpNames = isDir(at('.claude-plugin')) ? new Set(fs.readdirSync(at('.claude-plugin'))) : new Set();
+    shapes[name] = {
+      manifest: cpNames.has('plugin.json') && isFile(at('.claude-plugin', 'plugin.json')),
+      manifestDir: isDir(at('.claude-plugin')),
+      changelog: names.has('CHANGELOG.md') && isFile(at('CHANGELOG.md')),
+      readme: names.has('README.md') && isFile(at('README.md')),
+      commands: isDir(at('commands')),
+      skills: isDir(at('skills')),
+      agents: isDir(at('agents')),
+      hooks: isDir(at('hooks')),
+    };
+  }
+  return { entryCount: entries.length, dirs, symlinked, shapes };
+}
+
+function pluginDirGateProblems(pluginsPath) {
+  const inv = pluginDirInventory(pluginsPath);
+  return [
+    ...shapedCountProblems(Object.keys(inv.shapes).length, inv.dirs.length, 'plugin dir(s)'),
+    ...pluginDirProblems(inv.shapes, inv.symlinked),
+  ];
 }
 
 /**
@@ -561,7 +627,7 @@ function enumerateHookExecuted(root) {
   const problems = [];
   const isLink = (p) => { try { return fs.lstatSync(p).isSymbolicLink(); } catch { return false; } };
   const isDir = (p) => { try { return fs.statSync(p).isDirectory(); } catch { return false; } };
-  const link = (rel, follows) => problems.push(`${rel} is a symlink — ${follows ? 'the hook follows it, and ' : ''}what it points at is not covered by denyWrite`);
+  const link = (rel, follows) => problems.push(`${rel} is a symlink — ${follows ? 'the hook follows it, and ' : ''}what it points at is not pinned by a denyWrite literal`);
   const pluginsDir = path.join(root, 'plugins');
   for (const name of isDir(pluginsDir) ? fs.readdirSync(pluginsDir) : []) {
     const pluginDir = path.join(pluginsDir, name);
@@ -699,11 +765,15 @@ function main() {
 
 
   {
-    // (j) plugin dir completeness MUST flag a manifest without a changelog, and a half-built dir.
+    // (j) plugin dir completeness MUST flag a manifest without a changelog or README, a half-built
+    //     dir, and a symlinked plugin dir (which no other gate can see at all).
     const d = (o) => ({ manifest: false, manifestDir: false, changelog: false, readme: false, commands: false, skills: false, agents: false, hooks: false, ...o });
     const cases = [
-      ['a complete plugin dir → no problems', { p: d({ manifest: true, manifestDir: true, changelog: true, commands: true }) }, 0],
-      ['manifest but no CHANGELOG (deleting one would disarm the changelog gate)', { p: d({ manifest: true, commands: true }) }, 1],
+      ['a complete plugin dir → no problems', { p: d({ manifest: true, manifestDir: true, changelog: true, readme: true, commands: true }) }, 0],
+      ['manifest but no CHANGELOG (deleting one would disarm the changelog gate)', { p: d({ manifest: true, readme: true, commands: true }) }, 1],
+      ['manifest but no README', { p: d({ manifest: true, changelog: true, commands: true }) }, 1],
+      ['manifest missing both CHANGELOG and README → both reported', { p: d({ manifest: true, commands: true }) }, 2],
+      ['two dirs each missing README (a break in that branch would hide one)', { a: d({ manifest: true, changelog: true }), b: d({ manifest: true, changelog: true, commands: true }) }, 2],
       ['half-built: CHANGELOG but no manifest', { p: d({ changelog: true }) }, 1],
       ['half-built: commands/ but no manifest', { p: d({ commands: true }) }, 1],
       ['half-built: skills/ but no manifest', { p: d({ skills: true }) }, 1],
@@ -717,11 +787,11 @@ function main() {
       // and the mutant survives. With two per branch, any push-then-break / early-return /
       // report-only-the-first mutation drops a count and gets caught.
       ['one broken dir does not mask another', {
-        a: d({ manifest: true }),
-        b: d({ manifest: true, commands: true }),
+        a: d({ manifest: true, readme: true }),
+        b: d({ manifest: true, readme: true, commands: true }),
         c: d({ changelog: true }),
         e: d({ commands: true }),
-        f: d({ manifest: true, changelog: true }),
+        f: d({ manifest: true, changelog: true, readme: true }),
       }, 4],
     ];
     for (const [what, input, want] of cases) {
@@ -732,9 +802,25 @@ function main() {
     }
     // Both branches get a whole-message assertion. Counting alone let the half-built message be
     // replaced by the OPPOSITE failure mode ("has a plugin.json but no CHANGELOG.md") and stay green.
+    // The symlink branch gets the same treatment: two entries so a break shows, plus a message
+    // assertion. These dirs are absent from `dirs` entirely, so only the second argument exercises them.
+    const symCases = [
+      ['no symlinked dirs → silent', [{}, []], 0],
+      ['one symlinked plugin dir', [{}, ['ghost']], 1],
+      ['two symlinked dirs (a break in that loop would hide one)', [{}, ['ghost', 'phantom']], 2],
+      ['a symlink alongside a broken real dir — both reported', [{ a: d({ manifest: true, changelog: true }) }, ['ghost']], 2],
+    ];
+    for (const [what, args, want] of symCases) {
+      const label = `canary: plugin dir gate — ${what}`;
+      const got = pluginDirProblems(...args).length;
+      if (got === want) { console.log(`  ✓  ${label}`); passed++; }
+      else { console.error(`  ✗  ${label}: expected ${want} problem(s), got ${got}`); failed++; failures.push(label); }
+    }
     const msgCases = [
-      ['the missing-changelog message names the dir and what is missing', { a: d({ manifest: true }) },
+      ['the missing-changelog message names the dir and what is missing', { a: d({ manifest: true, readme: true }) },
         'plugins/a/: has a plugin.json but no CHANGELOG.md — every plugin keeps its own (CONTRIBUTING §4), and without the file the changelog gate has nothing to check'],
+      ['the missing-README message names the dir and what is missing', { a: d({ manifest: true, changelog: true }) },
+        "plugins/a/: has a plugin.json but no README.md — CONTRIBUTING §1's template lists it next to CHANGELOG.md (only .mcp.json and reference.md are marked optional), and it is what a user reads after installing"],
       ['the half-built message names the dir and every part it found', { a: d({ changelog: true, commands: true, skills: true }) },
         'plugins/a/: has CHANGELOG.md + commands/ + skills/ but no .claude-plugin/plugin.json — an unfinished plugin dir that no other gate can see'],
     ];
@@ -744,6 +830,10 @@ function main() {
       if (got.length === 1 && got[0] === want) { console.log(`  ✓  ${label}`); passed++; }
       else { console.error(`  ✗  ${label}: got ${JSON.stringify(got)}`); failed++; failures.push(label); }
     }
+    const symMsgLabel = 'canary: plugin dir gate — the symlink message names the dir and why it is invisible';
+    const symMsgGot = pluginDirProblems({}, ['ghost']);
+    if (symMsgGot.length === 1 && symMsgGot[0].startsWith('plugins/ghost is a symlink — a plugin dir must be a real directory')) { console.log(`  ✓  ${symMsgLabel}`); passed++; }
+    else { console.error(`  ✗  ${symMsgLabel}: got ${JSON.stringify(symMsgGot)}`); failed++; failures.push(symMsgLabel); }
     // The floor guards the collection loops; these guard the floor. Deleting it, or making its
     // condition always-false, was otherwise invisible because the real repo has nothing to report.
     const floorCases = [
@@ -761,6 +851,59 @@ function main() {
     const floorMsgGot = shapedCountProblems(3, 9, 'plugin dir(s)');
     if (floorMsgGot.length === 1 && floorMsgGot[0].startsWith('shaped 3 of 9 plugin dir(s) —')) { console.log(`  ✓  ${floorMsgLabel}`); passed++; }
     else { console.error(`  ✗  ${floorMsgLabel}: got ${JSON.stringify(floorMsgGot)}`); failed++; failures.push(floorMsgLabel); }
+  }
+
+  {
+    // (k) the inventory AND the wiring must see what is on disk. The (j) canaries hand
+    //     pluginDirProblems a written-out map, so they cannot catch a collection that stops
+    //     collecting — and a clean repo reports nothing either way, which is why four mutations of
+    //     the previous inline version all stayed green (pluginDirInventory's docblock lists them).
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'vf-plugindirs-'));
+    try {
+      const mk = (rel, body) => { const f = path.join(tmp, rel); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, body === undefined ? 'x' : body); };
+      mk('complete/.claude-plugin/plugin.json', '{"name":"complete","version":"1.0.0"}');
+      mk('complete/CHANGELOG.md'); mk('complete/README.md');
+      mk('noreadme/.claude-plugin/plugin.json', '{"name":"noreadme","version":"1.0.0"}');
+      mk('noreadme/CHANGELOG.md');
+      mk('readmedir/.claude-plugin/plugin.json', '{"name":"readmedir","version":"1.0.0"}');
+      mk('readmedir/CHANGELOG.md');
+      fs.mkdirSync(path.join(tmp, 'readmedir', 'README.md')); // a DIRECTORY wearing a file's name
+      mk('halfbuilt/commands/c.md');
+      mk('loose.txt'); // neither a dir nor a symlink — not a plugin, must be ignored
+      fs.symlinkSync(path.join(tmp, 'complete'), path.join(tmp, 'linked'));
+      fs.symlinkSync(path.join(tmp, 'does-not-exist'), path.join(tmp, 'dangling'));
+
+      const inv = pluginDirInventory(tmp);
+      const invChecks = [
+        ['inventory: dirs exclude symlinks and loose files', [...inv.dirs].sort().join(','), 'complete,halfbuilt,noreadme,readmedir'],
+        ['inventory: both symlinks listed, dangling included', [...inv.symlinked].sort().join(','), 'dangling,linked'],
+        ['inventory: entryCount accounts for every plugins/ entry', String(inv.entryCount), '7'],
+        ['inventory: a DIRECTORY named README.md is not a README', String(inv.shapes.readmedir.readme), 'false'],
+        ['inventory: a real README.md is one', String(inv.shapes.complete.readme), 'true'],
+        ['inventory: a manifest under .claude-plugin/ is found', String(inv.shapes.complete.manifest), 'true'],
+        ['inventory: a dir with no manifest reports none', String(inv.shapes.halfbuilt.manifest), 'false'],
+      ];
+      for (const [what, got, want] of invChecks) {
+        const label = `canary: ${what}`;
+        if (got === want) { console.log(`  ✓  ${label}`); passed++; }
+        else { console.error(`  ✗  ${label}: expected ${want}, got ${got}`); failed++; failures.push(label); }
+      }
+      // End to end through the wiring: five problems, one per planted defect, and no others.
+      const probs = pluginDirGateProblems(tmp);
+      const wired = [
+        ['wiring: exactly one problem per planted defect', String(probs.length), '5'],
+        ['wiring: the missing README is reported', String(probs.some((s) => s.startsWith('plugins/noreadme/: has a plugin.json but no README.md'))), 'true'],
+        ['wiring: a README.md that is a directory counts as missing', String(probs.some((s) => s.startsWith('plugins/readmedir/: has a plugin.json but no README.md'))), 'true'],
+        ['wiring: the half-built dir is reported', String(probs.some((s) => s.startsWith('plugins/halfbuilt/: has commands/'))), 'true'],
+        ['wiring: both symlinked dirs are reported', String(probs.filter((s) => s.includes('is a symlink')).length), '2'],
+        ['wiring: the complete dir is not reported', String(probs.some((s) => s.includes('plugins/complete'))), 'false'],
+      ];
+      for (const [what, got, want] of wired) {
+        const label = `canary: ${what}`;
+        if (got === want) { console.log(`  ✓  ${label}`); passed++; }
+        else { console.error(`  ✗  ${label}: expected ${want}, got ${got} — ${JSON.stringify(probs)}`); failed++; failures.push(label); }
+      }
+    } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
   }
 
   {
@@ -854,7 +997,11 @@ function main() {
   // ── Repo structure ───────────────────────────────────────────────────────────
   console.log('\n## Repo structure — command/skill name collisions + version + plugin changelog bookkeeping + dir completeness + marketplace registration');
   {
-    const pluginDirs = fs.readdirSync(P('plugins'), { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
+    const pluginEntries = fs.readdirSync(P('plugins'), { withFileTypes: true });
+    const pluginDirs = pluginEntries.filter((e) => e.isDirectory()).map((e) => e.name);
+    // Symlinks are absent from pluginDirs by isDirectory()'s lstat semantics — which is exactly why
+    // they must be listed separately: every gate below walks pluginDirs and would skip them.
+    const symlinkedPluginDirs = pluginEntries.filter((e) => e.isSymbolicLink()).map((e) => e.name);
     const collisions = [];
     for (const name of pluginDirs) findCommandSkillCollisions(P('plugins', name)).forEach((c) => collisions.push(`${name}: ${c}`));
     expectNoProblems(`no command shadows a same-named skill (${pluginDirs.length} plugins)`, collisions);
@@ -910,33 +1057,12 @@ function main() {
     expectNoProblems(versionLabel, loadErrors.length > 0 ? loadErrors : versionProblems(marketplace, pluginVersions, changelogs));
 
 
-    // Directory completeness: the two rules no other gate can express. Runs BEFORE the changelog
+    // Directory completeness: the three rules no other gate can express. Runs BEFORE the changelog
     // gate so "you deleted the changelog" is reported as such rather than as silence.
-    const pluginDirLabel = 'every plugin dir has a manifest and its own CHANGELOG; no half-built dirs';
-    // Object.create(null), not {}: a plugins/__proto__ dir would otherwise hit the prototype setter
-    // instead of creating a key, and Object.entries would not see it (fail-closed via the floor
-    // below, but it misdiagnosed a directory-naming problem as a broken collection loop).
-    const dirShapes = Object.create(null);
-    // stat semantics for the directory-shaped parts: existsSync is true for a FILE named commands,
-    // which would both misreport here and crash the collision gate's readdirSync with ENOTDIR.
-    const isDir = (f) => { try { return fs.statSync(f).isDirectory(); } catch { return false; } };
-    for (const name of pluginDirs) {
-      const at = (...rel) => P('plugins', name, ...rel);
-      dirShapes[name] = {
-        manifest: fs.existsSync(at('.claude-plugin', 'plugin.json')),
-        manifestDir: isDir(at('.claude-plugin')),
-        changelog: fs.existsSync(at('CHANGELOG.md')),
-        readme: fs.existsSync(at('README.md')),
-        commands: isDir(at('commands')),
-        skills: isDir(at('skills')),
-        agents: isDir(at('agents')),
-        hooks: isDir(at('hooks')),
-      };
-    }
-    expectNoProblems(pluginDirLabel, [
-      ...shapedCountProblems(Object.keys(dirShapes).length, pluginDirs.length, 'plugin dir(s)'),
-      ...pluginDirProblems(dirShapes),
-    ]);
+    // One call: collection, floor and judgement all live in pluginDirGateProblems, so canary (k)
+    // covers the wiring too. Nothing here is left to mutate silently.
+    const pluginDirLabel = 'every plugin dir is a real dir with a manifest, its own CHANGELOG and README; no half-built dirs';
+    expectNoProblems(pluginDirLabel, pluginDirGateProblems(P('plugins')));
 
     // Each plugin's OWN changelog, anchored to its OWN plugin.json version — the gate above
     // compares against metadata.version, so it structurally cannot cover this. Walks DIRECTORIES

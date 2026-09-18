@@ -89,6 +89,16 @@ make_transcript "$t/tr.jsonl" 12 '{"type":"user","message":{"content":[{"type":"
 out=$(run_hook "$(input_json c5 "$t/tr.jsonl")" "$t")
 check "mention-only → still block" "$out" '"block"'
 
+# 5b) transcript 含本 plugin 自己的 README 全文 → 照常 block
+#     README 在說明 already-ran 偵測時會提到 command 的執行形狀;raw grep 曾因此把
+#     「Read 過這個檔」當成「執行過」而永久抑制提醒 —— 1.0.1 修的就是同一類。
+#     讀實際檔案而非寫死字串:未來 README 若又寫進會命中 pattern 的形狀,這條會自己紅。
+t=$WORK/c5b; mkdir -p "$t"
+readme_json=$(jq -Rs . "$SCRIPT_DIR/../README.md")
+make_transcript "$t/tr.jsonl" 12 "{\"type\":\"user\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":$readme_json}]}}"
+out=$(run_hook "$(input_json c5b "$t/tr.jsonl")" "$t")
+check "own README in transcript → still block" "$out" '"block"'
+
 # 6) 實質 session → block 且標記 flag
 t=$WORK/c6; mkdir -p "$t"
 make_transcript "$t/tr.jsonl" 12 ""

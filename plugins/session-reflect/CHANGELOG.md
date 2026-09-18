@@ -6,6 +6,12 @@ All notable changes to the `session-reflect` plugin will be documented in this f
 > releases below without a changelog of its own. The entries describe what each version actually
 > changed, but they were written after the fact, not at release time.
 
+## [1.0.2] - 2026-09-18
+
+### Added
+
+- `CHANGELOG.md` reaches installed copies. The file was backfilled in marketplace 1.10.11 without a version bump, and the plugin cache is keyed by version (`~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/`) — an unchanged version is never re-fetched, so the backfill stayed in the repo and never shipped. Measured on this machine: the cached `1.0.0/` tree lacks the README added in `c7c8169` (also without a bump) while `1.0.1/` has it, because a later bump carried it in. No behaviour changes in this release; it exists to deliver the changelog.
+
 ## [1.0.1] - 2026-09-17
 
 ### Fixed

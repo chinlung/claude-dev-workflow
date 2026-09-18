@@ -11,12 +11,18 @@
 ```
 plugins/<name>/
   .claude-plugin/plugin.json     # 必須
-  skills/<name>/SKILL.md         # skill-based plugin
+  README.md                      # 必須：plugin 自己的說明（目錄完整性閘門會擋）
+  CHANGELOG.md                   # 必須：plugin 自己的變更日誌（同上）
+  commands/<name>.md             # command 型 plugin（與 skills/ 至少要有一種）
+  skills/<name>/SKILL.md         # skill 型 plugin（同上）
   skills/<name>/reference.md     # 選用：progressive disclosure（重內容下放）
-  README.md                      # plugin 自己的說明
-  CHANGELOG.md                   # plugin 自己的變更日誌
+  hooks/hooks.json               # 選用：事件掛鉤；hooks/ 下的腳本會被 hook 執行（見 6.5 節）
+  agents/<name>.md               # 選用：子代理
+  tests/*.test.sh                # 選用但強烈建議：CI 與本機 hook 都會跑（見 6.5 節）
   .mcp.json                      # 選用：夾帶 MCP server（見第 5 節）
 ```
+
+目錄本身**必須是真目錄**——`plugins/` 下的 symlink 由目錄完整性閘門擋（理由見第 4 節）。標「必須」的三項缺任一即紅；閘門的錯誤訊息會把人指回這份範本，所以這裡的標記就是那條規則的權威來源。
 
 `plugin.json` 欄位（照既有 plugin）：`name`、`version`、`description`、`author`、`license`、`repository`、`homepage`、`keywords`。
 
@@ -38,12 +44,12 @@ plugins/<name>/
 
 ## 4. 版本規則（語意化版本）
 
-- **plugin 自己的版本**（`plugin.json` + `marketplace.json` 該 entry + plugin `CHANGELOG.md`）：新 plugin 從 `1.0.0`；既有 plugin 內容變更走 patch / minor。
+- **plugin 自己的版本**（`plugin.json` + `marketplace.json` 該 entry + plugin `CHANGELOG.md`）：新 plugin 從 `1.0.0`；既有 plugin 內容變更走 patch / minor。**「只是文件」不是跳過 bump 的理由**——plugin cache 以版本為 key（`~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/`），版號不變就不重新抓取，新增的 README／CHANGELOG 永遠到不了已安裝的副本（2026-09-18 實測：`c7c8169` 未 bump 就加的 README 不在 cache 的 `1.0.0/`、只在後來 bump 出的 `1.0.1/`）。只要 `plugins/<p>/` 底下**新增或修改任何出貨檔案**就 bump；只動 `scripts/`、`CONTRIBUTING.md`、根 README／CHANGELOG 的 repo 基礎設施變更才不用。
 - **marketplace `metadata.version`**：
   - 新增一個 plugin → **minor** bump（例：1.6.1 → 1.7.0）
   - 既有 plugin patch → **patch** bump（例：1.6.0 → 1.6.1）
 - 全域紀律：動到版本號時，**檢查所有含版本字串的檔案**（plugin.json、marketplace.json entry、兩份 CHANGELOG），不要只改一處。
-- **機器閘門**（`node scripts/validate-fixtures.cjs`，CI 與本地 PostToolUse hook 皆跑）：每個 marketplace entry 版號＝該 plugin 的 `plugin.json`；`metadata.version`＝兩份根 CHANGELOG 最上面的 `## [x.y.z]`；根 CHANGELOG 標題須為 x.y.z、不重複、嚴格遞減。**bump 前先 `git fetch` 對齊 `origin/main`**——在落後的基底上 bump 會與遠端撞號，而 `marketplace.json` 兩邊改成同一值時 git 會靜默自動合併、停在錯的版號（2026-09-17 實例；閘門現在會擋）。已知殘餘：兩個 release 被併進同一個段落，靜態檢查抓不到。另有**plugin CHANGELOG 閘門**：每個 `plugins/<p>/CHANGELOG.md` 最上面的 `## [x.y.z]` 須等於該 plugin 自己的 `plugin.json` 版號，標題同樣須為 x.y.z、不重複、嚴格遞減——根閘門拿 `metadata.version` 比對，結構上看不到 plugin 自己的版號（2026-03-07 實例：dev-workflow 出貨 1.1.0／1.1.1 而 CHANGELOG 頂部仍是 `[1.0.1]`，5 天後才人工發現）。另有**目錄完整性閘門**：有 `plugin.json` 的目錄一律要有自己的 `CHANGELOG.md`（第 1 節結構範本本來就列著它；缺檔會讓上一個閘門無事可查，而刪檔走 `rm`、PostToolUse hook 只看 Edit／Write／MultiEdit 看不到），反過來，有 `CHANGELOG.md`／`commands/`／`skills/` 卻沒有 `plugin.json` 的目錄判為未完成的 plugin 目錄——版本閘門只走 marketplace entries、註冊閘門只收有 manifest 的目錄，兩者都看不見它。另有**註冊閘門**：`plugins/` 下每個有 `plugin.json` 的目錄都必須被某個 marketplace entry 的 `source` 指到（第 2 節那一步漏做即紅——版本閘門只走 entries，沒註冊的 plugin 它根本看不到），且 entry 的 `name` 須等於該 `plugin.json` 的 `name`（前者是使用者安裝用的名字，後者決定 skill／command 的命名空間）。
+- **機器閘門**（`node scripts/validate-fixtures.cjs`，CI 與本地 PostToolUse hook 皆跑）：每個 marketplace entry 版號＝該 plugin 的 `plugin.json`；`metadata.version`＝兩份根 CHANGELOG 最上面的 `## [x.y.z]`；根 CHANGELOG 標題須為 x.y.z、不重複、嚴格遞減。**bump 前先 `git fetch` 對齊 `origin/main`**——在落後的基底上 bump 會與遠端撞號，而 `marketplace.json` 兩邊改成同一值時 git 會靜默自動合併、停在錯的版號（2026-09-17 實例；閘門現在會擋）。已知殘餘：兩個 release 被併進同一個段落，靜態檢查抓不到。另有**plugin CHANGELOG 閘門**：每個 `plugins/<p>/CHANGELOG.md` 最上面的 `## [x.y.z]` 須等於該 plugin 自己的 `plugin.json` 版號，標題同樣須為 x.y.z、不重複、嚴格遞減——根閘門拿 `metadata.version` 比對，結構上看不到 plugin 自己的版號（2026-03-07 實例：dev-workflow 出貨 1.1.0／1.1.1 而 CHANGELOG 頂部仍是 `[1.0.1]`，5 天後才人工發現）。另有**目錄完整性閘門**三條規則：①有 `plugin.json` 的目錄一律要有自己的 `CHANGELOG.md` 與 `README.md`（第 1 節結構範本兩者並列、只把 `.mcp.json`／`reference.md` 標選用；缺 CHANGELOG 會讓上一個閘門無事可查，而刪檔走 `rm`、PostToolUse hook 只看 Edit／Write／MultiEdit 看不到）；②反過來，帶著任一 plugin component（`CHANGELOG.md`／`README.md`／`commands/`／`skills/`／`agents/`／`hooks/`／有 `.claude-plugin/` 但無 `plugin.json`）卻沒有 `plugin.json` 的目錄判為未完成的 plugin 目錄——版本閘門只走 marketplace entries、註冊閘門只收有 manifest 的目錄，兩者都看不見它；③`plugins/` 下的 symlink 一律拒絕——`Dirent.isDirectory()` 是 lstat 語意、對 symlink 回 false，所以**走 `pluginDirs` 的四個閘門**（collision／目錄完整性／plugin changelog／註冊）全都跳過它，而 hook 執行 `plugins/<p>/tests/*.test.sh` 時卻會跟隨它。（版本閘門走 marketplace entries、用會跟隨 symlink 的 API 解析，是唯一看得見的；註冊閘門的 entry name ↔ plugin.json name 比對對 symlink plugin 則是靜默跳過。）另有**註冊閘門**：`plugins/` 下每個有 `plugin.json` 的目錄都必須被某個 marketplace entry 的 `source` 指到（第 2 節那一步漏做即紅——版本閘門只走 entries，沒註冊的 plugin 它根本看不到），且 entry 的 `name` 須等於該 `plugin.json` 的 `name`（前者是使用者安裝用的名字，後者決定 skill／command 的命名空間）。
 - 同一 plugin 內 `commands/<X>.md` 與有效名稱為 `<X>` 的 skill（`SKILL.md` frontmatter `name`，缺省為目錄名）不得並存——兩者解析成同一個 `<plugin>:<X>`，command 會遮蔽 skill、skill 本體永不載入，`claude plugin validate` 不會報（session-reflect 1.0.0 實例）；同一閘門會擋。
 
 ## 5.（選用）夾帶 MCP server
