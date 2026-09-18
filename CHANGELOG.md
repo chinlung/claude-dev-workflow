@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.10] - 2026-09-18
+
+### Fixed
+
+- **code-audit-rigor 2.0.2 → 2.0.3** — call-chain tracing named `codegraph_callers` / `codegraph_impact` as MCP tools in three places (the skill's tool-selection note, `/review-branch` Phase 2 step 3, and `STEEL_MANNING.md`'s OC-1 check). codegraph lists only `codegraph_explore` over MCP by default, so those calls return "not found"; all three now name the CLI commands and state that "not found" means unlisted, not broken. `/review-branch`'s recovery condition is corrected too — it gated the grep fallback on a missing index, but the failure happens with a healthy index present. Pre-existing since 2026-06-08 and self-contradictory on the day it shipped; surfaced by the codegraph re-baseline in 1.10.9. Details: `plugins/code-audit-rigor/CHANGELOG.md`.
+
+### Notes
+
+- Marketplace patch bump 1.10.9 → 1.10.10.
+- `.gitignore` now covers `review-branch-results.json`, the `/review-branch` output artifact.
+
 ## [1.10.9] - 2026-09-18
 
 ### Changed

@@ -5,6 +5,17 @@
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [1.10.10] - 2026-09-18
+
+### Fixed
+
+- **code-audit-rigor 2.0.2 → 2.0.3** — 調用鏈追蹤在三處把 `codegraph_callers`／`codegraph_impact` 寫成 MCP 工具（skill 的工具選擇註記、`/review-branch` Phase 2 第 3 步、`STEEL_MANNING.md` 的 OC-1 檢查）。codegraph 預設只把 `codegraph_explore` 列為 MCP 工具，那些呼叫會回 "not found"；三處改為指名 CLI 指令，並說明 "not found" 代表未列出、不是壞掉。`/review-branch` 的恢復條件一併修正——原本把 grep fallback 綁在「無索引」，但這個失敗發生在索引健康的情況下。此問題自 2026-06-08 起存在、且出貨當天就與同 repo 的 codegraph 文件自相矛盾；由 1.10.9 的 codegraph 基準更新才浮現。細節見 `plugins/code-audit-rigor/CHANGELOG.md`。
+
+### Notes
+
+- Marketplace patch 版號 1.10.9 → 1.10.10。
+- `.gitignore` 新增涵蓋 `/review-branch` 的輸出產物 `review-branch-results.json`。
+
 ## [1.10.9] - 2026-09-18
 
 ### Changed

@@ -13,6 +13,9 @@ node_modules/
 # Logs
 *.log
 
+# Review artifacts (code-audit-rigor /review-branch output)
+review-branch-results.json
+
 # OS junk
 .DS_Store
 Thumbs.db

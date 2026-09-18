@@ -25,7 +25,7 @@ Steel-Manning 是「嘗試構造對立面最強版本的論點」。在 code aud
 - 確認每個呼叫者是否在傳遞參數前已做過驗證或清理
 - 若所有呼叫路徑都有上游防禦，發現的實際可利用性可能為零
 
-工具建議：`grep`（查找呼叫者）；若有 codegraph，用 `codegraph_callers` 追蹤完整呼叫鏈。
+工具建議：`grep`（查找呼叫者）；若有 codegraph，用 CLI `codegraph callers <symbol>` 追蹤完整呼叫鏈（`callers` 預設只有 CLI，不是預設列出的 MCP 工具）。
 
 ### OC-2. Framework / Runtime 保障
 

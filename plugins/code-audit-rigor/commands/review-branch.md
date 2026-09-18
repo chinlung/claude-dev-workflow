@@ -63,7 +63,7 @@ argument-hint: "[base-branch] [--focus <pathspec>]"
    - 整個檔案都找不到 → 重讀檔案一次重新引用；若支撐該建議的程式碼確實不存在，判**誤報**（記憶重建的引用）
    - （錨定是逐字文字比對，Grep 是正確工具——不要用 codegraph 做這步）
 2. **讀取上下文**：問題所在函式的完整實作
-3. **追蹤調用鏈**：找出所有呼叫該函式的調用者——**專案有 `.codegraph/` 索引時優先用 codegraph**（`codegraph_callers` 查調用者、`codegraph_impact` 查變更影響面；能抓到 grep 漏掉的 dynamic-dispatch 呼叫點：callback、DI、event handler）；無索引才 fallback 用 Grep 搜尋方法名
+3. **追蹤調用鏈**：找出所有呼叫該函式的調用者——**專案有 `.codegraph/` 索引時優先用 codegraph**（CLI `codegraph callers <symbol>` 查調用者、CLI `codegraph impact <symbol>` 查變更影響面；能抓到 grep 漏掉的 dynamic-dispatch 呼叫點：callback、DI、event handler）。這兩項**預設只有 CLI**——MCP 預設只列出 `codegraph_explore`，當成 MCP 工具呼叫會回 "not found"（未列出、不是壞掉），此時改用 CLI、**不要退回 grep**；只有無索引或 CLI 不可用才 fallback 用 Grep 搜尋方法名
 4. **檢查相關測試**：搜尋覆蓋該行為的測試檔案
 5. **分析上下游依賴**：確認變更是否影響其他元件
 

@@ -2,6 +2,14 @@
 
 All notable changes to the `code-audit-rigor` plugin will be documented in this file.
 
+## [2.0.3] - 2026-09-18
+
+### Fixed
+
+- **Call-chain tracing names the CLI commands, not MCP tools a default codegraph server does not list.** Three places told the reviewer — or a dispatched Phase 2 sub-agent — to call `codegraph_callers` and `codegraph_impact` as `codegraph_*` MCP tools: the skill's Principle 3 tool-selection note, `/review-branch` Phase 2 step 3, and the OC-1 upstream-guards check in `STEEL_MANNING.md`. codegraph lists only `codegraph_explore` over MCP by default, so those calls return "not found". All three now name `codegraph callers <symbol>` / `codegraph impact <symbol>` as **CLI** commands and state that a "not found" `codegraph_*` call means the tool is unlisted, not broken — use the CLI rather than degrading to grep. `/review-branch`'s recovery condition is corrected in the same pass: it gated the grep fallback on a *missing index*, but this failure occurs with a healthy index present, leaving the sub-agent in a state its own prompt did not describe.
+
+  **Why:** 1.2.1 added codegraph-aware tracing precisely so dispatched sub-agents would stop silently grepping and missing dynamic-dispatch call sites (callbacks, DI containers, event handlers); the instruction it shipped guaranteed the failure it was written to prevent, so that headline feature has never worked. It was already self-contradictory the day it landed (2026-06-08) — the sibling `codegraph` plugin documented `callers`/`impact` as CLI-only at the time, verified against codegraph 0.9.7. The observable failure is identical on 0.9.7 (handler not exported) and 1.6.0 (handler present but unlisted), so this is a three-month latent defect rather than a regression; the codegraph 1.1.0 re-baseline is what made it visible. Recovery could not be relied on: the `codegraph` skill carries the correct rule, but this plugin declares no dependency on it and a dispatched sub-agent does not inherit auto-triggered skills.
+
 ## [2.0.2] - 2026-09-15
 
 ### Fixed
