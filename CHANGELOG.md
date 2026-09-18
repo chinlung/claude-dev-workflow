@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.10.13] - 2026-09-19
+
+### Fixed
+
+- **The root README's session-learning section is deduplicated, and the drift it accumulated is fixed.** That section had grown to 62 lines describing the same pipeline, scope routing and hook behaviour as the plugin's own README, and one copy had been wrong since 2026-08-03: it described the Stop hook as firing on a transcript-length floor plus a once-per-session flag, never mentioning the already-ran detection that 1.0.1 added — the release's main fix, missing from the user-facing docs for over a month, found only when the plugin got a README of its own. Both root READMEs now carry one dense paragraph (including that detection) and link to the plugin README, which is the shape `security-audit`'s section already used and well inside the 24-121 line range the other sections span. The Phase 1 candidate table, which existed only in the root copy, moved into the plugin README rather than being dropped — deduplicating is moving, not deleting — after checking it column-by-column against `commands/save-session.md`. `session-reflect`'s section gets the same pointer to its own README. `CONTRIBUTING.md` §3 now says to summarise and link when a plugin has its own README, with this drift as the reason, so the rule carries its own justification.
+
+
 ## [1.10.12] - 2026-09-18
 
 ### Fixed

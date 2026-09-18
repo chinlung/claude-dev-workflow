@@ -4,6 +4,13 @@
 
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
+## [1.10.13] - 2026-09-19
+
+### Fixed
+
+- **根 README 的 session-learning 段完成去重，也修掉它累積的漂移。** 那一段長到 62 行，描述的 pipeline、層級路由與 hook 行為與 plugin 自己的 README 重複，而其中一份從 2026-08-03 起就是錯的：它把 Stop hook 描述成只有 transcript 長度門檻加一個 once-per-session flag，完全沒提 1.0.1 新增的 already-ran 偵測——那是該版本的主修復，在使用者看得到的文件裡缺了一個多月，直到這個 plugin 有了自己的 README 才被發現。兩份根 README 現在各是一段密實敘述（含該偵測）並連到 plugin README，這正是 `security-audit` 段早就採用的形狀，也落在其他段落 24 到 121 行的範圍內。只存在於根 README 的 Phase 1 候選表則**搬進** plugin README 而非刪掉——去重是搬移、不是刪除——搬之前逐列對照 `commands/save-session.md` 查核過。`session-reflect` 段一併補上指向自己 README 的連結。`CONTRIBUTING.md` §3 現在明訂「plugin 有自己的 README 時就寫摘要＋連結」，並把這次的漂移寫成理由，讓規則自帶依據。
+
+
 ## [1.10.12] - 2026-09-18
 
 ### Fixed

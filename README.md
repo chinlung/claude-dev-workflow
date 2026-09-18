@@ -11,7 +11,7 @@ A collection of powerful plugins for Claude Code, featuring automated developmen
 | [Dev Workflow](#dev-workflow-plugin) | Complete development workflow from requirements to QA | `/dev-workflow` |
 | [Multi-Agent Debate](#multi-agent-debate-plugin) | Multi-perspective analysis with critical review | `/debate` |
 | [High-Precision Dev](#high-precision-dev-plugin) | Safety-critical code with p^4 error rate compression | `/init`, `/start` |
-| [Session Learning](#session-learning-plugin) | Incrementally capture valuable conversation patterns as memory or skills | `/save-session` |
+| [Session Learning](#session-learning-plugin) | Incrementally capture valuable conversation patterns as memory or skills | `/save-session` + Stop hook |
 | [OpenSpec + Superpowers Workflow](#openspec--superpowers-workflow-plugin) | Six-phase feature development enforcing OpenSpec/Superpowers role separation | auto-triggered skill |
 | [Code Audit Rigor](#code-audit-rigor-plugin) | Review & audit toolkit: routine two-round review commands + quantitative frameworks (EV, score calibration, STRIDE+CWE) + engineering guarantees (language rule packs, coverage reconciliation, quote anchoring) | `/review-branch`, `/review-pr` + auto-triggered skill |
 | [CodeGraph](#codegraph-plugin) | Structural code intelligence (callers, impact, call paths) before grep when editing/reviewing | auto-triggered skill |
@@ -416,65 +416,8 @@ This runs the full 4-phase workflow:
 
 # Session Learning Plugin
 
-An experience-capture system that incrementally saves valuable conversation patterns as persistent memory or reusable skills, following an **update-first** strategy to prevent memory bloat.
+Incremental experience capture. `/save-session` runs a five-phase pipeline (scan → scope → dedupe → save → report) whose critical phase is the third, and it runs *before* anything is written: it reads `~/.claude/CLAUDE.md`, the project `CLAUDE.md`, the auto-memory index and both `commands/` dirs, because the job is to update an existing record rather than add another one. It caps itself at 1-2 changes per run and would rather skip than store something low-value — an index diluted with noise costs every later session tokens it cannot use. Each pattern is routed by scope: rules that apply everywhere go to `~/.claude/`, project facts stay with the project. A `command`-type Stop hook (no extra LLM call) nudges once at the end of a substantial session: it stays quiet under a ~10-line transcript floor, keeps a once-per-session flag, and decides whether `/save-session` already ran from the shapes a real invocation leaves in the transcript — not from the bare command name — so discussing the command, or reading its documentation, does not suppress the reminder. Complements Session Reflect: this plugin saves *lessons*, that one proposes *actions*. Details, including where each kind of pattern lands: [`plugins/session-learning/README.md`](plugins/session-learning/README.md).
 
-## Features
-
-- **`/save-session` command**: 5-phase analysis pipeline (scan → scope → dedupe → save → report)
-- **Stop hook**: Lightweight reminder at the end of substantial sessions (command-based, no extra LLM call)
-- **Update-first discipline**: Always prefers updating an existing record over creating a new one
-- **Scope awareness**: Auto-distinguishes global (`~/.claude/`) vs project-level (`<project>/.claude/`) storage
-- **Frugal by default**: Maximum 1-2 changes per run — skips saves rather than creating low-value records
-- **Session substantiality filter**: Skips sessions with fewer than ~10 transcript lines
-
-## Usage
-
-### Manual invocation
-
-```bash
-/save-session
-```
-
-Scans the current conversation, identifies candidates across four categories (feedback, skill, project, user), decides whether each belongs in global or project scope, deduplicates against existing records, and saves at most 1-2 items.
-
-### Automatic reminder
-
-The Stop hook runs at the end of every session. If the session was substantial (≥ 10 transcript lines) and no reminder has been issued for this session ID, it suggests running `/save-session`. A flag file prevents duplicate reminders within the same session.
-
-## Analysis Categories
-
-| Category | Triggers on | Saved only if... |
-|---------|------------|------------------|
-| **Feedback** | User corrections ("don't...", "use X instead", "from now on...") | Applies to future conversations, not a one-off instruction |
-| **Skill** | Multi-step workflows (3+ steps) | Likely to be reused later |
-| **Project** | Project facts (decisions, deadlines, architecture) | Not derivable from code or git history |
-| **User** | User role, expertise, preferences | Not already recorded |
-
-## Scope Routing
-
-**Global level** (under `~/.claude/`):
-- Rules or preferences applying to all projects → update `~/.claude/CLAUDE.md`
-- Cross-project workflows → `~/.claude/commands/*.md`
-- User profile → auto-memory system (`user` type)
-
-**Project level** (inside current project):
-- Tech-stack-specific rules or file paths → update project `CLAUDE.md`
-- Project-specific workflows → `.claude/commands/*.md`
-- Project context (decisions, team, timelines) → auto-memory system (`project` type)
-- Behavioural corrections involving project tech → auto-memory (`feedback` type)
-
-## Why "Update First"
-
-Naive session-capture tools accumulate records forever — after 50 sessions you have 50 near-duplicate memory files nobody reads. This plugin:
-
-1. Searches for existing records that could be extended before creating new ones
-2. Merges overlapping observations into a single entry
-3. Caps each run at 1-2 changes (create + update combined)
-4. Refuses to save anything unless it clearly passes the "valuable across future conversations" bar
-
-The Stop hook is deliberately command-based (shell script) rather than prompt-based so it adds zero latency or token cost to the session-end flow.
-
----
 
 # OpenSpec + Superpowers Workflow Plugin
 
@@ -708,7 +651,7 @@ Node.js — for the Phase 5 `validate-findings.cjs` schema validator.
 
 # Session Reflect Plugin
 
-Session-end reflective review. A fail-open Stop-hook gate triages cheaply (routine or thin sessions pass through untouched), then the `reflect` skill sweeps the session from four lenses — out-of-scope findings, pre-existing issues, adjacent optimizations, knowledge gaps. Every candidate must carry a concrete evidence anchor and survive both an inline four-filter self-review and an adversarial verifier subagent before you see it. Up to 5 suggestions are offered as a multi-select choice: chosen ones execute immediately while context is hot; unchosen ones persist to `.claude/reflect-backlog.md` for later (`/session-reflect:reflect` re-opens the review anytime). Complements Session Learning: that plugin saves *lessons*, this one proposes *actions*.
+Session-end reflective review. A fail-open Stop-hook gate triages cheaply (routine or thin sessions pass through untouched), then the `reflect` skill sweeps the session from four lenses — out-of-scope findings, pre-existing issues, adjacent optimizations, knowledge gaps. Every candidate must carry a concrete evidence anchor and survive both an inline four-filter self-review and an adversarial verifier subagent before you see it. Up to 5 suggestions are offered as a multi-select choice: chosen ones execute immediately while context is hot; unchosen ones persist to `.claude/reflect-backlog.md` for later (`/session-reflect:reflect` re-opens the review anytime). Complements Session Learning: that plugin saves *lessons*, this one proposes *actions*. Details: [`plugins/session-reflect/README.md`](plugins/session-reflect/README.md).
 
 ---
 

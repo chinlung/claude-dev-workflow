@@ -41,6 +41,19 @@ Stop event
   Phase 5  report what changed
 ```
 
+## What counts as a candidate
+
+Phase 1 looks for four kinds of pattern, each with a bar it has to clear — the bar is what keeps the index from filling up with one-off noise:
+
+| Kind | Triggers on | Saved only if |
+|---|---|---|
+| **Feedback** | a correction to how you want things done ("don't…", "use X instead", "from now on…") | it applies to future conversations, not just this one |
+| **Skill** | a workflow you actually executed in 3+ steps | it is likely to be reused |
+| **Project** | project facts — decisions, deadlines, architecture | it cannot be derived from the code or git history |
+| **User** | your role, expertise, preferences | it is not already recorded |
+
+Nothing clears the bar? The run reports "nothing to save" and stops.
+
 ## Where a pattern lands
 
 | Kind of pattern | Destination |
@@ -55,9 +68,10 @@ Stop event
 
 ## Design principles
 
-- **Update before create.** The first job of every run is to find an existing record to amend; a new file is the fallback, not the goal.
-- **Restraint.** At most 1-2 changes per run (updates and creations combined). Skipping beats a low-value record — an index diluted with noise is worse than a shorter one.
+- **Update before create.** The first job of every run is to find an existing record to amend, merging overlapping observations into a single entry; a new file is the fallback, not the goal. Tools that skip this step accumulate instead — after fifty sessions you have fifty near-duplicate files nobody reads.
+- **Restraint.** At most 1-2 changes per run (updates and creations combined), and nothing is saved unless it clearly clears the "valuable across future conversations" bar. Skipping beats a low-value record — an index diluted with noise is worse than a shorter one.
 - **Get the level right.** A project-specific detail in the global `CLAUDE.md` costs every future session tokens it cannot use.
+- **The Stop hook is a shell script, not a prompt.** A `command`-type hook adds zero latency and zero tokens to the session-end path; a prompt-based one would spend an LLM call just to decide whether to mention a command.
 
 ## Testing
 

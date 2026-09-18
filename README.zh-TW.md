@@ -11,7 +11,7 @@
 | [開發工作流程](#開發工作流程插件) | 從需求分析到品質保證的完整開發流程 | `/dev-workflow` |
 | [多代理辯證系統](#多代理辯證系統插件) | 多角度分析與批判審查 | `/debate` |
 | [高精確度開發](#高精確度開發插件) | 安全關鍵程式碼，錯誤率壓縮至 p^4 | `/init`, `/start` |
-| [Session 經驗學習](#session-經驗學習插件) | 漸進式保存對話中的有價值模式為 memory 或 skill | `/save-session` |
+| [Session 經驗學習](#session-經驗學習插件) | 漸進式保存對話中的有價值模式為 memory 或 skill | `/save-session` + Stop hook |
 | [OpenSpec + Superpowers 工作流程](#openspec--superpowers-工作流程插件) | 六階段功能開發，強制 OpenSpec / Superpowers 角色分離 | 自動觸發 skill |
 | [Code Audit Rigor](#code-audit-rigor-插件) | 審查工具箱：routine 兩輪審查指令 + 量化框架（EV、評分校準、STRIDE+CWE）+ 工程化保證（語言規則包、coverage 核銷、引用錨定） | `/review-branch`、`/review-pr` + 自動觸發 skill |
 | [CodeGraph](#codegraph-插件) | 編輯／審查前先查結構（callers、impact、呼叫路徑）而非 grep | 自動觸發 skill |
@@ -414,65 +414,8 @@ docs/task-{YYYYMMDD-HHMM}-{簡短名稱}/
 
 # Session 經驗學習插件
 
-漸進式經驗捕捉系統，將對話中的有價值模式保存為持久 memory 或可重用 skill，採用**更新優先**策略避免記憶膨脹。
+漸進式經驗保存。`/save-session` 跑五個 phase（掃描 → 判斷層級 → 去重 → 保存 → 回報），最關鍵的是第三個、而且它在寫入任何東西**之前**執行：讀 `~/.claude/CLAUDE.md`、專案 `CLAUDE.md`、auto memory 索引，以及全域與專案兩個 `commands/` 目錄——因為這件事的目的是更新既有紀錄，不是再加一筆。每次最多 1-2 項變更，寧可跳過也不存低價值的東西——被雜訊稀釋的索引，會讓之後每個 session 都付出用不到的 token。每個模式依層級路由：適用所有專案的規則進 `~/.claude/`，專案事實留在專案裡。`command` 型的 Stop hook（不觸發額外 LLM 呼叫）在實質 session 結束時提醒一次：transcript 不足約 10 行就安靜、每個 session 只提醒一次（flag file），而「是否已經跑過 `/save-session`」是依真實呼叫在 transcript 留下的形狀判定、不是靠裸命令名——所以討論這個命令、或讀它的文件，都不會抑制提醒。與 Session Reflect 互補：這個 plugin 存**教訓**，那個提**行動**。細節（含每種模式的落點）見 [`plugins/session-learning/README.md`](plugins/session-learning/README.md)。
 
-## 功能特色
-
-- **`/save-session` 命令**：5 階段分析流程（掃描 → 層級判斷 → 去重合併 → 執行 → 報告）
-- **Stop hook**：在實質工作階段結束時輕量提醒執行 `/save-session`（command 類型，不觸發額外 LLM 呼叫）
-- **更新優先紀律**：永遠優先更新既有記錄，避免累積近似重複的檔案
-- **層級自動判斷**：自動區分全域（`~/.claude/`）vs 專案層級（`<project>/.claude/`）儲存位置
-- **精簡克制**：每次最多 1-2 項變更 — 寧可跳過也不建立低價值記錄
-- **實質性過濾**：少於約 10 行 transcript 的短工作階段自動跳過
-
-## 使用方式
-
-### 手動執行
-
-```bash
-/save-session
-```
-
-掃描當前對話，依四大類型（feedback、skill、project、user）辨識候選模式，判定歸屬全域或專案層級，對既有記錄去重後，最多保存 1-2 項。
-
-### 自動提醒
-
-Stop hook 在每次 session 結束時執行。若工作階段實質（≥ 10 行 transcript）且同一 session 尚未提醒過，會建議執行 `/save-session`。Flag file 機制防止同一 session 重複提醒。
-
-## 分析類別
-
-| 類型 | 觸發條件 | 只記錄如果... |
-|------|---------|-------------|
-| **Feedback** | 使用者糾正做法（「不要…」「改用…」「以後…」） | 適用於未來對話，不是一次性指令 |
-| **Skill** | 多步驟工作流程（3+ 步驟） | 未來可能重複使用 |
-| **Project** | 專案資訊（決策、截止日期、架構） | 無法從程式碼或 git 推導 |
-| **User** | 使用者角色、專業、偏好 | 之前未記錄過 |
-
-## 層級路由
-
-**全域層級**（存在 `~/.claude/` 下）：
-- 適用於所有專案的通用規則或偏好 → 更新 `~/.claude/CLAUDE.md` 對應章節
-- 跨專案可重複使用的工作流程 → `~/.claude/commands/*.md`
-- 使用者個人資訊 → auto memory 系統（`user` 類型）
-
-**專案層級**（存在當前專案目錄下）：
-- 涉及特定技術棧、檔案路徑、架構 → 更新專案 `CLAUDE.md`
-- 專案專屬的工作流程 → `.claude/commands/*.md`
-- 專案脈絡（決策、團隊、時程） → auto memory 系統（`project` 類型）
-- 行為修正涉及此專案特定技術 → auto memory 系統（`feedback` 類型）
-
-## 為什麼「更新優先」
-
-天真的 session 捕捉工具會無限累積記錄 — 50 個 session 後就有 50 份近似重複的 memory 檔案，沒人會讀。這個 plugin：
-
-1. 先搜尋可延伸的既有記錄再考慮新建
-2. 把重疊的觀察合併成單一條目
-3. 每次執行最多 1-2 項變更（新建 + 更新合計）
-4. 除非明確通過「對未來對話有長期價值」的門檻，否則不保存
-
-Stop hook 刻意使用 command 類型（shell 腳本）而非 prompt 類型，為的是在 session 結束流程中**不增加任何延遲或 token 成本**。
-
----
 
 # OpenSpec + Superpowers 工作流程插件
 
@@ -706,7 +649,7 @@ Node.js — 供第 5 階段 `validate-findings.cjs` schema 驗證。
 
 # Session Reflect 插件
 
-Session 收尾回顧系統。fail-open 的 Stop hook 閘門先廉價 triage（routine 或無實質內容的 session 直接放行），再由 `reflect` skill 從四視角掃描 session——範圍外發現、既有問題、延伸優化、知識缺口。每個候選建議必附具體證據錨點，並通過 inline 四濾鏡自我反思與對抗式 verifier 子代理雙重驗證後才會呈現。最多 5 個建議以多選問卷提供：選中的趁 context 還熱立即執行；未選的寫入 `.claude/reflect-backlog.md` 供日後處理（隨時可用 `/session-reflect:reflect` 重開回顧）。與 Session 經驗學習插件互補：該插件保存「經驗」，本插件提出「行動」。
+Session 收尾回顧系統。fail-open 的 Stop hook 閘門先廉價 triage（routine 或無實質內容的 session 直接放行），再由 `reflect` skill 從四視角掃描 session——範圍外發現、既有問題、延伸優化、知識缺口。每個候選建議必附具體證據錨點，並通過 inline 四濾鏡自我反思與對抗式 verifier 子代理雙重驗證後才會呈現。最多 5 個建議以多選問卷提供：選中的趁 context 還熱立即執行；未選的寫入 `.claude/reflect-backlog.md` 供日後處理（隨時可用 `/session-reflect:reflect` 重開回顧）。與 Session 經驗學習插件互補：該插件保存「經驗」，本插件提出「行動」。細節見 [`plugins/session-reflect/README.md`](plugins/session-reflect/README.md)。
 
 ---
 

@@ -40,6 +40,7 @@ plugins/<name>/
 - `README.md` + `README.zh-TW.md`：
   - 頂部 Available Plugins 表格加一列
   - 檔尾加一個 `# <Name> Plugin` 明細段（對齊既有段落格式）
+  - **plugin 自己有 README 時，根 README 該段寫一段摘要＋連結過去，不要把細節複製過來**——同一組事實放兩處一定漂移：session-learning 的根段從 1.0.1（2026-08-03）起就漏了該版本的主修復（already-ran 偵測），直到 2026-09-19 補寫 plugin README 時才被發現。既有段落長度從 24 到 121 行不等（security-audit 段早就採「摘要＋連結」），所以「對齊既有格式」不要求你複製細節
 - `CHANGELOG.md` + `CHANGELOG.zh-TW.md`：在 preamble 之後、最新版本之前插入新版段落
 
 ## 4. 版本規則（語意化版本）

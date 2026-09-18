@@ -6,6 +6,13 @@ All notable changes to the `session-learning` plugin will be documented in this 
 > releases below without a changelog of its own. The entries describe what each version actually
 > changed, but they were written after the fact, not at release time.
 
+## [1.0.3] - 2026-09-19
+
+### Added
+
+- `README.md` gains the Phase 1 candidate table — the four kinds of pattern (`Feedback` / `Skill` / `Project` / `User`), what each triggers on, and the bar each must clear — plus four facts the root README's "Why Update First" section carried alone: that overlapping observations are merged into one entry rather than appended, the "valuable across future conversations" bar a save has to clear, why the Stop hook is a shell script rather than a prompt (zero latency, zero tokens at session end), and what the discipline is defending against (fifty sessions, fifty near-duplicate files nobody reads).
+- All of it moved here from the root README as part of deduplicating that description, and none of it was copied on trust: the candidate table was checked column-by-column against `commands/save-session.md` Phase 1, and the rest against the section being replaced. Deduplicating is moving, not deleting — a first pass at the summary had silently dropped both the table and those four facts, and a structural diff of the deleted section against this file is what caught it.
+
 ## [1.0.2] - 2026-09-18
 
 ### Fixed
