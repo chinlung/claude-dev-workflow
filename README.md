@@ -35,6 +35,7 @@ A collection of powerful plugins for Claude Code, featuring automated developmen
 /plugin install codegraph@scl-claude-plugins
 /plugin install security-audit@scl-claude-plugins
 /plugin install session-reflect@scl-claude-plugins
+/plugin install scope-ledger@scl-claude-plugins
 ```
 
 Or install directly:
@@ -656,7 +657,7 @@ Session-end reflective review. A fail-open Stop-hook gate triages cheaply (routi
 
 # Scope Ledger Plugin
 
-Keeps review-driven work from expanding past the original request. A per-worktree ledger (`.claude/scope-ledger.local.md`: the user's goal verbatim, branch, review round count, In scope / Deferred / Log) is the baseline; four fail-open hooks read it. The first edit of a source file without a ledger for the current branch is denied once and asks for `/scope-ledger:scope init "<goal>"`. Every review / scan / audit skill or review-type subagent injects the triage policy — findings are input, not a work order; each is adopted, deferred (with reason and destination), handed to the user, or logged as noise *before* anything is edited — and counts the round, with a convergence warning from round 3. A Stop with unticked In scope items is blocked once per distinct state, listing them. SessionStart replays the ledger after a compaction or resume, which is what brings the original goal back. Built after measuring the author's own sessions: zero todo-tool calls in the whole history, one four-day session with 23 security reviews across 17 PRs. Details: [`plugins/scope-ledger/README.md`](plugins/scope-ledger/README.md).
+Keeps review-driven work from expanding past the original request. A per-worktree ledger (`.claude/scope-ledger.local.md`: the user's goal verbatim, branch, review round count, In scope / Deferred / Log) is the baseline; four fail-open hooks read it. The main thread's first edit of a source file without a ledger for the current branch is denied once and asks for `/scope-ledger:scope init "<goal>"`. Every review-entry skill or review-type subagent injects the triage policy — findings are input, not a work order; each is adopted, deferred (with reason and destination), handed to the user, or logged as noise *before* anything is edited — and each allowlisted skill call counts one round, with a convergence warning from round 3. A git-tracked ledger is treated as repository-controlled content and ignored by every hook. A Stop with unticked In scope items is blocked once per distinct state, listing them. SessionStart replays the ledger after a compaction or resume, which is what brings the original goal back. Built after measuring the author's own sessions: zero todo-tool calls in the whole history, one four-day session with 23 security reviews across 17 PRs. Details: [`plugins/scope-ledger/README.md`](plugins/scope-ledger/README.md).
 
 ---
 

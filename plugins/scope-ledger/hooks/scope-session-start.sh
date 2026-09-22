@@ -18,6 +18,12 @@ proj="${CLAUDE_PROJECT_DIR:-$cwd}"
 [ -n "$proj" ] || quiet
 ledger=$(ledger_path "${proj%/}")
 [ -f "$ledger" ] || quiet
+# A git-tracked ledger is repository-controlled text: never replay it into context. Say so in
+# one fixed line (no content quoted) so the person can fix the setup.
+if ledger_tracked "$proj"; then
+  echo "scope-ledger：${ledger} 已被 git 追蹤，屬 repo 控制的內容，本 plugin 不回放、所有 hook 一律忽略它。若這是你的帳本：git rm --cached 該檔並在 .gitignore 加 *.local.md。"
+  exit 0
+fi
 
 open=$(ledger_unchecked "$ledger")
 count=0

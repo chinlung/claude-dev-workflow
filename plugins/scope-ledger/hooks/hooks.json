@@ -1,5 +1,5 @@
 {
-  "description": "scope-ledger：以 .claude/scope-ledger.local.md 為工作範圍帳本——首次改程式碼無帳本 deny 一次、review/scan skill 後注入 finding triage 政策並計輪、Stop 時對照未完成項 block 一次、SessionStart 把帳本印回 context；全面 fail-open",
+  "description": "scope-ledger：以 .claude/scope-ledger.local.md 為工作範圍帳本——主代理首次改程式碼無帳本 deny 一次（子代理放行、不耗 flag）、review 入口 skill 呼叫時注入 finding triage 政策並計輪（review 型子代理派發只注入不計輪）、Stop 時對照未完成項 block 一次、SessionStart 把帳本印回 context；被 git 追蹤的帳本視為 repo 控制內容、四個 hook 一律忽略；全面 fail-open",
   "hooks": {
     "PreToolUse": [
       {

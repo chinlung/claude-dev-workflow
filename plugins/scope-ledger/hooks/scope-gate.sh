@@ -41,9 +41,20 @@ case "$file_path" in
   *) allow ;;
 esac
 printf '%s' "$file_path" | grep -Eq "$SRC_RE" || allow
+# Subagents share the session id (and therefore the flag) with the main thread. Their edits pass
+# WITHOUT touching the flag: a subagent has no user request to write a goal from, so a deny it
+# acted on would produce a wrong ledger, and a deny it merely waited out would consume the
+# session's single deny before the main thread ever edited. `agent_id` is present only inside a
+# subagent (the harness's own schema says to use it, not agent_type, for this distinction).
+agent_id=$(printf '%s' "$input" | jq -r '.agent_id // empty')
+[ -z "$agent_id" ] || allow
 git -C "$proj" rev-parse --is-inside-work-tree >/dev/null 2>&1 || allow
 
 ledger=$(ledger_path "$proj")
+# A git-tracked ledger is repository-controlled text (its branch field would be quoted into the
+# deny message); every hook ignores it, and this gate stays out of the way rather than asking
+# for an `init` that cannot replace a tracked file.
+if [ -f "$ledger" ] && ledger_tracked "$proj"; then allow; fi
 if [ -f "$ledger" ]; then
   lb=$(ledger_field "$ledger" branch)
   cb=$(git -C "$proj" rev-parse --abbrev-ref HEAD 2>/dev/null || true)

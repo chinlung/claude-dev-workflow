@@ -28,12 +28,15 @@ Add `*.local.md` to the project's `.gitignore` if it is not there yet — `init`
 ## How it works
 
 ```
-first Edit/Write of a source file           review / scan / audit skill or agent
+first Edit/Write of a source file           review-entry Skill call  |  review-type Agent dispatch
   └─ scope-gate.sh (PreToolUse)               └─ scope-review-triage.sh (PostToolUse)
-       no ledger for this branch?                   review_rounds += 1
-       → deny ONCE, ask for `scope init`            inject: findings are input, not a work
-       (retry passes; .claude/ and                  order — triage into the ledger first;
-        openspec/ paths exempt)                     round ≥ 3 → convergence warning
+       main thread, no ledger for this              Skill: review_rounds += 1 and inject
+       branch? → deny ONCE, ask for                 Agent: inject only (a review fans out into
+       `scope init` (retry passes; subagents,       N subagents — counting them would fire the
+       .claude/, openspec/, outside-project         round-3 warning inside the first review)
+       paths exempt)                                inject: findings are input, not a work
+                                                    order — triage into the ledger first;
+                                                    round ≥ 3 → convergence warning
 
 Stop                                         SessionStart (startup/resume/compact/clear)
   └─ scope-stop-check.sh                       └─ scope-session-start.sh
@@ -43,6 +46,10 @@ Stop                                         SessionStart (startup/resume/compac
 ```
 
 Every hook exits 0 on any unexpected condition (missing `jq`, unreadable ledger, not a git repo). They force the judgement to happen and be written down; they do not evaluate it.
+
+**A git-tracked ledger is ignored by every hook.** A repository can commit a `.claude/scope-ledger.local.md`, and its text would otherwise be replayed into the agent's context at every session start and quoted into Stop-hook messages — a prompt-injection channel for anyone who can commit. So each hook checks `git ls-files` first: a tracked ledger is never replayed, quoted or written; SessionStart prints one fixed line telling you to `git rm --cached` it and ignore `*.local.md`.
+
+**Which Skill calls count as a review round** is an explicit allowlist, not a keyword match: `review-branch`, `review-pr` (both bare and plugin-prefixed), `security-review`, `codex-review-bg`, `codex:review`, `codex:adversarial-review`, `claude-security`, `security-audit`, `code-review`, `simplify`, `debate`, `high-precision-dev:start`, `engineering:code-review`. Keyword matching was tried first and counted `verification-before-completion`, `security-ci-setup` and `codex:setup` as reviews. To add your own entry points, put one extended regex per line in `~/.claude/scope-ledger-review-patterns` (blank lines and `#` comments ignored), e.g. `^acme:audit-all$`.
 
 ## The ledger
 
@@ -95,13 +102,16 @@ Until the goal's In scope items are all ticked, only findings that belong to thi
 - Edit `.gitignore` (it reports; the project decides).
 - Judge the triage. The gate makes sure a judgement is written down; the judgement is yours.
 - Replace OpenSpec's `tasks.md`.
-- Count reviews run through a raw CLI in Bash — the PostToolUse hook only sees `Skill` and `Agent` tool calls (skill name or subagent type matching `review|security|audit|codex|simplify|critic|adversar|verif|debate`).
+- Count reviews run through a raw CLI in Bash, or review-type agents dispatched directly without a Skill entry point — the PostToolUse hook counts only allowlisted `Skill` calls; `Agent` dispatches get the policy but never a round.
 
 ## Limits worth knowing
 
 - The gate fires on source extensions only (code, shell, SQL, Terraform, Dockerfile, CI workflows). Markdown / JSON / plain YAML edits never trigger it, so a documentation session needs no ledger.
+- "The project" is the session's project directory (`CLAUDE_PROJECT_DIR`, falling back to the hook's `cwd`). Edits to files in *another* repository — a sibling repo reached by absolute path or `--add-dir` — are outside the project and pass the gate untouched, and the ledger, round counter and Stop check all live under the session's project. To gate another repository, open the session there.
+- Subagent edits pass the gate without consuming the session's one deny (the hook input's `agent_id` tells them apart). The flip side: a session whose main thread never edits a source file itself — every change delegated to implementer subagents — is never asked for a ledger. Create one with `init` at the start of such a session.
 - Two sessions on one worktree share one ledger; the plugin does not arbitrate writes (single-writer discipline applies, as with any shared worktree state).
 - The Stop hook remembers the open-item list's checksum per session in `$TMPDIR`; the reminder repeats only when that list changes.
+- SessionStart replays the first 60 lines of the ledger; a longer In scope list is cut there. Keep the ledger coarse.
 
 ## Testing
 
@@ -109,6 +119,6 @@ Until the goal's In scope items are all ticked, only findings that belong to thi
 bash plugins/scope-ledger/tests/scope-hooks.test.sh
 ```
 
-91 assertions feed JSON to each hook and check stdout, exit code and flag / state files, with at least two inputs per branch; green under bash 5 and macOS `/bin/bash` 3.2. CI runs it on every push (`.github/workflows/validate.yml`), and the repo's local PostToolUse hook runs it after any edit under `plugins/`. Before 1.0.0 shipped, three mutations of a copy each turned it red: emptying `ledger_unchecked` (10 failures), skipping the gate's ledger lookup (6), raising the warning threshold to 99 (2).
+145 assertions feed JSON to each hook and check stdout, exit code and flag / state files, with at least two inputs per branch; green under bash 5 and macOS `/bin/bash` 3.2. CI runs it on every push (`.github/workflows/validate.yml`), and the repo's local PostToolUse hook runs it after any edit under `plugins/`. Before 1.0.0 shipped, seven mutations of a copy each turned it red: emptying `ledger_unchecked` (11 failures), skipping the gate's ledger lookup (6), raising the warning threshold to 99 (2), reporting every ledger as untracked (14), dropping the subagent pass-through (3), counting Agent dispatches as rounds (8), removing the bump lock (2).
 
 One portability note baked into the scripts: under `set -u`, bash treats a full-width character glued to a bare variable name (`$ledger：`, `「$lb」`) as part of the name and aborts with "unbound variable". Every interpolation next to non-ASCII text is written as `${var}`.

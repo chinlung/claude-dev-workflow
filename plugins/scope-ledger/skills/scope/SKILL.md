@@ -6,7 +6,7 @@ argument-hint: "[init \"<goal>\" | status | defer \"<item>\" --why <理由> --to
 
 # /scope-ledger:scope — 工作範圍帳本
 
-帳本是一個檔案：`<project>/.claude/scope-ledger.local.md`（每個 worktree 一份）。它是本次工作的**基線**：原始請求逐字、In scope 清單、被延後的 finding 與去處。四個 hook 讀它：首次改程式碼沒有它會被 deny 一次；review／scan skill 之後會注入 triage 政策並把 `review_rounds` 加一；Stop 時 In scope 有未勾項會 block 一次；SessionStart（含 compaction 後）會把它印回 context。
+帳本是一個檔案：`<project>/.claude/scope-ledger.local.md`（每個 worktree 一份）。它是本次工作的**基線**：原始請求逐字、In scope 清單、被延後的 finding 與去處。四個 hook 讀它：主代理首次改程式碼沒有它會被 deny 一次（子代理放行）；review 入口 skill（review-branch、review-pr、security-review、codex-review-bg、claude-security、security-audit、code-review、simplify、debate、high-precision-dev:start 等）呼叫時注入 triage 政策並把 `review_rounds` 加一，review 型子代理派發只注入不計輪；Stop 時 In scope 有未勾項會 block 一次；SessionStart（含 compaction 後）會把它印回 context。帳本若被 git 追蹤，四個 hook 一律忽略它（repo 控制的內容不回放、不寫入）——`init` 會檢查並提醒。
 
 ## 帳本格式（逐字使用）
 

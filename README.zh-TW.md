@@ -35,6 +35,7 @@
 /plugin install codegraph@scl-claude-plugins
 /plugin install security-audit@scl-claude-plugins
 /plugin install session-reflect@scl-claude-plugins
+/plugin install scope-ledger@scl-claude-plugins
 ```
 
 或直接安裝：
@@ -654,7 +655,7 @@ Session 收尾回顧系統。fail-open 的 Stop hook 閘門先廉價 triage（ro
 
 # Scope Ledger 插件
 
-讓 review 驅動的工作不會無限擴張、原目標不會被忘記。每個 worktree 一份帳本（`.claude/scope-ledger.local.md`：使用者原始請求逐字、分支、review 輪數、In scope / Deferred / Log）作為基線，四個 fail-open hook 讀它：首次編輯程式碼而該分支沒有帳本時 deny 一次，要求先 `/scope-ledger:scope init "<goal>"`；每次 review／scan／audit skill 或 review 型子代理都注入 triage 政策——review 的產出是 input 不是工單，每條 finding 先分採納／延後（附理由與去處）／交使用者裁定／噪音進帳本，**然後才**動手——並計輪，第 3 輪起收斂告警；Stop 時 In scope 有未勾項就 block 一次並列出；SessionStart 在 compaction 或 resume 後把帳本印回 context，原目標因此回得來。設計前先量了作者自己的 session：全歷史 todo 工具零呼叫、一個四天的 session 跑了 23 次安全審查橫跨 17 個 PR。細節見 [`plugins/scope-ledger/README.md`](plugins/scope-ledger/README.md)。
+讓 review 驅動的工作不會無限擴張、原目標不會被忘記。每個 worktree 一份帳本（`.claude/scope-ledger.local.md`：使用者原始請求逐字、分支、review 輪數、In scope / Deferred / Log）作為基線，四個 fail-open hook 讀它：主代理首次編輯程式碼而該分支沒有帳本時 deny 一次，要求先 `/scope-ledger:scope init "<goal>"`；每次 review 入口 skill 或 review 型子代理都注入 triage 政策——review 的產出是 input 不是工單，每條 finding 先分採納／延後（附理由與去處）／交使用者裁定／噪音進帳本，**然後才**動手——allowlist 上的 skill 呼叫各計一輪，第 3 輪起收斂告警；被 git 追蹤的帳本視為 repo 控制的內容、四個 hook 一律忽略；Stop 時 In scope 有未勾項就 block 一次並列出；SessionStart 在 compaction 或 resume 後把帳本印回 context，原目標因此回得來。設計前先量了作者自己的 session：全歷史 todo 工具零呼叫、一個四天的 session 跑了 23 次安全審查橫跨 17 個 PR。細節見 [`plugins/scope-ledger/README.md`](plugins/scope-ledger/README.md)。
 
 ---
 

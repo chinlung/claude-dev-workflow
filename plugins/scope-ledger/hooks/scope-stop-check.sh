@@ -25,6 +25,8 @@ proj="${CLAUDE_PROJECT_DIR:-$cwd}"
 [ -n "$proj" ] || allow
 ledger=$(ledger_path "${proj%/}")
 [ -f "$ledger" ] || allow
+# Tracked ledger = repository-controlled text; its lines would be quoted into the block reason.
+if ledger_tracked "$proj"; then allow; fi
 
 open=$(ledger_unchecked "$ledger")
 [ -n "$open" ] || allow
