@@ -15,11 +15,26 @@ LEDGER_REL=".claude/scope-ledger.local.md"
 # ledger_path <proj> → absolute ledger path (existence not checked)
 ledger_path() { printf '%s/%s\n' "${1%/}" "$LEDGER_REL"; }
 
-# ledger_tracked <proj> → exit 0 when git tracks the ledger. A tracked ledger is repository-
-# controlled content (anyone who can commit to the repo can write it), so no hook replays it
-# into context, quotes it in a message, or writes to it. Every hook treats it as absent.
-# Not a git repo / git failure → exit 1 (not tracked), which keeps the fail-open direction.
-ledger_tracked() { git -C "${1%/}" ls-files --error-unmatch -- "$LEDGER_REL" >/dev/null 2>&1 || return 1; }
+# ledger_tracked <proj> → exit 0 when the ledger is repository-controlled content (anyone who can
+# commit to the repo can write it), so no hook replays it into context, quotes it in a message,
+# or writes to it. Every hook treats it as absent. "Repository-controlled" is a property of the
+# PATH, not only of an index entry at that exact name — a committed `.claude` symlink or a
+# `.claude` submodule puts a real file at <proj>/.claude/scope-ledger.local.md after a plain
+# clone while `ls-files -- .claude/scope-ledger.local.md` finds nothing (security review
+# reproduced both layouts against every hook). Hence four checks, cheapest first:
+#   1. <proj>/.claude is a symlink                      → 0
+#   2. the ledger file itself is a symlink               → 0
+#   3. the index entry for .claude is 120000 (symlink) or 160000 (gitlink / submodule) → 0
+#   4. the ledger path is an index entry (plain tracked) → 0
+# Not a git repo / git failure → 1 (not tracked), which keeps the fail-open direction.
+ledger_tracked() {
+  local p="${1%/}" mode
+  [ -L "$p/.claude" ] && return 0
+  [ -L "$p/$LEDGER_REL" ] && return 0
+  mode=$(git -C "$p" ls-files --stage -- .claude 2>/dev/null | awk '{ print $1; exit }')
+  case "$mode" in 120000 | 160000) return 0 ;; esac
+  git -C "$p" ls-files --error-unmatch -- "$LEDGER_REL" >/dev/null 2>&1 || return 1
+}
 
 # ledger_field <file> <key> → value of "<key>: …" inside the leading --- frontmatter block
 ledger_field() {
@@ -57,6 +72,11 @@ ledger_rounds() {
 ledger_bump_rounds() {
   local f="$1" n tmp lock i rc
   [ -f "$f" ] || return 1
+  # Never write through a symlink (the file or its directory): the rewrite would land on tracked
+  # content or outside the worktree. The callers already skip repository-controlled ledgers via
+  # ledger_tracked; this is the last line of defence inside the only function that writes.
+  [ -L "$f" ] && return 1
+  [ -L "$(dirname "$f")" ] && return 1
   lock="$f.lock"
   i=0
   until mkdir "$lock" 2>/dev/null; do
