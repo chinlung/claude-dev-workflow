@@ -1,0 +1,21 @@
+{
+  "name": "scope-ledger",
+  "version": "1.0.0",
+  "description": "Per-worktree scope ledger (.claude/scope-ledger.local.md) with four fail-open hooks: the first source edit without a ledger is denied once; review / scan / audit skills inject a finding-triage policy and count rounds; a Stop with open in-scope items is blocked once per state; SessionStart replays the ledger after compaction. Keeps review-driven work from expanding past the original request.",
+  "author": {
+    "name": "Chin Lung",
+    "email": "scl@hanchih.com"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/chinlung/claude-dev-workflow",
+  "homepage": "https://github.com/chinlung/claude-dev-workflow#readme",
+  "keywords": [
+    "scope",
+    "scope-creep",
+    "triage",
+    "review-findings",
+    "stop-hook",
+    "session-continuity",
+    "compaction"
+  ]
+}

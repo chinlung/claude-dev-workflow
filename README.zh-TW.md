@@ -17,6 +17,7 @@
 | [CodeGraph](#codegraph-插件) | 編輯／審查前先查結構（callers、impact、呼叫路徑）而非 grep | 自動觸發 skill |
 | [Security Audit](#security-audit-插件) | 六階段多代理流程，主動獵捕可被利用的漏洞（vendored 自 cloudflare/security-audit-skill） | 自動觸發 skill |
 | [Session Reflect](#session-reflect-插件) | Session 收尾回顧，提出最多 5 個經驗證的可執行改進建議 | `/session-reflect:reflect` + Stop hook |
+| [Scope Ledger](#scope-ledger-插件) | 每 worktree 一份工作範圍帳本 + 四個 fail-open hook，review finding 先 triage 再動手，擋住 review 驅動的範圍擴張 | `/scope-ledger:scope` + PreToolUse / PostToolUse / Stop / SessionStart hooks |
 
 ## 安裝方式
 
@@ -650,6 +651,10 @@ Node.js — 供第 5 階段 `validate-findings.cjs` schema 驗證。
 # Session Reflect 插件
 
 Session 收尾回顧系統。fail-open 的 Stop hook 閘門先廉價 triage（routine 或無實質內容的 session 直接放行），再由 `reflect` skill 從四視角掃描 session——範圍外發現、既有問題、延伸優化、知識缺口。每個候選建議必附具體證據錨點，並通過 inline 四濾鏡自我反思與對抗式 verifier 子代理雙重驗證後才會呈現。最多 5 個建議以多選問卷提供：選中的趁 context 還熱立即執行；未選的寫入 `.claude/reflect-backlog.md` 供日後處理（隨時可用 `/session-reflect:reflect` 重開回顧）。與 Session 經驗學習插件互補：該插件保存「經驗」，本插件提出「行動」。細節見 [`plugins/session-reflect/README.md`](plugins/session-reflect/README.md)。
+
+# Scope Ledger 插件
+
+讓 review 驅動的工作不會無限擴張、原目標不會被忘記。每個 worktree 一份帳本（`.claude/scope-ledger.local.md`：使用者原始請求逐字、分支、review 輪數、In scope / Deferred / Log）作為基線，四個 fail-open hook 讀它：首次編輯程式碼而該分支沒有帳本時 deny 一次，要求先 `/scope-ledger:scope init "<goal>"`；每次 review／scan／audit skill 或 review 型子代理都注入 triage 政策——review 的產出是 input 不是工單，每條 finding 先分採納／延後（附理由與去處）／交使用者裁定／噪音進帳本，**然後才**動手——並計輪，第 3 輪起收斂告警；Stop 時 In scope 有未勾項就 block 一次並列出；SessionStart 在 compaction 或 resume 後把帳本印回 context，原目標因此回得來。設計前先量了作者自己的 session：全歷史 todo 工具零呼叫、一個四天的 session 跑了 23 次安全審查橫跨 17 個 PR。細節見 [`plugins/scope-ledger/README.md`](plugins/scope-ledger/README.md)。
 
 ---
 

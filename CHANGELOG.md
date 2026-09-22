@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.11.0] - 2026-09-23
+
+### Added
+
+- **scope-ledger 1.0.0** — a per-worktree scope ledger and four fail-open hooks that keep review-driven work from expanding past the original request. The ledger (`.claude/scope-ledger.local.md`) holds the user's goal verbatim, the branch, a review round counter and In scope / Deferred / Log sections. PreToolUse denies the first source-file edit once when no ledger exists for the current branch and asks for `/scope-ledger:scope init`; PostToolUse injects the finding-triage policy after every review / scan / audit skill or review-type subagent (findings are input, not a work order — adopt, defer with reason and destination, hand to the user, or log as noise, *before* editing) and counts rounds with a convergence warning from round 3; Stop blocks once per distinct open-item state; SessionStart replays the ledger after compaction or resume. Designed from measurements, not intuition: across the author's whole session history the todo tool had been called zero times, one four-day session ran 23 security reviews across 17 PRs and ended with the user asking what the finding IDs meant, and a session that did use the task tool still had the user ask five times what was left — the audit backlog lived outside the task list. No existing skill on skills.sh enforces this with hooks; the closest (`piv-fix-review-findings`) has the same policy in prose, and its four-way taxonomy is adopted here. 91 fixture assertions, green under bash 5 and macOS bash 3.2, three mutations verified red on a copy. Design: `docs/scope-ledger-design-2026-09-23.md`.
+
 ## [1.10.13] - 2026-09-19
 
 ### Fixed

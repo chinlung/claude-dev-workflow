@@ -4,6 +4,12 @@
 
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
+## [1.11.0] - 2026-09-23
+
+### Added
+
+- **scope-ledger 1.0.0** — 每個 worktree 一份工作範圍帳本與四個 fail-open hook，讓 review 驅動的工作不會擴張超出原始請求。帳本（`.claude/scope-ledger.local.md`）記使用者原話、分支、review 輪數與 In scope / Deferred / Log 三段。PreToolUse 在該分支無帳本時把首次程式碼編輯 deny 一次並要求 `/scope-ledger:scope init`；PostToolUse 在每次 review／scan／audit skill 或 review 型子代理之後注入 triage 政策（review 的產出是 input 不是工單——採納、附理由與去處延後、交使用者裁定、或記為噪音，**然後才**動手）並計輪，第 3 輪起收斂告警；Stop 在有未勾項時依狀態 block 一次；SessionStart 在 compaction 或 resume 後把帳本印回。依量測而非直覺設計：作者全部 session 歷史中 todo 工具零呼叫、一個四天的 session 跑了 23 次安全審查橫跨 17 個 PR、最後使用者在問那些 finding 編號是什麼；另一個有用 task 工具的 session，使用者仍五次問「還剩什麼」，因為 audit 的 backlog 活在任務清單之外。skills.sh 上沒有以 hook 強制的現成方案；最接近的 `piv-fix-review-findings` 是同一政策的 prose 版，本 plugin 採用它的四分類。91 條 fixture 斷言，bash 5 與 macOS bash 3.2 皆綠，三個突變在副本上驗證轉紅。設計：`docs/scope-ledger-design-2026-09-23.md`。
+
 ## [1.10.13] - 2026-09-19
 
 ### Fixed

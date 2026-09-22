@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "Claude Code plugins collection by scl",
-    "version": "1.10.13"
+    "version": "1.11.0"
   },
   "plugins": [
     {
@@ -70,6 +70,13 @@
       "description": "Session 收尾回顧建議系統 - Stop hook 廉價閘門 + 兩段 triage，回顧本次任務與交談，經證據錨點與對抗式驗證後提出最多 5 個可執行建議（範圍外 bug / 既有問題 / 延伸優化 / 知識缺口），互動勾選執行，未選入 backlog。與 session-learning 互補：session-learning 保存「經驗」，session-reflect 提出「行動」。",
       "version": "1.0.2",
       "keywords": ["session", "reflection", "review", "suggestions", "adversarial-verification", "backlog", "stop-hook"]
+    },
+    {
+      "name": "scope-ledger",
+      "source": "./plugins/scope-ledger",
+      "description": "工作範圍帳本 - 每個 worktree 一份 .claude/scope-ledger.local.md（原始請求逐字 + In scope / Deferred / Log）與四個 fail-open hook：首次改程式碼無帳本 deny 一次、review/scan skill 後注入 finding triage 政策並計輪（第 3 輪起收斂告警）、Stop 時有未完成項 block 一次、SessionStart 把帳本印回 context。讓 review 驅動的工作不會無限擴張、原目標不會被忘記。",
+      "version": "1.0.0",
+      "keywords": ["scope", "scope-creep", "triage", "review-findings", "stop-hook", "session-continuity", "compaction"]
     }
   ]
 }
