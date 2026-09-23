@@ -1,9 +1,13 @@
 #!/bin/bash
-# scope-ledger PostToolUse — matcher: Skill|Agent
+# scope-ledger PostToolUse — matcher: Skill|Agent — and UserPromptSubmit
 #
 # Three kinds of call reach this hook, and only one of them counts a round:
-#   * A Skill call on the REVIEW ENTRY allowlist (a top-level review / scan / audit command)
-#     injects the triage policy AND increments review_rounds — one round per review run.
+#   * A review / scan / audit command on the REVIEW ENTRY allowlist injects the triage policy AND
+#     increments review_rounds — one round per review run. It arrives by one of two routes: the
+#     model calls the Skill tool (PostToolUse), or the person types `/<command>` (UserPromptSubmit).
+#     A typed slash command is expanded inline and never becomes a Skill tool call, so without the
+#     second route every typed review — and every run of a `disable-model-invocation` command such
+#     as /claude-security, which can only be typed — went uncounted.
 #   * A Skill call on the COMPANION list (the Codex cross-vendor pass that runs alongside
 #     /review-branch) injects the policy only: it is the same self-review round, not a new one.
 #   * An Agent dispatch whose subagent_type (or, when that is omitted, description) looks review-
@@ -22,7 +26,7 @@ trap quiet ERR
 # Anchored full names; plugin prefix optional where a skill is commonly invoked bare. Stem matching
 # (review|security|codex…) was tried first and hit verification-before-completion,
 # security-ci-setup, codex:setup, codex:status — every helper with one of those words counted.
-ENTRY_RE='^(code-audit-rigor:)?review-(branch|pr)$|^pr-review-toolkit:review-pr$|^security-review$|^claude-security(:scan)?$|^(security-audit:)?security-audit$|^code-review$|^simplify$|^(multi-agent-debate:)?debate$|^high-precision-dev:start$|^engineering:code-review$'
+ENTRY_RE='^(code-audit-rigor:)?review-(branch|pr)$|^pr-review-toolkit:review-pr$|^security-review$|^claude-security(:scan|:claude-security)?$|^(security-audit:)?security-audit$|^code-review$|^simplify$|^(multi-agent-debate:)?debate$|^high-precision-dev:start$|^engineering:code-review$'
 COMPANION_RE='^codex-review-bg$|^codex:(review|adversarial-review)$'
 # One extended regex per line in this file is OR-ed into ENTRY_RE (a user's own review commands).
 EXTRA_RE_FILE="${HOME:-/nonexistent}/.claude/scope-ledger-review-patterns"
@@ -35,11 +39,26 @@ input=$(cat)
 command -v jq >/dev/null 2>&1 || quiet
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_ledger.sh" || quiet
 
-tool=$(printf '%s' "$input" | jq -r '.tool_name // empty')
+typed=""
+event=$(printf '%s' "$input" | jq -r '.hook_event_name // empty')
+if [ "$event" = UserPromptSubmit ]; then
+  # Only a prompt that IS a slash command (`/name args…`) counts. Prose that mentions one ("run
+  # /review-branch later") is not a review run.
+  typed=$(printf '%s' "$input" | jq -r '.prompt // empty' | sed -n '1s/^[[:space:]]*\/\([^[:space:]]*\).*/\1/p')
+  [ -n "$typed" ] || quiet
+  tool=Skill
+else
+  event=PostToolUse
+  tool=$(printf '%s' "$input" | jq -r '.tool_name // empty')
+fi
 counts=0
 case "$tool" in
   Skill)
-    name=$(printf '%s' "$input" | jq -r '.tool_input.skill // empty')
+    if [ -n "$typed" ]; then
+      name="$typed"
+    else
+      name=$(printf '%s' "$input" | jq -r '.tool_input.skill // empty')
+    fi
     [ -n "$name" ] || quiet
     # The skill argument may carry arguments after the name ("review-branch main --focus x").
     name="${name%% *}"
@@ -99,7 +118,7 @@ if [ -n "$n" ]; then
   if [ "$n" -gt 0 ]; then
     msg="${msg} 本 goal review 累計第 ${n} 輪。"
   else
-    msg="${msg} 本 goal 尚未計入任何 review 輪（輪數只在 review 入口 skill 呼叫時累計）。"
+    msg="${msg} 本 goal 尚未計入任何 review 輪（輪數只在 review 入口指令啟動時累計——模型呼叫 Skill 或使用者手打 /指令皆算）。"
   fi
   if [ "$mode" = harvest ]; then
     if [ "$n" -gt 0 ] && [ $((n % HARVEST_EVERY)) -eq 0 ]; then
@@ -115,5 +134,5 @@ if [ "$fu_high" -gt 0 ]; then
   msg="${msg} 本 repo follow-ups 尚有 HIGH ${fu_high} 項未排程（${fu}）。"
 fi
 
-jq -cn --arg m "$msg" '{hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:$m}}'
+jq -cn --arg e "$event" --arg m "$msg" '{hookSpecificOutput:{hookEventName:$e,additionalContext:$m}}'
 exit 0

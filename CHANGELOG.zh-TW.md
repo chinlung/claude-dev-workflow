@@ -4,6 +4,12 @@
 
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
+## [1.11.1] - 2026-09-23
+
+### Fixed
+
+- **scope-ledger 1.0.0 → 1.0.1：使用者手打的 review 指令現在也會計輪。** `review_rounds` 只由 PostToolUse 的 `Skill` hook 累計，但手打的 slash command 是就地展開、不會變成 Skill 工具呼叫，所以手打的 review 一律沒被計入；`/claude-security` 是 `disable-model-invocation`、只能手打，它在 allowlist 上的那一項因此永遠不會命中。實際使用時出現帳本停在第 4 輪、Log 卻記了 5 輪的落差。triage hook 現在也接到 `UserPromptSubmit`：提示以 allowlist 上的 `/<指令>` 開頭時，照樣計輪並注入同一份政策；只是在句子裡提到指令不算。新增 18 條 fixture 斷言（共 297 條），含回報情境「3 輪 Skill＋2 輪手打」的重播。
+
 ## [1.11.0] - 2026-09-23
 
 ### Added

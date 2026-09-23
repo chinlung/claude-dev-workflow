@@ -6,7 +6,7 @@ argument-hint: "[init \"<goal>\" | status | defer \"<item>\" --severity HIGH|MED
 
 # /scope-ledger:scope — 工作範圍帳本
 
-帳本是一個檔案：`<project>/.claude/scope-ledger.local.md`，**一個 goal 一份**，與分支無關——一個 goal 底下開幾個分支、幾個 PR 都記在同一份帳本的 Log 裡；切分支是正常工作，不會被閘門擋。它是本次工作的基線：原始請求逐字、mode、In scope 清單、被延後的項目與去處。六個 hook 讀它：主代理首次改程式碼（Edit／Write，或 Bash 的 `sed -i`／`perl -pi`／重導向／`cp`／`mv`／`patch`）沒有帳本會被 deny 一次（子代理放行）；每 session 第一則提示若無帳本會提醒一次（不阻擋）；review 入口 skill 呼叫時依 mode 注入 triage 政策並把 `review_rounds` 加一（review 型子代理與 codex 伴隨 pass 只注入不計輪）；Stop 時 In scope 有未勾項會 block 一次；SessionStart（含 compaction 後）把帳本與 follow-ups 印回 context。帳本若被 git 追蹤（或經 symlink／submodule 進入 repo），所有 hook 一律忽略它——`init` 會檢查並提醒。
+帳本是一個檔案：`<project>/.claude/scope-ledger.local.md`，**一個 goal 一份**，與分支無關——一個 goal 底下開幾個分支、幾個 PR 都記在同一份帳本的 Log 裡；切分支是正常工作，不會被閘門擋。它是本次工作的基線：原始請求逐字、mode、In scope 清單、被延後的項目與去處。六個 hook 讀它：主代理首次改程式碼（Edit／Write，或 Bash 的 `sed -i`／`perl -pi`／重導向／`cp`／`mv`／`patch`）沒有帳本會被 deny 一次（子代理放行）；每 session 第一則提示若無帳本會提醒一次（不阻擋）；review 入口指令啟動時（模型呼叫 Skill，或使用者手打 `/指令`）依 mode 注入 triage 政策並把 `review_rounds` 加一（review 型子代理與 codex 伴隨 pass 只注入不計輪）；Stop 時 In scope 有未勾項會 block 一次；SessionStart（含 compaction 後）把帳本與 follow-ups 印回 context。帳本若被 git 追蹤（或經 symlink／submodule 進入 repo），所有 hook 一律忽略它——`init` 會檢查並提醒。
 
 跨帳本的 backlog 是第二個檔案：`<project>/.claude/scope-followups.local.md`。`done` 把 Deferred 搬進去；SessionStart、首則提示、`status` 都會報它的件數（HIGH 優先）。延後的東西在這裡，不在記憶裡——記憶是會被忘的地方。
 
