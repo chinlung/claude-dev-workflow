@@ -14,7 +14,7 @@ All notable changes to the `scope-ledger` plugin will be documented in this file
   - `scope-stop-check.sh` (Stop) — blocks once per distinct open-item state while In scope has unticked items, listing them and asking for a per-item status; it defers to the user's last instruction on whether work continues and never asks for new work itself. `stop_hook_active` always passes.
   - `scope-session-start.sh` (SessionStart `startup|resume|compact|clear`) — prints the frontmatter, the whole In scope section, the Deferred and Log counts and the round count into the new context, then the open follow-ups (HIGH first), which are announced even when no ledger exists.
 - `/scope-ledger:scope` skill — `init "<goal>"` (decides the mode, offers open follow-ups for pickup, reports git-ignore status with all three `check-ignore` exit codes handled and names the exact `.gitignore` line without editing it), `status`, `defer "<item>" --severity … --why … --to …`, `done` (refuses open items and destination-less deferrals, moves Deferred into the follow-ups file, writes a narrative memory entry, removes the ledger).
-- `tests/scope-hooks.test.sh` — 251 assertions, two inputs per branch, green under bash 5 and macOS bash 3.2; wired into CI. Eighteen mutations of a copy each verified red before release.
+- `tests/scope-hooks.test.sh` — 260 assertions, two inputs per branch, green under bash 5 and macOS bash 3.2; wired into CI. Eighteen mutations of a copy each verified red before release.
 
 ### Notes — what the pre-release reviews changed
 

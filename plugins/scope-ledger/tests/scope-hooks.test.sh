@@ -276,6 +276,18 @@ p=$WORK/b7; make_repo "$p"; t=$WORK/bt7; mkdir -p "$t"
 check_empty "B7 子代理 → allow" "$(printf '{"session_id":"b7","agent_id":"agent-x","cwd":"%s","tool_name":"Bash","tool_input":{"command":"sed -i %s src/a.php"}}' "$p" "'s/a/b/'" | TMPDIR="$t" CLAUDE_PROJECT_DIR="$p" bash "$HOOKS/scope-gate-bash.sh" 2>/dev/null || true)"
 check_flag "B7 子代理不消耗 flag" "$t/claude-scope-gate-b7" absent
 check_empty "B8 無 command → allow" "$(printf '{"session_id":"b8","cwd":"%s","tool_name":"Bash","tool_input":{}}' "$p" | TMPDIR="$t" CLAUDE_PROJECT_DIR="$p" bash "$HOOKS/scope-gate-bash.sh" 2>/dev/null || true)"
+# B9 「patch」只算命令位置；段內 cd 決定相對路徑的基準；含未展開變數的目標不判
+p=$WORK/b9; make_repo "$p"; mkdir -p "$p/openspec/changes/x"; t=$WORK/bt9; mkdir -p "$t"
+for c in 'npm version patch' 'git log --grep patch --oneline' 'cd openspec/changes/x && sed -i "" "s/a/b/" run.sh' 'cd .claude && cat > scope-ledger.local.md' 'echo x > $HOME/tmp/a.php' 'cat src/a.php > "$OUT/copy.php"'; do
+  check_empty "B9 不判 [$c] → allow" "$(run_hook scope-gate-bash.sh "$(bash_json b9 "$p" "$c")" "$t" "$p")"
+done
+check_flag "B9 不留 flag" "$t/claude-scope-gate-b9" absent
+tt=$WORK/bt9b; mkdir -p "$tt"
+check "B9b cd src 後相對路徑以 src 為基準 → deny 且訊息是 src/a.php" "$(run_hook scope-gate-bash.sh "$(bash_json b9b "$p" 'cd src && cat > a.php <<EOF
+x
+EOF')" "$tt" "$p")" 'Bash 寫入 src/a.php'
+tt=$WORK/bt9c; mkdir -p "$tt"
+check "B9c 命令位置的 patch → deny" "$(run_hook scope-gate-bash.sh "$(bash_json b9c "$p" 'cd src && patch -p1 < ../fix.diff')" "$tt" "$p")" 'patch／git apply'
 
 # ===== scope-prompt-reminder.sh =====
 prompt_json() { printf '{"session_id":"%s","cwd":"%s","hook_event_name":"UserPromptSubmit","prompt":"fix it","source":"%s"}' "$1" "$2" "$3"; }

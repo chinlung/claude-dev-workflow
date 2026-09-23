@@ -45,38 +45,61 @@ stripped=$(printf '%s\n' "$cmd" | awk -v q="'" -v dq='"' '
     print
   }' 2>/dev/null | sed -E "s/'[^']*'//g; s/\"//g" 2>/dev/null) || allow
 
-# ── 2. Collect write targets per segment ────────────────────────────────────────────────────
-targets=$(printf '%s\n' "$stripped" | tr ';|&' '\n\n\n' | while IFS= read -r seg; do
-  [ -n "$seg" ] || continue
-  printf '%s\n' "$seg" | grep -oE '>>?[[:space:]]*[^[:space:]>]+' 2>/dev/null | sed -E 's/^>>?[[:space:]]*//'
-  printf '%s\n' "$seg" | grep -oE '(^|[[:space:]])tee[[:space:]]+(-a[[:space:]]+)?[^[:space:]]+' 2>/dev/null | awk '{ print $NF }'
-  if printf '%s' "$seg" | grep -Eq '(^|[[:space:]])(sed[[:space:]]+-[a-zA-Z]*i|perl[[:space:]]+-[a-zA-Z]*i)'; then
-    printf '%s\n' "$seg" | tr ' \t' '\n\n' | grep -E "$SRC_RE" 2>/dev/null
-  fi
-  if printf '%s' "$seg" | grep -Eq '(^|[[:space:]])(cp|mv)[[:space:]]'; then
-    printf '%s\n' "$seg" | awk '{ print $NF }'
-  fi
-  if printf '%s' "$seg" | grep -Eq '(^|[[:space:]])(git[[:space:]]+apply|patch)([[:space:]]|$)'; then
-    echo "__PATCH__"
-  fi
-done) || allow
+# ── 2. Collect write targets per segment, resolved to absolute paths ─────────────────────────
+# A segment is one command between ; | && || or a newline. A leading `cd <dir>` moves the base
+# directory for the segments after it, so `cd src && sed -i … a.php` resolves to <cwd>/src/a.php
+# (and `cd .claude && cat > x` lands in the exempt directory instead of looking like a source
+# write at the project root). Targets containing an unexpanded `$…` cannot be resolved and are
+# skipped; `__PATCH__` marks `patch` / `git apply` in command position, whose targets are unknown.
+targets=$(printf '%s\n' "$stripped" | tr ';|&' '\n\n\n' | awk -v base="$cwd" -v home="$HOME" '
+  function resolve(t,   r) {
+    if (t == "") return ""
+    if (t ~ /\$/) return ""
+    if (t ~ /^\//) r = t
+    else if (t ~ /^~\//) r = home "/" substr(t, 3)
+    else r = base "/" t
+    gsub(/\/\.\//, "/", r); gsub(/\/\/+/, "/", r)
+    return r
+  }
+  function emit(t,   r) { r = resolve(t); if (r != "") print r }
+  {
+    seg = $0
+    sub(/^[[:space:]]+/, "", seg)
+    if (seg == "") next
+    if (match(seg, /^cd[[:space:]]+[^[:space:]]+/)) {
+      d = substr(seg, RSTART + 2, RLENGTH - 2); sub(/^[[:space:]]+/, "", d)
+      nb = resolve(d); if (nb != "") base = nb
+      next
+    }
+    # redirect targets
+    s = seg
+    while (match(s, />>?[[:space:]]*[^[:space:]>]+/)) {
+      t = substr(s, RSTART, RLENGTH); sub(/^>>?[[:space:]]*/, "", t); emit(t)
+      s = substr(s, RSTART + RLENGTH)
+    }
+    # tee [-a] <file>
+    if (match(seg, /(^|[[:space:]])tee[[:space:]]+(-a[[:space:]]+)?[^[:space:]]+/)) {
+      t = substr(seg, RSTART, RLENGTH); n = split(t, a, /[[:space:]]+/); emit(a[n])
+    }
+    # sed -i… / perl -i… / perl -pi…: every source-looking operand
+    if (seg ~ /(^|[[:space:]])(sed[[:space:]]+-[a-zA-Z]*i|perl[[:space:]]+-[a-zA-Z]*i)/) {
+      n = split(seg, a, /[[:space:]]+/)
+      for (i = 1; i <= n; i++) if (a[i] ~ /\.(php|js|jsx|mjs|cjs|ts|tsx|vue|svelte|py|rb|go|rs|java|kt|kts|scala|swift|m|mm|c|cc|cpp|h|hpp|cs|sh|bash|zsh|sql|tf|hcl)$/) emit(a[i])
+    }
+    # cp / mv (also `git mv`): last operand
+    if (seg ~ /(^|[[:space:]])(cp|mv)[[:space:]]/) { n = split(seg, a, /[[:space:]]+/); emit(a[n]) }
+    # patch / git apply in COMMAND position only (`npm version patch`, `--grep patch` are not writes)
+    if (seg ~ /^(git[[:space:]]+apply|patch)([[:space:]]|$)/) print "__PATCH__"
+  }' 2>/dev/null) || allow
 [ -n "$targets" ] || allow
 
-# ── 3. Resolve and judge each target; the first deny wins ─────────────────────────────────────
+# ── 3. Judge each target; the first deny wins ────────────────────────────────────────────────
 printf '%s\n' "$targets" | while IFS= read -r t; do
   [ -n "$t" ] || continue
-  t="${t%\"}"; t="${t#\"}"
   case "$t" in *TMPDIR* | /tmp/* | /private/tmp/* | /dev/*) continue ;; esac
   anyfile=""
   if [ "$t" = "__PATCH__" ]; then
     t="$proj/.scope-ledger-patch-target"; anyfile=any
-  else
-    case "$t" in
-      /*) : ;;
-      "~/"*) t="$HOME/${t#\~/}" ;;
-      *) t="$cwd/$t" ;;
-    esac
-    t=$(printf '%s' "$t" | sed -E 's#/\./#/#g; s#//+#/#g')
   fi
   if [ "$(gate_verdict "$proj" "$t" "$session_id" "$agent_id" "$anyfile")" = deny ]; then
     if [ "$anyfile" = any ]; then shown="patch／git apply"; else shown="${t#$proj/}"; fi
@@ -85,5 +108,4 @@ printf '%s\n' "$targets" | while IFS= read -r t; do
   fi
 done
 # exit 3 from the subshell loop = a deny was printed; anything else = allow
-rc=$?
 exit 0
