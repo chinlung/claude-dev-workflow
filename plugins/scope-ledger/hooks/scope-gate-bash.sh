@@ -34,13 +34,16 @@ proj="${proj%/}"
 [ -n "$cwd" ] || cwd="$proj"
 
 # ── 1. Drop heredoc bodies, single-quoted strings, and bare double quotes ─────────────────────
+# Only the `<<DELIM` token and the body are removed; the rest of the command line is kept, so
+# `cat <<'EOF' > src/new.ts` (redirect after the delimiter — valid bash, and the form a
+# cross-vendor review found slipping through) still yields its target.
 stripped=$(printf '%s\n' "$cmd" | awk -v q="'" -v dq='"' '
   BEGIN { skip = 0; re = "<<-?[ \t]*[" dq q "]?[A-Za-z_][A-Za-z0-9_]*[" dq q "]?" }
   {
     if (skip) { if ($0 == delim) skip = 0; next }
     if (match($0, re)) {
       d = substr($0, RSTART, RLENGTH); sub(/<<-?[ \t]*/, "", d); gsub("[" dq q "]", "", d)
-      delim = d; skip = 1; print substr($0, 1, RSTART - 1); next
+      delim = d; skip = 1; print substr($0, 1, RSTART - 1) " " substr($0, RSTART + RLENGTH); next
     }
     print
   }' 2>/dev/null | sed -E "s/'[^']*'//g; s/\"//g" 2>/dev/null) || allow

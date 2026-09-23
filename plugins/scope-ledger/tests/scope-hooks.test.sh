@@ -288,6 +288,19 @@ x
 EOF')" "$tt" "$p")" 'Bash 寫入 src/a.php'
 tt=$WORK/bt9c; mkdir -p "$tt"
 check "B9c 命令位置的 patch → deny" "$(run_hook scope-gate-bash.sh "$(bash_json b9c "$p" 'cd src && patch -p1 < ../fix.diff')" "$tt" "$p")" 'patch／git apply'
+# B10 重導向寫在 heredoc 標記之後（合法 bash；Codex 跨 vendor review 抓到的漏網）——兩種形狀
+tt=$WORK/bt10; mkdir -p "$tt"
+check "B10 cat <<EOF > src/new.ts → deny" "$(run_hook scope-gate-bash.sh "$(bash_json b10 "$p" "cat <<'EOF' > src/new.ts
+export const x = 1;
+EOF")" "$tt" "$p")" 'Bash 寫入 src/new.ts'
+tt=$WORK/bt10b; mkdir -p "$tt"
+check "B10b cat <<EOF | tee src/a.php → deny" "$(run_hook scope-gate-bash.sh "$(bash_json b10b "$p" "cat <<EOF | tee src/a.php
+x
+EOF")" "$tt" "$p")" 'Bash 寫入 src/a.php'
+tt=$WORK/bt10c; mkdir -p "$tt"
+check_empty "B10c heredoc 內文的 > 仍不算（標記後無重導向）" "$(run_hook scope-gate-bash.sh "$(bash_json b10c "$p" "cat <<'EOF'
+node build.js > dist/app.js
+EOF")" "$tt" "$p")"
 
 # ===== scope-prompt-reminder.sh =====
 prompt_json() { printf '{"session_id":"%s","cwd":"%s","hook_event_name":"UserPromptSubmit","prompt":"fix it","source":"%s"}' "$1" "$2" "$3"; }
