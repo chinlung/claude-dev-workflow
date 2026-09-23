@@ -17,6 +17,7 @@ A collection of powerful plugins for Claude Code, featuring automated developmen
 | [CodeGraph](#codegraph-plugin) | Structural code intelligence (callers, impact, call paths) before grep when editing/reviewing | auto-triggered skill |
 | [Security Audit](#security-audit-plugin) | Six-phase multi-agent pipeline that actively hunts exploitable vulnerabilities (vendored from cloudflare/security-audit-skill) | auto-triggered skill |
 | [Session Reflect](#session-reflect-plugin) | Session-end review that proposes up to 5 verified, actionable improvement suggestions | `/session-reflect:reflect` + Stop hook |
+| [Scope Ledger](#scope-ledger-plugin) | Per-goal scope ledger + follow-ups backlog + six fail-open hooks that triage review findings (converge / harvest modes) and stop review-driven scope creep without skipping real bugs | `/scope-ledger:scope` + PreToolUse (Edit + Bash) / UserPromptSubmit / PostToolUse / Stop / SessionStart hooks |
 
 ## Installation
 
@@ -34,6 +35,7 @@ A collection of powerful plugins for Claude Code, featuring automated developmen
 /plugin install codegraph@scl-claude-plugins
 /plugin install security-audit@scl-claude-plugins
 /plugin install session-reflect@scl-claude-plugins
+/plugin install scope-ledger@scl-claude-plugins
 ```
 
 Or install directly:
@@ -652,6 +654,10 @@ Node.js — for the Phase 5 `validate-findings.cjs` schema validator.
 # Session Reflect Plugin
 
 Session-end reflective review. A fail-open Stop-hook gate triages cheaply (routine or thin sessions pass through untouched), then the `reflect` skill sweeps the session from four lenses — out-of-scope findings, pre-existing issues, adjacent optimizations, knowledge gaps. Every candidate must carry a concrete evidence anchor and survive both an inline four-filter self-review and an adversarial verifier subagent before you see it. Up to 5 suggestions are offered as a multi-select choice: chosen ones execute immediately while context is hot; unchosen ones persist to `.claude/reflect-backlog.md` for later (`/session-reflect:reflect` re-opens the review anytime). Complements Session Learning: that plugin saves *lessons*, this one proposes *actions*. Details: [`plugins/session-reflect/README.md`](plugins/session-reflect/README.md).
+
+# Scope Ledger Plugin
+
+Keeps review-driven work from expanding past the original request without letting real bugs or security findings be skipped. A per-goal ledger (`.claude/scope-ledger.local.md`: the user's goal verbatim, a `mode`, review round count, In scope / Deferred / Log — not bound to a branch, because one goal routinely spans hotfixes and PR chains) is the baseline; six fail-open hooks read it. The main thread's first source-file write without a ledger — through Edit/Write **or** through `sed -i`, `perl -pi`, a heredoc redirect, `cp`/`mv` or `patch` in Bash — is denied once and asks for `/scope-ledger:scope init "<goal>"`; the first prompt of a session gets a one-line, non-blocking reminder when no ledger exists. Every review-entry skill or review-type subagent injects the triage policy: in `converge` mode findings are input, not a work order — adopted only when they belong to this change, are an exploitable security finding in the touched code, another instance of the same defect, a project MUST rule, or a boy-scout fix; otherwise deferred with severity, reason and destination, where deferring is scheduling, not dismissal; in `harvest` mode (the goal itself is an audit or a batch of findings) findings *are* the work, batched by severity. `done` moves deferred items into a per-repository `.claude/scope-followups.local.md` that SessionStart, the first-prompt reminder and `status` all announce (HIGH first), and a HIGH security item cannot be deferred without an issue or a next goal. A git-tracked ledger — including one reached through a committed symlink or submodule — is repository-controlled content and ignored by every hook. A Stop with unticked In scope items is blocked once per distinct state, asking for a per-item status rather than more work. SessionStart replays the whole In scope list after a compaction or resume. Built after measuring the author's own sessions: zero todo-tool calls in the whole history, one four-day session with 23 security reviews across 17 PRs. Details: [`plugins/scope-ledger/README.md`](plugins/scope-ledger/README.md).
 
 ---
 
