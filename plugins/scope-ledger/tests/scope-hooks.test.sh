@@ -57,6 +57,8 @@ write_followups() {
   local d="$1"; shift
   { printf '# scope-ledger follow-ups\n'; for l in "$@"; do printf '%s\n' "$l"; done; } > "$d/.claude/scope-followups.local.md"
 }
+# start_json_ci <sid> <cwd>：SessionStart 輸入（供 helper 段提前使用；正式的 start_json 定義在 T 段）
+start_json_ci() { printf '{"session_id":"%s","cwd":"%s","hook_event_name":"SessionStart","source":"startup"}' "$1" "$2"; }
 # symlink_layout <dir>：.claude → payload（repo 控制的內容經 symlink 進入帳本路徑）
 symlink_layout() {
   mkdir -p "$1/payload" "$1/src"; git -C "$1" init -q; git -C "$1" config core.fsmonitor false
@@ -149,6 +151,23 @@ check_eq "H14e 一般目錄未追蹤 → 仍回 1" "$(ledger_tracked "$p"; echo 
 p=$WORK/h14s; make_repo "$p"; printf -- '---\n---\n## In scope\n- [ ] evil\n' > "$p/tracked.md"
 git -C "$p" add tracked.md 2>/dev/null; ln -s ../tracked.md "$p/.claude/scope-ledger.local.md"
 check_eq "H14f 帳本為 symlink → 回 0" "$(ledger_tracked "$p"; echo $?)" "0"
+# H14g case-folding：repo 追蹤的是 `.Claude/…`（大小寫不同）——APFS／NTFS 上 <proj>/.claude/… 解析到同一個檔，
+# 但 git pathspec 分大小寫；不加 :(icase) 兩個 ls-files 都找不到、帳本被當成使用者自己的（security review 重現）。
+# 斷言對 case-sensitive 與 case-insensitive 檔案系統都成立：ledger_tracked 只看 index，兩邊都應回 0。
+p=$WORK/h14ci; mkdir -p "$p/src"; git -C "$p" init -q; git -C "$p" config core.fsmonitor false
+mkdir -p "$p/.Claude"
+printf -- '---\ngoal: ATTACKER\nmode: harvest\nreview_rounds: 0\n---\n## In scope\n- [ ] ATTACKER ITEM\n' > "$p/.Claude/scope-ledger.local.md"
+printf -- '# scope-ledger follow-ups\n- [ ] 2026-09-23 HIGH ATTACKER LINE\n' > "$p/.Claude/scope-followups.local.md"
+git -C "$p" add .Claude 2>/dev/null
+git -C "$p" -c user.email=t@t.t -c user.name=t -c commit.gpgsign=false commit -q -m payload 2>/dev/null
+check_eq "H14g 追蹤 .Claude/ 帳本 → ledger_tracked 回 0" "$(ledger_tracked "$p"; echo $?)" "0"
+check_eq "H14h 追蹤 .Claude/ follow-ups → followups_tracked 回 0" "$(followups_tracked "$p"; echo $?)" "0"
+check_eq "H14i 因此 ledger_usable 回 1" "$(ledger_usable "$p"; echo $?)" "1"
+check_eq "H14j 因此 followups_usable 回 1" "$(followups_usable "$p"; echo $?)" "1"
+t=$WORK/tt14ci; mkdir -p "$t"
+check_empty "H14k SessionStart 不回放 .Claude/ 內容" "$(printf '%s' "$(run_hook scope-session-start.sh "$(start_json_ci s14 "$p")" "$t" "$p")" | grep -o 'ATTACKER' || true)"
+check_empty "H14l Stop 對 .Claude/ 帳本靜默" "$(printf '{"session_id":"s14","cwd":"%s","hook_event_name":"Stop","stop_hook_active":false}' "$p" | TMPDIR="$t" CLAUDE_PROJECT_DIR="$p" bash "$HOOKS/scope-stop-check.sh" 2>/dev/null || true)"
+check_empty "H14m .Claude/ 帳本未被改寫" "$(git -C "$p" diff --name-only 2>/dev/null)"
 # follow-ups helpers
 p=$WORK/h15; make_repo "$p"
 write_followups "$p" '- [ ] 2026-09-01 HIGH 匯入缺口 ← from: g1 ｜ 去處: issue #1' '- [x] 2026-09-01 LOW done' '- [ ] 2026-09-02 MEDIUM m' '- [ ] 2026-09-03 HIGH h2' '- [ ] 2026-09-04 LOW l'
@@ -219,6 +238,16 @@ check "G12c 主代理隨後首次編輯 → 仍 deny" "$(run_hook scope-gate.sh 
 check_flag  "G12c 主代理 deny 後留 flag" "$t/claude-scope-gate-s12" exists
 p=$WORK/g12d; make_repo "$p"; t=$WORK/gt12d; mkdir -p "$t"
 check "G12d 只有 agent_type → 仍 deny" "$(printf '{"session_id":"s12d","agent_type":"reviewer","cwd":"%s","tool_name":"Edit","tool_input":{"file_path":"%s"}}' "$p" "$p/src/a.php" | TMPDIR="$t" CLAUDE_PROJECT_DIR="$p" bash "$HOOKS/scope-gate.sh" 2>/dev/null || true)" '"permissionDecision":"deny"'
+# G13 $TMPDIR 裡的旗標路徑被預先放成 symlink（共用 /tmp 的另一使用者）→ 不寫、不跟隨、放行
+p=$WORK/g13; make_repo "$p"; t=$WORK/gt13; mkdir -p "$t"; ln -s "$t/victim" "$t/claude-scope-gate-s13"
+check_empty "G13 gate 旗標為 symlink → allow 不寫" "$(run_hook scope-gate.sh "$(gate_json s13 "$p" "$p/src/a.php")" "$t" "$p")"
+check_flag "G13 symlink 目標未被建立" "$t/victim" absent
+ln -s "$t/victim2" "$t/claude-scope-prompt-s13"
+check_empty "G13b 提示旗標為 symlink → 靜默不寫" "$(printf '{"session_id":"s13","cwd":"%s","hook_event_name":"UserPromptSubmit","prompt":"x","source":"user"}' "$p" | TMPDIR="$t" CLAUDE_PROJECT_DIR="$p" bash "$HOOKS/scope-prompt-reminder.sh" 2>/dev/null || true)"
+check_flag "G13b symlink 目標未被建立" "$t/victim2" absent
+write_ledger "$p" converge 0 '- [ ] A'; ln -s "$t/victim3" "$t/claude-scope-stop-s13"
+check_empty "G13c Stop 狀態檔為 symlink → 靜默不寫" "$(printf '{"session_id":"s13","cwd":"%s","hook_event_name":"Stop","stop_hook_active":false}' "$p" | TMPDIR="$t" CLAUDE_PROJECT_DIR="$p" bash "$HOOKS/scope-stop-check.sh" 2>/dev/null || true)"
+check_flag "G13c symlink 目標未被建立" "$t/victim3" absent
 
 # ===== scope-gate-bash.sh =====
 bash_json() { printf '{"session_id":"%s","cwd":"%s","tool_name":"Bash","tool_input":{"command":%s}}' "$1" "$2" "$(printf '%s' "$3" | jq -Rs .)"; }

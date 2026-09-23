@@ -31,14 +31,20 @@ followups_path() { printf '%s/%s\n' "${1%/}" "$FOLLOWUPS_REL"; }
 #   2. the file itself is a symlink                      → 0
 #   3. the index entry for .claude is 120000 (symlink) or 160000 (gitlink / submodule) → 0
 #   4. the path is an index entry (plain tracked)        → 0
+# Checks 3 and 4 use the `:(icase)` pathspec: on a case-insensitive filesystem (macOS APFS by
+# default, Windows) a repository that commits `.Claude/scope-ledger.local.md` puts a real file at
+# `.claude/scope-ledger.local.md`, while git pathspecs stay case-sensitive and would report it
+# untracked (security review reproduced the bypass). On a case-sensitive filesystem the same
+# lookup can only err toward "tracked" — the direction that ignores a ledger, never one that
+# replays repository text.
 # Not a git repo / git failure → 1 (not tracked), which keeps the fail-open direction.
 path_tracked() {
   local p="${1%/}" rel="$2" mode
   [ -L "$p/.claude" ] && return 0
   [ -L "$p/$rel" ] && return 0
-  mode=$(git -C "$p" ls-files --stage -- .claude 2>/dev/null | awk '{ print $1; exit }')
+  mode=$(git -C "$p" ls-files --stage -- ':(icase).claude' 2>/dev/null | awk '{ print $1; exit }')
   case "$mode" in 120000 | 160000) return 0 ;; esac
-  git -C "$p" ls-files --error-unmatch -- "$rel" >/dev/null 2>&1 || return 1
+  git -C "$p" ls-files --error-unmatch -- ":(icase)$rel" >/dev/null 2>&1 || return 1
 }
 ledger_tracked()    { path_tracked "$1" "$LEDGER_REL"; }
 followups_tracked() { path_tracked "$1" "$FOLLOWUPS_REL"; }

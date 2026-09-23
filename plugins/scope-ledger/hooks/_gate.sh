@@ -35,6 +35,8 @@ gate_verdict() {
   [ -f "$(ledger_path "$proj")" ] && return 0
   sid="${sid//[^a-zA-Z0-9._-]/_}"
   flag="${TMPDIR:-/tmp}/claude-scope-gate-${sid}"
+  # A flag path that is a symlink was planted by someone else (shared /tmp): never write through it.
+  [ -L "$flag" ] && return 0
   if [ -f "$flag" ]; then
     now=$(date +%s 2>/dev/null) || return 0
     # stat semantics differ: GNU/uutils -c %Y is mtime, -f is filesystem mode (may "succeed" with

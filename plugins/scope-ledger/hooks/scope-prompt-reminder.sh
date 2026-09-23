@@ -17,11 +17,17 @@ input=$(cat)
 command -v jq >/dev/null 2>&1 || quiet
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_ledger.sh" || quiet
 
+# `source` is declared in the harness's UserPromptSubmit schema (user / sdk / system / loop_wakeup /
+# schedule_wakeup / poll_event) but, as of Claude Code 2.1.280, the payload builder does not send it
+# yet ("payloads may omit it while the field rolls out"). Absent → treated as a person's prompt; the
+# only cost is that a loop / schedule wake-up may spend this session's single reminder.
 src=$(printf '%s' "$input" | jq -r '.source // "user"')
 case "$src" in user | sdk) : ;; *) quiet ;; esac
 session_id=$(printf '%s' "$input" | jq -r '.session_id // "unknown"')
 session_id="${session_id//[^a-zA-Z0-9._-]/_}"
 flag="${TMPDIR:-/tmp}/claude-scope-prompt-${session_id}"
+# A flag path that is a symlink was planted by someone else (shared /tmp): never write through it.
+[ -L "$flag" ] && quiet
 [ -f "$flag" ] && quiet
 touch "$flag" 2>/dev/null || quiet
 

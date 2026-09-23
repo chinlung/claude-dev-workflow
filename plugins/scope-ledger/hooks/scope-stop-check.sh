@@ -38,6 +38,8 @@ sig=$(printf '%s\n' "$open" | cksum | awk '{print $1}')
 case "$sig" in '' | *[!0-9]*) allow ;; esac
 
 state="${TMPDIR:-/tmp}/claude-scope-stop-${session_id}"
+# A state path that is a symlink was planted by someone else (shared /tmp): never write through it.
+if [ -L "$state" ]; then allow; fi
 if [ -f "$state" ] && [ "$(cat "$state" 2>/dev/null)" = "$sig" ]; then allow; fi
 printf '%s' "$sig" > "$state" || allow
 
