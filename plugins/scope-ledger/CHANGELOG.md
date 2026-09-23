@@ -2,6 +2,12 @@
 
 All notable changes to the `scope-ledger` plugin will be documented in this file.
 
+## [1.0.1] - 2026-09-23
+
+### Fixed
+
+- **A review command the user types now counts as a round.** `review_rounds` was bumped only by the PostToolUse `Skill` hook. A typed slash command is expanded inline and never becomes a Skill tool call, so every typed review went uncounted — including every `/claude-security` run, which is `disable-model-invocation` and can only be typed. Its allowlist entry could never match. In use, a ledger read round 4 while its Log recorded five reviews: two runs were typed `/claude-security`. `scope-review-triage.sh` is now also wired to `UserPromptSubmit`. A prompt whose first line *starts* with `/<command>` goes through the same allowlist (companion commands still inject without counting), bumps under the same lock and injects the same policy, with `hookEventName` set to the event it answers. Prose that mentions a command, a command on the second line, and non-review commands stay silent. The allowlist also accepts the fully qualified `claude-security:claude-security`. The harness hands `UserPromptSubmit` the raw submitted text (checked against the 2.1.280 binary: hooks receive the pre-expansion input). 18 new assertions (297 total), with two inputs per branch; `R11f` replays the reported mix of three Skill-route and two typed rounds and expects 5.
+
 ## [1.0.0] - 2026-09-23
 
 ### Added

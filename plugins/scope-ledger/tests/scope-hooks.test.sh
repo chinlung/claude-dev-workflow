@@ -476,6 +476,35 @@ check "R9d 第 10 輪盤點" "$(run_hook scope-review-triage.sh "$(skill_json s9
 p=$WORK/r10; make_repo "$p"; t=$WORK/rt10; mkdir -p "$t"; write_ledger "$p" converge 0 '- [ ] A'
 write_followups "$p" '- [ ] 2026-09-01 HIGH a' '- [ ] 2026-09-01 HIGH b' '- [ ] 2026-09-01 LOW c'
 check "R10 HIGH follow-ups 2 項" "$(run_hook scope-review-triage.sh "$(skill_json s10 "$p" review-branch)" "$t" "$p")" 'HIGH 2 項未排程'
+# R11 使用者手打的 slash command（UserPromptSubmit）：手打指令就地展開、不經 Skill 工具，
+# disable-model-invocation 的 /claude-security 只能手打——這條路不計輪，帳本就會少算
+typed_json() { jq -cn --arg s "$1" --arg c "$2" --arg p "$3" '{session_id:$s,cwd:$c,hook_event_name:"UserPromptSubmit",prompt:$p,source:"user"}'; }
+p=$WORK/r11; make_repo "$p"; t=$WORK/rt11; mkdir -p "$t"; write_ledger "$p" converge 0 '- [ ] A'
+L="$p/.claude/scope-ledger.local.md"
+out=$(run_hook scope-review-triage.sh "$(typed_json s11 "$p" '/claude-security')" "$t" "$p")
+check "R11 手打 /claude-security → 注入" "$out" '"additionalContext"'
+check "R11 hookEventName 是 UserPromptSubmit" "$out" '"hookEventName":"UserPromptSubmit"'
+check "R11 標第 1 輪" "$out" '第 1 輪'
+out=$(run_hook scope-review-triage.sh "$(typed_json s11 "$p" '  /code-audit-rigor:review-branch main --focus src')" "$t" "$p")
+check "R11b 前導空白＋帶參數的手打指令 → 第 2 輪" "$out" '第 2 輪'
+run_hook scope-review-triage.sh "$(typed_json s11 "$p" '/claude-security:claude-security')" "$t" "$p" >/dev/null
+check_eq "R11c plugin 前綴全名也計輪 → 3" "$(ledger_rounds "$L")" "3"
+# R11d 手打的 codex 伴隨 pass → 注入不計輪（兩例）
+check "R11d 手打 /codex:review → 注入" "$(run_hook scope-review-triage.sh "$(typed_json s11 "$p" '/codex:review --base main')" "$t" "$p")" '"additionalContext"'
+run_hook scope-review-triage.sh "$(typed_json s11 "$p" '/codex-review-bg')" "$t" "$p" >/dev/null
+check_eq "R11d 伴隨 pass 不計輪，仍 3" "$(ledger_rounds "$L")" "3"
+# R11e 非 review 的手打指令、只是提到指令的散文、第二行才出現的指令 → 靜默、不計輪
+for pr in '/commit' '/superpowers:brainstorming' 'fix it' '請之後跑 /review-branch' "$(printf 'fix it\n/review-branch')" '/'; do
+  check_empty "R11e [$pr] → 靜默" "$(run_hook scope-review-triage.sh "$(typed_json s11 "$p" "$pr")" "$t" "$p")"
+done
+check_eq "R11e rounds 仍 3" "$(ledger_rounds "$L")" "3"
+# R11f 回報的情境：模型呼叫 3 輪 + 手打 /claude-security 2 輪 → 帳本 5 輪，與 Log 一致
+p=$WORK/r11f; make_repo "$p"; t=$WORK/rt11f; mkdir -p "$t"; write_ledger "$p" converge 0 '- [ ] A'
+for s in review-branch security-review review-pr; do run_hook scope-review-triage.sh "$(skill_json s11f "$p" "$s")" "$t" "$p" >/dev/null; done
+run_hook scope-review-triage.sh "$(typed_json s11f "$p" '/claude-security')" "$t" "$p" >/dev/null
+out=$(run_hook scope-review-triage.sh "$(typed_json s11f "$p" '/claude-security')" "$t" "$p")
+check_eq "R11f 混合兩條路 → 5 輪" "$(ledger_rounds "$p/.claude/scope-ledger.local.md")" "5"
+check "R11f 手打的第 5 輪也收斂告警" "$out" '收斂告警'
 
 # ===== scope-stop-check.sh =====
 stop_json() { printf '{"session_id":"%s","cwd":"%s","hook_event_name":"Stop","stop_hook_active":%s}' "$1" "$2" "$3"; }
@@ -542,6 +571,7 @@ check "T2b 全勾仍印、0 項" "$(run_hook scope-session-start.sh "$(start_jso
 check "T3 hooks.json PreToolUse Edit" "$(jq -r '.hooks.PreToolUse[0].matcher' "$HOOKS/hooks.json")" 'Edit|Write|MultiEdit|NotebookEdit'
 check "T3 hooks.json PreToolUse Bash" "$(jq -r '.hooks.PreToolUse[1].matcher' "$HOOKS/hooks.json")" '^Bash$'
 check "T3 hooks.json UserPromptSubmit" "$(jq -r '.hooks.UserPromptSubmit[0].hooks[0].command' "$HOOKS/hooks.json")" 'scope-prompt-reminder.sh'
+check "T3b hooks.json UserPromptSubmit 也接 triage（手打 review 指令計輪）" "$(jq -r '.hooks.UserPromptSubmit[].hooks[].command' "$HOOKS/hooks.json")" 'scope-review-triage.sh'
 check "T3 hooks.json PostToolUse" "$(jq -r '.hooks.PostToolUse[0].matcher' "$HOOKS/hooks.json")" 'Skill|Agent'
 check "T3 hooks.json Stop" "$(jq -r '.hooks.Stop[0].hooks[0].command' "$HOOKS/hooks.json")" 'scope-stop-check.sh'
 check "T3 hooks.json SessionStart" "$(jq -r '.hooks.SessionStart[0].matcher' "$HOOKS/hooks.json")" 'startup|resume|compact|clear'

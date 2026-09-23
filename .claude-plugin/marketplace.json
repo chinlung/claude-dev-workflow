@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "Claude Code plugins collection by scl",
-    "version": "1.11.0"
+    "version": "1.11.1"
   },
   "plugins": [
     {
@@ -74,8 +74,8 @@
     {
       "name": "scope-ledger",
       "source": "./plugins/scope-ledger",
-      "description": "工作範圍帳本 - 每個 goal 一份 .claude/scope-ledger.local.md（原始請求逐字、mode converge/harvest、In scope / Deferred / Log，不綁分支）＋每 repo 一份 follow-ups backlog＋六個 fail-open hook：首次寫程式碼檔無帳本 deny 一次（Edit/Write 或 Bash 的 sed -i／perl -pi／重導向／cp／mv／patch 皆抓）、session 首則提示提醒一次、review 入口 skill 後注入依 mode 的 finding triage 政策並計輪（採納屬本次變更者與可利用安全 finding／sibling／守則命中／boy-scout，其餘附嚴重度理由去處延後——延後是排程不是裁決）、Stop 時有未完成項 block 一次、SessionStart 把帳本與 follow-ups 印回 context。讓 review 驅動的工作不會無限擴張、原目標不會被忘記，也不讓真 bug 與安全 finding 被跳過。",
-      "version": "1.0.0",
+      "description": "工作範圍帳本 - 每個 goal 一份 .claude/scope-ledger.local.md（原始請求逐字、mode converge/harvest、In scope / Deferred / Log，不綁分支）＋每 repo 一份 follow-ups backlog＋六個 fail-open hook：首次寫程式碼檔無帳本 deny 一次（Edit/Write 或 Bash 的 sed -i／perl -pi／重導向／cp／mv／patch 皆抓）、session 首則提示提醒一次、review 入口指令（Skill 呼叫或手打 /指令）後注入依 mode 的 finding triage 政策並計輪（採納屬本次變更者與可利用安全 finding／sibling／守則命中／boy-scout，其餘附嚴重度理由去處延後——延後是排程不是裁決）、Stop 時有未完成項 block 一次、SessionStart 把帳本與 follow-ups 印回 context。讓 review 驅動的工作不會無限擴張、原目標不會被忘記，也不讓真 bug 與安全 finding 被跳過。",
+      "version": "1.0.1",
       "keywords": ["scope", "scope-creep", "triage", "review-findings", "stop-hook", "session-continuity", "compaction"]
     }
   ]

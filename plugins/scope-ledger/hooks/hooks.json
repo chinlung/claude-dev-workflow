@@ -1,5 +1,5 @@
 {
-  "description": "scope-ledger：以 .claude/scope-ledger.local.md 為工作範圍帳本（per goal、與分支無關）——主代理首次改程式碼（Edit/Write 或 Bash 的 sed -i／perl -pi／重導向／cp／mv／patch）無帳本 deny 一次（子代理放行、兩管道共用同一次）、每 session 首則提示無帳本時提醒一次（不阻擋）、review 入口 skill 呼叫時依 mode（converge／harvest）注入 finding triage 政策並計輪（review 型子代理與 codex 伴隨 pass 只注入）、Stop 時對照未完成項 block 一次、SessionStart 把帳本與 follow-ups 印回 context；被 git 追蹤（或經 symlink／submodule）的帳本視為 repo 控制內容一律忽略；全面 fail-open",
+  "description": "scope-ledger：以 .claude/scope-ledger.local.md 為工作範圍帳本（per goal、與分支無關）——主代理首次改程式碼（Edit/Write 或 Bash 的 sed -i／perl -pi／重導向／cp／mv／patch）無帳本 deny 一次（子代理放行、兩管道共用同一次）、每 session 首則提示無帳本時提醒一次（不阻擋）、review 入口指令（模型呼叫 Skill 或使用者手打 /指令）啟動時依 mode（converge／harvest）注入 finding triage 政策並計輪（review 型子代理與 codex 伴隨 pass 只注入）、Stop 時對照未完成項 block 一次、SessionStart 把帳本與 follow-ups 印回 context；被 git 追蹤（或經 symlink／submodule）的帳本視為 repo 控制內容一律忽略；全面 fail-open",
   "hooks": {
     "PreToolUse": [
       {
@@ -18,7 +18,8 @@
     "UserPromptSubmit": [
       {
         "hooks": [
-          { "type": "command", "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/scope-prompt-reminder.sh\"", "timeout": 10 }
+          { "type": "command", "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/scope-prompt-reminder.sh\"", "timeout": 10 },
+          { "type": "command", "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/scope-review-triage.sh\"", "timeout": 10 }
         ]
       }
     ],

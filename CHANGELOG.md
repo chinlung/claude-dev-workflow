@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.11.1] - 2026-09-23
+
+### Fixed
+
+- **scope-ledger 1.0.0 → 1.0.1: a review command the user types now counts as a round.** Only the PostToolUse `Skill` hook bumped `review_rounds`. A typed slash command is expanded inline and never becomes a Skill tool call, so typed reviews went uncounted, and `/claude-security` never counted at all: it is `disable-model-invocation`, so the only way to run it is to type it. The problem showed up in real use, where a ledger read round 4 and its Log recorded five reviews. The triage hook is now also wired to `UserPromptSubmit`: a prompt that starts with an allowlisted `/<command>` bumps the counter and injects the same policy. Prose that only mentions a command does not count. 18 new fixture assertions (297 total), including a replay of the reported three-plus-two mix.
+
 ## [1.11.0] - 2026-09-23
 
 ### Added
