@@ -297,8 +297,18 @@ check_empty "B5 寫 .claude/ 內 → allow" "$(run_hook scope-gate-bash.sh "$(ba
 ---
 EOF")" "$t" "$p")"
 check_empty "B5b 寫專案外 → allow" "$(run_hook scope-gate-bash.sh "$(bash_json b5 "$p" "echo x > $WORK/elsewhere/z.php")" "$t" "$p")"
-check_empty "B5c 寫 /tmp → allow" "$(run_hook scope-gate-bash.sh "$(bash_json b5 "$p" "sed -i '' 's/a/b/' /tmp/x.php")" "$t" "$p")"
+check_empty "B5c 寫專案外的 /tmp → allow" "$(run_hook scope-gate-bash.sh "$(bash_json b5 "$p" "sed -i '' 's/a/b/' /tmp/x.php")" "$t" "$p")"
+check_empty "B5d 寫 \$TMPDIR（未展開）→ allow" "$(run_hook scope-gate-bash.sh "$(bash_json b5 "$p" 'cat > $TMPDIR/x.php <<EOF
+x
+EOF')" "$t" "$p")"
 check_flag "B5 不留 flag" "$t/claude-scope-gate-b5" absent
+# B11 專案本身位於 /tmp 之下（CI 的 fixture、拋棄式 checkout）→ 專案內寫入仍要 deny；
+# 曾因「/tmp/* 一律當暫存檔」的豁免讓 CI 上整個 Bash gate 靜默失效（本機 $TMPDIR 在 /var/folders 所以沒發現）
+p11=$(mktemp -d /tmp/scope-hooks-b11.XXXXXX) && make_repo "$p11" && t=$WORK/bt11 && mkdir -p "$t"
+check "B11 專案在 /tmp 下、sed -i 專案內 .php → deny" "$(run_hook scope-gate-bash.sh "$(bash_json b11 "$p11" "sed -i 's/a/b/' src/a.php")" "$t" "$p11")" '"permissionDecision":"deny"'
+tt=$WORK/bt11b; mkdir -p "$tt"
+check "B11b 專案在 /tmp 下、>> 專案內 .ts → deny" "$(run_hook scope-gate-bash.sh "$(bash_json b11b "$p11" "echo x >> $p11/src/b.ts")" "$tt" "$p11")" '"permissionDecision":"deny"'
+rm -rf "$p11"
 p=$WORK/b6; make_repo "$p"; t=$WORK/bt6; mkdir -p "$t"; write_ledger "$p" converge 0 '- [ ] A'
 check_empty "B6 帳本存在 → allow" "$(run_hook scope-gate-bash.sh "$(bash_json b6 "$p" "sed -i '' 's/a/b/' src/a.php")" "$t" "$p")"
 p=$WORK/b7; make_repo "$p"; t=$WORK/bt7; mkdir -p "$t"

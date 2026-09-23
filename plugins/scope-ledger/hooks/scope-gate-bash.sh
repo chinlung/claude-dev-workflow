@@ -97,9 +97,13 @@ targets=$(printf '%s\n' "$stripped" | tr ';|&' '\n\n\n' | awk -v base="$cwd" -v 
 [ -n "$targets" ] || allow
 
 # ── 3. Judge each target; the first deny wins ────────────────────────────────────────────────
+# No blanket "/tmp is scratch" exemption: a target outside the project already passes in
+# gate_verdict, and a project that itself lives under /tmp (CI fixtures, throwaway checkouts) must
+# still be gated — an earlier `/tmp/*` skip made the whole gate a no-op there. `$TMPDIR` targets
+# arrive unexpanded and are dropped by the collector.
 printf '%s\n' "$targets" | while IFS= read -r t; do
   [ -n "$t" ] || continue
-  case "$t" in *TMPDIR* | /tmp/* | /private/tmp/* | /dev/*) continue ;; esac
+  case "$t" in /dev/*) continue ;; esac
   anyfile=""
   if [ "$t" = "__PATCH__" ]; then
     t="$proj/.scope-ledger-patch-target"; anyfile=any
