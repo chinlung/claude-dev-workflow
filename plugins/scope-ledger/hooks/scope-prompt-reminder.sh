@@ -38,10 +38,11 @@ proj="${proj%/}"
 if ledger_usable "$proj"; then quiet; fi
 
 fu=$(followups_path "$proj")
-n=0; h=0
+n=0; h=0; notice=""
 if followups_usable "$proj"; then
   n=$(count_lines "$(followups_open "$fu")")
   h=$(count_lines "$(followups_high "$fu")")
+  notice=$(scope_problem_notice "follow-ups" "$fu" followups)
 fi
 
 # Always ${var} next to non-ASCII text (set -u would otherwise swallow the glued character).
@@ -50,4 +51,5 @@ if [ "$n" -gt 0 ]; then
   msg="${msg} 另有 follow-ups ${n} 項（HIGH ${h}）待排程——\`/scope-ledger:scope status\` 看清單，用 init 接手。"
 fi
 printf '%s\n' "$msg"
+if [ -n "$notice" ]; then printf '%s\n' "$notice"; fi
 exit 0

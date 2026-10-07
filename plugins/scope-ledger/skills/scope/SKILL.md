@@ -8,7 +8,7 @@ argument-hint: "[init \"<goal>\" | status | defer \"<item>\" --severity HIGH|MED
 
 帳本是一個檔案：`<project>/.claude/scope-ledger.local.md`，**一個 goal 一份**，與分支無關——一個 goal 底下開幾個分支、幾個 PR 都記在同一份帳本的 Log 裡；切分支是正常工作，不會被閘門擋。它是本次工作的基線：原始請求逐字、mode、In scope 清單、被延後的項目與去處。六個 hook 讀它：主代理首次改程式碼（Edit／Write，或 Bash 的 `sed -i`／`perl -pi`／重導向／`cp`／`mv`／`patch`）沒有帳本會被 deny 一次（子代理放行）；每 session 第一則提示若無帳本會提醒一次（不阻擋）；review 入口指令啟動時（模型呼叫 Skill，或使用者手打 `/指令`）依 mode 注入 triage 政策並把 `review_rounds` 加一（review 型子代理與 codex 伴隨 pass 只注入不計輪）；Stop 時 In scope 有未勾項會 block 一次；SessionStart（含 compaction 後）把帳本與 follow-ups 印回 context。帳本若被 git 追蹤（或經 symlink／submodule 進入 repo），所有 hook 一律忽略它——`init` 會檢查並提醒。
 
-跨帳本的 backlog 是第二個檔案：`<project>/.claude/scope-followups.local.md`。`done` 把 Deferred 搬進去；SessionStart、首則提示、`status` 都會報它的件數（HIGH 優先）。延後的東西在這裡，不在記憶裡——記憶是會被忘的地方。
+跨帳本的 backlog 是第二個檔案：`<project>/.claude/scope-followups.local.md`。`done` 把 Deferred 搬進去；SessionStart 與 `status` 會報它的件數（HIGH 優先），首則提示在專案沒有可用帳本時也報。延後的東西在這裡，不在記憶裡——記憶是會被忘的地方。
 
 ## 帳本格式（逐字使用）
 
@@ -34,8 +34,12 @@ follow-ups 格式（`done` 產生，也可手寫）：
 
 ```markdown
 # scope-ledger follow-ups
-- [ ] <YYYY-MM-DD> <HIGH|MEDIUM|LOW> <項目> ← from: <goal 摘要> ｜ 來源: <工具@rN> ｜ 去處: <issue #N｜next: <goal>｜待排程>
+- [ ] <YYYY-MM-DD> <HIGH|MEDIUM|LOW> <項目> ← from: <goal 摘要> ｜ 來源: <工具@rN> ｜ 去處: <issue #N｜next: <goal>｜follow-ups｜review-notes｜待排程>
 ```
+
+`去處` 的值與 Deferred 一致（`done` 把 Deferred 原樣搬過來，`won't-fix` 不搬）。一行必須是這個形狀：`HIGH|MEDIUM|LOW` 後面要一個空格、`← from:`／`來源:`／`去處:` 三段齊全；`｜` 可用 ASCII `|`、`來源:`／`去處:` 可用 `source:`／`where:`；行尾 `<!-- scope:… -->` 的 metadata 註解（Pi 版寫入）會被忽略。
+
+**文法只定義在 `hooks/scope-parse.awk` 一處**，所有 hook 都經它讀取；格式不合的行不會被默默算進或漏掉，而是由 SessionStart 大聲報出「第 N 行＋原因」（兩個檔案都報；首則提示只在專案沒有可用帳本時才開口，且只重複 follow-ups 的問題、不報帳本的；只列行號與固定用語、不回放內容）：欄位不齊但認得出（勾選框＋日期＋嚴重度都對）的行照常計入件數；認不出的行不計入，若它是未勾選的行會特別標明，避免待辦無聲消失。
 
 硬規則：
 

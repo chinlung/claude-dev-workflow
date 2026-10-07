@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.11.2] - 2026-10-07
+
+### Fixed
+
+- **scope-ledger 1.0.1 → 1.0.2: malformed lines in the follow-ups file and the ledger are no longer swallowed silently; one parser (`hooks/scope-parse.awk`) now defines the grammar.** Each hook used to decide "what is an open item" with its own one-line `grep`/`awk` pattern, so a subtly wrong line (`HIGH` glued to the next character, a missing `去處:`) was counted, dropped or both depending on the hook, and an audit with a stricter grammar (Pi's parser rejects the whole file on one bad line) found two such lines nobody had noticed. SessionStart now lists each problem in either file as `line N: reason` (fixed wording only, never the line's text); the first-prompt reminder repeats the follow-ups ones only when the project has no usable ledger. Recognised-but-incomplete lines stay counted and flagged; unrecognisable lines are not counted, listed, and marked when unticked. `|`, `source:` / `where:`, a trailing `<!-- scope:… -->` comment and a UTF-8 BOM are accepted for compatibility with the Pi version. Also fixed: `ledger_bump_rounds` turned a `harvest` ledger into `converge` when the file started with a BOM (found by the review of this change; the defect predates it). 80 new fixture assertions (377 total); the parser was exercised under BSD awk and gawk, **not mawk** (CI's default): check the first CI log for `P1[mawk]` lines. See the plugin CHANGELOG for the mutation results and the corrections made along the way.
+
 ## [1.11.1] - 2026-09-23
 
 ### Fixed

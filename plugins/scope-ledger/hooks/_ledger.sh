@@ -53,14 +53,28 @@ followups_tracked() { path_tracked "$1" "$FOLLOWUPS_REL"; }
 ledger_usable()    { [ -f "$(ledger_path "$1")" ] && ! ledger_tracked "$1"; }
 followups_usable() { [ -f "$(followups_path "$1")" ] && ! followups_tracked "$1"; }
 
-# ledger_field <file> <key> → value of "<key>: …" inside the leading --- frontmatter block
+# The grammar of both files lives in ONE place, scope-parse.awk. Every reader below goes through it, so
+# "what counts as an open item" is decided once, and a line that does not fit is reported with a reason
+# instead of being silently counted by one hook and dropped by another.
+SCOPE_PARSE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/scope-parse.awk"
+
+# scope_parse <ledger|followups> <file> → parser records on stdout (format: see scope-parse.awk).
+# Quiet and empty when the file or the parser is unusable, so callers fail open as before.
+scope_parse() {
+  [ -f "$2" ] && [ -f "$SCOPE_PARSE" ] || return 0
+  awk -f "$SCOPE_PARSE" -v kind="$1" "$2" 2>/dev/null || true
+}
+
+# NOTE on SIGPIPE: the hooks run under `set -o pipefail` with an ERR trap, so a pipeline whose writer dies
+# of SIGPIPE (the reader quit early) would make the whole hook exit silently. Two independent guards keep
+# that from happening here: scope_parse's `|| true` absorbs the writer's death, and every reader below
+# consumes the whole output anyway (no early `exit`). Either one alone is enough, so a regression in just
+# one is invisible; the PL5 test only fails when BOTH are gone. Keep both.
+
+# ledger_field <file> <key> → value of "<key>: …" inside the leading --- frontmatter block (first one wins)
 ledger_field() {
   [ -f "$1" ] || return 0
-  awk -v k="$2" '
-    NR == 1 { if ($0 != "---") exit; next }
-    $0 == "---" { exit }
-    index($0, k ":") == 1 { s = substr($0, length(k) + 2); sub(/^[ \t]+/, "", s); print s; exit }
-  ' "$1" 2>/dev/null
+  scope_parse ledger "$1" | awk -F'\t' -v k="$2" '$1 == "F" && $2 == k && !seen { print $3; seen = 1 }'
 }
 
 # ledger_mode <file> → "harvest" when the frontmatter says so, otherwise "converge"
@@ -73,29 +87,19 @@ ledger_mode() {
 # ledger_section <file> <heading-text> → the lines of that "## <heading>" section (heading excluded)
 ledger_section() {
   [ -f "$1" ] || return 0
-  awk -v h="## $2" '
-    /^## / { insec = ($0 == h); next }
-    insec { print }
-  ' "$1" 2>/dev/null
+  scope_parse ledger "$1" | awk -F'\t' -v s="$2" '$1 == "S" && $2 == s { print $4 }'
 }
 
 # ledger_unchecked <file> → every top-level "- [ ] …" line inside "## In scope" (empty when none)
 ledger_unchecked() {
   [ -f "$1" ] || return 0
-  awk '
-    /^## / { insec = ($0 == "## In scope"); next }
-    insec && /^- \[ \] / { print }
-  ' "$1" 2>/dev/null
+  scope_parse ledger "$1" | awk -F'\t' '$1 == "I" && $3 == 0 { print $6 }'
 }
 
 # ledger_frontmatter <file> → the leading --- block including both fences (empty when absent)
 ledger_frontmatter() {
   [ -f "$1" ] || return 0
-  awk '
-    NR == 1 { if ($0 != "---") exit; print; next }
-    { print }
-    NR > 1 && $0 == "---" { exit }
-  ' "$1" 2>/dev/null
+  scope_parse ledger "$1" | awk -F'\t' '$1 == "S" && $2 == "frontmatter" { print $4 }'
 }
 
 # count_lines <text> → number of non-empty lines (0 for empty input)
@@ -136,7 +140,7 @@ lock_take() {
 # silently reporting 1 forever. Returns 1 (prints nothing) when the file cannot be rewritten or
 # the lock cannot be taken. Never writes through a symlink (the file or its directory).
 ledger_bump_rounds() {
-  local f="$1" n tmp lock rc
+  local f="$1" n tmp lock rc first
   [ -f "$f" ] || return 1
   [ -L "$f" ] && return 1
   [ -L "$(dirname "$f")" ] && return 1
@@ -145,8 +149,13 @@ ledger_bump_rounds() {
   n=$(( $(ledger_rounds "$f") + 1 ))
   tmp="$f.tmp.$$"
   rc=1
-  if [ "$(head -1 "$f" 2>/dev/null)" = "---" ]; then
+  # A UTF-8 BOM before the opening fence (Windows editors add one) must not make the file look frontmatter-less:
+  # the synthesised block that follows would hide the real one, and `mode` would silently fall back to converge.
+  # The rewrite below drops the BOM.
+  first=$(head -1 "$f" 2>/dev/null); first=${first#$'\357\273\277'}
+  if [ "$first" = "---" ]; then
     awk -v n="$n" '
+      NR == 1 && index($0, "\357\273\277") == 1 { $0 = substr($0, length("\357\273\277") + 1) }
       NR == 1 && $0 == "---" { fm = 1; print; next }
       fm && !done && $0 == "---" { print "review_rounds: " n; done = 1; fm = 0; print; next }
       fm && !done && index($0, "review_rounds:") == 1 { print "review_rounds: " n; done = 1; next }
@@ -166,6 +175,23 @@ ledger_bump_rounds() {
   echo "$n"
 }
 
-# followups_open <file> → every open follow-up line; followups_high <file> → the open HIGH ones
-followups_open() { [ -f "$1" ] || return 0; grep -E '^- \[ \] ' "$1" 2>/dev/null || true; }
-followups_high() { [ -f "$1" ] || return 0; grep -E '^- \[ \] [0-9-]+ HIGH([[:space:]]|$)' "$1" 2>/dev/null || true; }
+# followups_open <file> → every open follow-up (entries the parser recognised, unticked), one raw line each;
+# followups_high <file> → the open HIGH ones. Lines the parser could not recognise are NOT here: they are
+# reported by scope_problem_notice, flagged as unticked when they would have been open work.
+followups_open() { [ -f "$1" ] || return 0; scope_parse followups "$1" | awk -F'\t' '$1 == "E" && $3 == 0 { print $10 }'; }
+followups_high() { [ -f "$1" ] || return 0; scope_parse followups "$1" | awk -F'\t' '$1 == "E" && $3 == 0 && $5 == "HIGH" { print $10 }'; }
+
+# scope_problem_notice <label> <file> <ledger|followups> → a fixed-vocabulary notice listing the lines that
+# do not fit the grammar (line number + reason only — never the line's own text, which would replay file
+# content into the model's context). Prints nothing when the file is clean.
+scope_problem_notice() {
+  local label="$1" file="$2" kind="$3" recs total bad warn
+  recs=$(scope_parse "$kind" "$file" | awk -F'\t' '$1 == "X"')
+  [ -n "$recs" ] || return 0
+  total=$(printf '%s\n' "$recs" | awk 'END { print NR }')
+  bad=$(printf '%s\n' "$recs" | awk -F'\t' '$3 == "bad" { n++ } END { print n + 0 }')
+  warn=$(printf '%s\n' "$recs" | awk -F'\t' '$3 == "warn" { n++ } END { print n + 0 }')
+  printf 'scope-ledger｜⚠ %s %s 有 %s 行格式問題（無法解析 %s 行、欄位不齊 %s 行）；只列行號與原因、不回放內容，請對照 /scope-ledger:scope 的格式修正：\n' "$label" "$file" "$total" "$bad" "$warn"
+  printf '%s\n' "$recs" | awk -F'\t' 'NR <= 10 { printf "  第 %s 行：%s%s\n", $2, $5, ($3 == "bad" && $4 == 1) ? "（未勾選的待辦行，不在上方件數內）" : "" }'
+  if [ "$total" -gt 10 ]; then printf '  …（其餘 %s 行同樣有問題）\n' "$((total - 10))"; fi
+}

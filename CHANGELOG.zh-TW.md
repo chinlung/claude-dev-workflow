@@ -4,6 +4,12 @@
 
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
+## [1.11.2] - 2026-10-07
+
+### Fixed
+
+- **scope-ledger 1.0.1 → 1.0.2：follow-ups 與帳本裡格式不合的行不再被靜默吞掉，文法統一由一支 parser（`hooks/scope-parse.awk`）定義。** 過去每支 hook 各用單行 `grep`／`awk` 判斷「什麼算未完成項」，所以細微錯誤的行（`HIGH` 後沒空格、缺 `去處:`）會因 hook 不同而被計入、被丟掉或兩者皆是；用較嚴格文法（Pi 的 parser 一行壞整份作廢）稽核時才抓出兩行沒人發現的壞行。SessionStart 現在逐行列出兩個檔案的「第 N 行：原因」（只用固定用語，不回放該行內容）；首則提示只在專案沒有可用帳本時才重複 follow-ups 的問題。認得出但欄位不齊的行照常計入並標示；認不出的行不計入、逐行列出，若是未勾選行會特別標明。為與 Pi 版相容，接受 `|`、`source:`／`where:`、行尾 `<!-- scope:… -->` 註解與 UTF-8 BOM。同時修正：`ledger_bump_rounds` 在檔案以 BOM 開頭時會把 `harvest` 帳本悄悄改成 `converge`（本變更的獨立審查發現；此缺陷早於本變更就存在）。新增 80 條 fixture 斷言（共 377 條）；parser 在 BSD awk 與 gawk 上實測過，**未在 mawk 上跑**（CI 預設用它）：第一次 CI 跑完要在 log 確認有 `P1[mawk]` 字樣的行。突變測試結果與過程中的修正見 plugin 自己的 CHANGELOG。
+
 ## [1.11.1] - 2026-09-23
 
 ### Fixed
