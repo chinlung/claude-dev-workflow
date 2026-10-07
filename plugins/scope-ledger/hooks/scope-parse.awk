@@ -10,8 +10,9 @@
 # whole file on one bad line). Here the grammar lives in one place, every line is classified, and the
 # output says why a line was rejected.
 #
-# Output: one record per line of stdout, TAB-separated, first field is the record type. TAB and CR are
-# replaced by a space in every value, so every record has a fixed number of fields.
+# Output: one record per line of stdout, TAB-separated, first field is the record type. TAB is replaced by a
+# space in every value, so every record has a fixed number of fields; a CR at the end of a line is dropped, a
+# CR inside a line is kept (records are split on newline only, so it cannot forge a record).
 #
 #   E line done date sev text from source dest raw     follow-up entry (checkbox + date + severity recognised)
 #   I line done text source raw                        In scope entry (top-level "- [ ]" / "- [x]" line)
@@ -38,24 +39,34 @@
 # no multibyte characters inside bracket expressions (byte-oriented awks), no gawk-only functions.
 
 function clean(s) { sub(/\r$/, "", s); gsub(/\t/, " ", s); return s }
-function trim(s) { sub(/^[ ]+/, "", s); sub(/[ ]+$/, "", s); return s }
+# Linear-time trim. `sub(/[ ]+$/, …)` is quadratic on a long run of spaces (the regex is retried from every
+# position of the run), which let a 50KB line of blanks outlast the hook's 10-second timeout under BWK awk.
+function rtrim(s,    i) {
+  i = length(s)
+  while (i > 0 && substr(s, i, 1) == " ") i--
+  return substr(s, 1, i)
+}
+function trim(s) { sub(/^[ ]+/, "", s); return rtrim(s) }
 # Strip only the LAST `<!-- scope:… -->`, and only when the line ends with it. Pi's comment() escapes every "-"
 # inside its JSON body, so the last such marker is always the real trailing metadata; a text that merely quotes
 # the marker mid-line (and a line that starts with one) must keep everything around it.
 function strip_meta(s,    p) {
   if (s !~ / -->$/) return s
   p = lastpos(s, "<!-- scope:")
-  if (p > 0 && substr(s, p) ~ /^<!-- scope:[A-Za-z0-9_]+ .* -->$/) { s = substr(s, 1, p - 1); sub(/[ ]+$/, "", s) }
+  if (p > 0 && substr(s, p) ~ /^<!-- scope:[A-Za-z0-9_]+ .* -->$/) s = rtrim(substr(s, 1, p - 1))
   return s
 }
 function prob(n, cls, op, why) { print "X", n, cls, op, why }
 function addwhy(cur, w) { return (cur == "") ? w : cur "；" w }
 
 # Position of the LAST occurrence of marker in s (0 when absent): an item's own text may contain "←".
-function lastpos(s, marker,    last, start, p) {
-  last = 0; start = 1
-  while ((p = index(substr(s, start), marker)) > 0) { last = start + p - 1; start = last + 1 }
-  return last
+# Linear: split() cuts the string once; a loop that re-copies the remainder with substr() is O(n·k) and took
+# 25 seconds on a 1MB line of repeated markers under gawk. The markers used here contain no regex metacharacters
+# (split treats a multi-character separator as a regex).
+function lastpos(s, marker,    n, parts) {
+  n = split(s, parts, marker)
+  if (n < 2) return 0
+  return length(s) - length(parts[n]) - length(marker) + 1
 }
 
 # ---------------------------------------------------------------------------- follow-ups
@@ -85,16 +96,16 @@ function followup(n, raw,    line, c, done, date, rest, sev, body, i, tail, r2, 
   } else {
     text = trim(substr(body, 1, i - 1))
     tail = substr(body, i + length(" ← from: "))
-    if (match(tail, /[ ]*(｜|\|)[ ]*(來源|source):[ ]*/)) {
+    if (match(tail, /(｜|\|)[ ]*(來源|source):[ ]*/)) {
       from = trim(substr(tail, 1, RSTART - 1)); r2 = substr(tail, RSTART + RLENGTH)
-      if (match(r2, /[ ]*(｜|\|)[ ]*(去處|where):[ ]*/)) {
+      if (match(r2, /(｜|\|)[ ]*(去處|where):[ ]*/)) {
         src = trim(substr(r2, 1, RSTART - 1)); dest = trim(substr(r2, RSTART + RLENGTH))
         if (src == "") why = addwhy(why, "來源: 為空")
         if (dest == "") why = addwhy(why, "去處: 為空")
       } else {
         src = trim(r2); why = addwhy(why, "缺 去處:")
       }
-    } else if (match(tail, /[ ]*(｜|\|)[ ]*(去處|where):[ ]*/)) {
+    } else if (match(tail, /(｜|\|)[ ]*(去處|where):[ ]*/)) {
       from = trim(substr(tail, 1, RSTART - 1)); dest = trim(substr(tail, RSTART + RLENGTH))
       why = addwhy(why, "缺 來源:")
     } else {
@@ -147,10 +158,10 @@ function deferred(n, line,    body, last, text, tail, parts, np, k, p, src, sv, 
     text = trim(body); why = "缺 ← 來源:"
   } else {
     text = trim(substr(body, 1, last - 1)); tail = substr(body, last + length(" ← 來源: "))
-    np = split(tail, parts, /[ ]*(｜|\|)[ ]*/)
+    np = split(tail, parts, /(｜|\|)/)
     src = trim(parts[1])
     for (k = 2; k <= np; k++) {
-      p = parts[k]
+      p = trim(parts[k])
       if (index(p, "嚴重度:") == 1) sv = trim(substr(p, length("嚴重度:") + 1))
       else if (index(p, "理由:") == 1) rs = trim(substr(p, length("理由:") + 1))
       else if (index(p, "去處:") == 1) ds = trim(substr(p, length("去處:") + 1))

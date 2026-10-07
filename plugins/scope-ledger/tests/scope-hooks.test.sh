@@ -776,6 +776,25 @@ for AWKBIN in $AWKS; do
   # LC_ALL=C：BSD awk 在 UTF-8 locale 下比較字串會忽略 BOM，碰巧容錯會讓寫入端的 BOM 處理拿掉也看不出來
   out=$(LC_ALL=C bash -c '. "$1"; ledger_bump_rounds "$2" >/dev/null; printf "mode=%s rounds=%s\n" "$(ledger_mode "$2")" "$(ledger_rounds "$2")"' _ "$HOOKS/_ledger.sh" "$L" 2>&1)
   check "PL10[$fl] 帶 BOM 的帳本 bump 後 mode 不變、rounds=4" "$out" "mode=harvest rounds=4"
+
+  # ---- PERF（push 前安全審查 SEC1）parser 不能對長空白或大量重複標記變成二次方時間 ----
+  # 舊的 grep 是線性的；以未錨定 `[ ]*` 開頭的 regex 與 O(n·k) 的字串搜尋會讓 BWK awk 在 50KB 空白上就跑 12 秒，超過 hook 的
+  # 10 秒 timeout。每個案例限 10 秒（perl alarm；退出碼 142 = 被 alarm 殺掉），輸出丟掉，只看有沒有按時結束。
+  perf() { perl -e 'alarm 10; exec @ARGV' "$AWKBIN" -f "$HOOKS/scope-parse.awk" -v kind="$1" "$2" >/dev/null 2>&1; echo $?; }
+  sp=$(printf '%*s' 120000 '')
+  printf '# scope-ledger follow-ups\n- [ ] 2026-01-01 HIGH x ← from: a%sy ｜ 來源: u ｜ 去處: z\n' "$sp" > "$P_FU"
+  check_eq "PERF1[$fl] follow-ups：12 萬個空白在 10 秒內解析完" "$(perf followups "$P_FU")" "0"
+  printf -- '---\ngoal: g\nmode: converge\nreview_rounds: 0\n---\n## Deferred\n- D ← 來源: s%sy ｜ 嚴重度: LOW ｜ 理由: r ｜ 去處: x\n' "$sp" > "$L"
+  check_eq "PERF2[$fl] Deferred：12 萬個空白" "$(perf ledger "$L")" "0"
+  mk=$(awk 'BEGIN { for (i = 0; i < 70000; i++) printf "<!-- scope:x -->" }')
+  printf '# scope-ledger follow-ups\n- [ ] 2026-01-01 HIGH x ← from: g ｜ 來源: u ｜ 去處: y %s\n' "$mk" > "$P_FU"
+  check_eq "PERF3[$fl] follow-ups：7 萬個重複的 metadata 標記（約 1MB）" "$(perf followups "$P_FU")" "0"
+  ar=$(awk 'BEGIN { for (i = 0; i < 100000; i++) printf " ← 來源: " }')
+  printf -- '---\ngoal: g\nmode: converge\nreview_rounds: 0\n---\n## In scope\n- [ ] A%s\n' "$ar" > "$L"
+  check_eq "PERF4[$fl] In scope：10 萬個重複的 ← 來源:（約 1MB）" "$(perf ledger "$L")" "0"
+  # 效能修法不能改變結果：長空白的行仍要解析出完整欄位
+  printf '# scope-ledger follow-ups\n- [ ] 2026-01-01 HIGH x ← from: a%sy ｜ 來源: u ｜ 去處: z\n' "$(printf '%*s' 50 '')" > "$P_FU"
+  check_eq "PERF5[$fl] 長空白在 from 欄中：欄位仍完整" "$(rec E "$(pf followups "$P_FU")" | cut -f8,9)" "$(printf 'u\tz')"
 done
 
 # ---- hook 層：壞行大聲報錯、有效行照常計入、報錯不回放原文 ----
