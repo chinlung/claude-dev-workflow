@@ -750,7 +750,7 @@ for AWKBIN in $AWKS; do
   check_eq "P11[$fl] 嚴重度在行尾：仍是條目" "$(rec E "$r" | cut -f5)" "HIGH"
   check "P11[$fl] 嚴重度在行尾：報欄位不齊" "$(rec X "$r")" "warn"
   # PL6（S4）Deferred 全程用 ASCII |
-  printf -- '---\ngoal: g\nmode: converge\nreview_rounds: 0\n---\n## Deferred\n- D ← 來源: user | 嚴重度: HIGH | 理由: r | 去處: issue #1\n' > "$L"
+  printf -- '---\ngoal: g\nmode: converge\nreview_rounds: 0\n---\n## In scope\n## Deferred\n- D ← 來源: user | 嚴重度: HIGH | 理由: r | 去處: issue #1\n' > "$L"
   r=$(pf ledger "$L")
   check_eq "PL6[$fl] Deferred 用 ASCII |：欄位完整" "$(rec D "$r" | cut -f4-7)" "$(printf 'user\tHIGH\tr\tissue #1')"
   check_empty "PL6[$fl] Deferred 用 ASCII |：無問題" "$(rec X "$r")"
@@ -821,6 +821,34 @@ for AWKBIN in $AWKS; do
   check "PL12[$fl] 重疊且來源為空：仍警告來源為空" "$(rec X "$(pf ledger "$L")")" "來源: 為空"
   printf -- '---\ngoal: g\nmode: converge\nreview_rounds: 0\n---\n## Deferred\n- D ← 來源: ← 來源: s ｜ 嚴重度: LOW ｜ 理由: r ｜ 去處: x\n' > "$L"
   check_eq "PL13[$fl] Deferred 重疊的 ← 來源:：取最後一個" "$(rec D "$(pf ledger "$L")" | cut -f3,4)" "$(printf 'D ← 來源:\ts')"
+
+  # ---- Codex 審查（PR #9）追加：這支 parser 的目的就是不讓東西靜默消失 ----
+  # PL14 frontmatter 漏冒號：整行被靜默忽略、mode 落回 converge，而通知說乾淨
+  printf -- '---\ngoal: g\nmode harvest\nreview_rounds: 0\n---\n## In scope\n' > "$L"
+  r=$(pf ledger "$L")
+  check "PL14[$fl] frontmatter 漏冒號：報不是 key: value" "$(rec X "$r")" "warn.*key: value"
+  check "PL14[$fl] frontmatter 漏冒號：mode 因此缺失也被報" "$(rec X "$r")" "缺 mode"
+  # PL15 key 大小寫錯（Mode:）：沒有 mode 欄位，同樣要報
+  printf -- '---\ngoal: g\nMode: harvest\nreview_rounds: 0\n---\n## In scope\n' > "$L"
+  check "PL15[$fl] key 寫成 Mode：報缺 mode" "$(rec X "$(pf ledger "$L")")" "缺 mode"
+  # PL16 不能誤報：空行、# 註解、縮排的續行
+  printf -- '---\ngoal: g\n\n# a comment\nmode: converge\n  continued value\nreview_rounds: 0\n---\n## In scope\n' > "$L"
+  check_empty "PL16[$fl] frontmatter 的空行／# 註解／縮排續行不誤報" "$(rec X "$(pf ledger "$L")")"
+  # PL17 區段標題大小寫錯：其下清單整批被丟，Stop 會放行——必須有聲
+  printf -- '---\ngoal: g\nmode: converge\nreview_rounds: 0\n---\n## In Scope\n- [ ] 未完成 ← 來源: user\n## Deferred\n## Log\n' > "$L"
+  r=$(pf ledger "$L")
+  check "PL17[$fl] 區段標題大小寫錯：報" "$(rec X "$r")" "只差大小寫"
+  check "PL17[$fl] 區段標題大小寫錯：也報缺 ## In scope" "$(rec X "$r")" "缺 ## In scope"
+  # PL18 未知區段：純文字不誤報；清單行要報，且未勾選的標 open=1
+  printf -- '---\ngoal: g\nmode: converge\nreview_rounds: 0\n---\n## In scope\n- [ ] A ← 來源: user\n## Notes\nsome prose, nothing to do with a checklist\n' > "$L"
+  check_empty "PL18[$fl] 其他區段只有純文字：不誤報" "$(rec X "$(pf ledger "$L")")"
+  printf -- '---\ngoal: g\nmode: converge\nreview_rounds: 0\n---\n## In scope\n- [ ] A ← 來源: user\n## Notes\n- [ ] 藏在別的區段的待辦\n' > "$L"
+  r=$(pf ledger "$L")
+  check "PL18b[$fl] 未知區段下的清單行：報" "$(rec X "$r")" "warn.*未知區段"
+  check_eq "PL18b[$fl] 未知區段下未勾選的清單行：標 open=1" "$(rec X "$r" | cut -f4)" "1"
+  # PL19 完全沒有 ## In scope
+  printf -- '---\ngoal: g\nmode: converge\nreview_rounds: 0\n---\n## Deferred\n' > "$L"
+  check "PL19[$fl] 缺 ## In scope 區段" "$(rec X "$(pf ledger "$L")")" "缺 ## In scope"
 done
 
 # ---- hook 層：壞行大聲報錯、有效行照常計入、報錯不回放原文 ----
@@ -882,6 +910,24 @@ else
   check "HK6[$UTF8LOC] UTF-8 locale 下壞行之後的有效行仍被計入" "$out" 'follow-ups 1 項（HIGH 1）'
   check "HK6[$UTF8LOC] UTF-8 locale 下壞行被報出（不無聲消失）" "$out" '第 2 行'
 fi
+# HK7 Codex 審查：followups_high | head -5 在輸出大於 pipe 緩衝時，head 提早結束，函式內的 awk 吃 SIGPIPE；hook 有 pipefail＋ERR trap，
+# 會在印格式通知之前就結束（舊的 grep 版有 `|| true` 吸收這件事）。1 萬筆 HIGH 加一行壞行重現。
+p=$WORK/hk7; make_repo "$p"; t=$WORK/thk7; mkdir -p "$t"
+{ printf '# scope-ledger follow-ups\n'; i=0; while [ "$i" -lt 10000 ]; do printf -- '- [ ] 2026-10-07 HIGH item %s ← from: g ｜ 來源: u ｜ 去處: y\n' "$i"; i=$((i+1)); done; printf -- '- [ ] 2026-10-07 HIGH【壞行】x ← from: g ｜ 來源: u ｜ 去處: y\n'; } > "$p/.claude/scope-followups.local.md"
+out=$(run_hook scope-session-start.sh "$(start_json hk7 "$p" startup)" "$t" "$p")
+check "HK7 1 萬筆 HIGH：件數仍正確" "$out" 'follow-ups 10000 項（HIGH 10000）'
+check "HK7 1 萬筆 HIGH：head -5 提早結束後格式通知仍在" "$out" '格式問題'
+# HK7b 同一個隱患的另一個使用者：`ledger_section … Deferred | head -10`。3000 行 Deferred（約 270KB）撐過 pipe 緩衝，之後帳本的格式通知仍要在。
+p=$WORK/hk7b; make_repo "$p"; t=$WORK/thk7b; mkdir -p "$t"
+{ printf -- '---\ngoal: g\nmode: converge\nreview_rounds: 0\n---\n## In scope\n- [ ] 缺來源的項目\n## Deferred\n'; i=0; while [ "$i" -lt 3000 ]; do printf -- '- 延後項目 %s，補長一點讓輸出超過 pipe 緩衝 ← 來源: user ｜ 嚴重度: LOW ｜ 理由: 過度修正濾鏡 ｜ 去處: follow-ups\n' "$i"; i=$((i+1)); done; printf '## Log\n'; } > "$p/.claude/scope-ledger.local.md"
+out=$(run_hook scope-session-start.sh "$(start_json hk7b "$p" startup)" "$t" "$p")
+check "HK7b 3000 行 Deferred：head -10 提早結束後帳本格式通知仍在" "$out" '帳本.*格式問題'
+# HK8 區段標題拼錯：SessionStart 要報（Stop 因為讀不到條目只能放行，所以最後一道防線是這則通知）
+p=$WORK/hk8; make_repo "$p"; t=$WORK/thk8; mkdir -p "$t"
+printf -- '---\ngoal: g\nmode: converge\nreview_rounds: 0\n---\n## In Scope\n- [ ] 未完成的工作 ← 來源: user\n## Deferred\n## Log\n' > "$p/.claude/scope-ledger.local.md"
+out=$(run_hook scope-session-start.sh "$(start_json hk8 "$p" startup)" "$t" "$p")
+check "HK8 區段標題拼錯：SessionStart 報帳本格式問題" "$out" '帳本.*格式問題'
+check "HK8 區段標題拼錯：點出只差大小寫" "$out" '只差大小寫'
 
 # ---- summary ----
 echo "----"

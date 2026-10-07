@@ -71,16 +71,19 @@ scope_parse() {
   LC_ALL=C awk -f "$SCOPE_PARSE" -v kind="$1" "$2" 2>/dev/null || true
 }
 
-# NOTE on SIGPIPE: the hooks run under `set -o pipefail` with an ERR trap, so a pipeline whose writer dies
-# of SIGPIPE (the reader quit early) would make the whole hook exit silently. Two independent guards keep
-# that from happening here: scope_parse's `|| true` absorbs the writer's death, and every reader below
-# consumes the whole output anyway (no early `exit`). Either one alone is enough, so a regression in just
-# one is invisible; the PL5 test only fails when BOTH are gone. Keep both.
+# NOTE on SIGPIPE: the hooks run under `set -o pipefail` with an ERR trap, so a pipeline in which any stage dies
+# of SIGPIPE makes the whole hook exit silently. It can happen two ways here, each with its own guard:
+#  1. a reader quits early and kills the parser: absorbed by scope_parse's `|| true` (and every reader consumes all
+#     of its input anyway, so either guard alone is enough — the PL5 test only fails when both are gone);
+#  2. the CALLER quits early: scope-session-start.sh pipes followups_high and ledger_section into `head`, which kills
+#     the reader's own awk once the output exceeds a pipe buffer. Absorbed by the `|| true` that ends each reader.
+#     The grep-based readers had this for free; the first version of this parser lost it, and a 10,000-entry
+#     backlog made SessionStart exit before it printed the format notice (tests HK7 and HK7b).
 
 # ledger_field <file> <key> → value of "<key>: …" inside the leading --- frontmatter block (first one wins)
 ledger_field() {
   [ -f "$1" ] || return 0
-  scope_parse ledger "$1" | awk -F'\t' -v k="$2" '$1 == "F" && $2 == k && !seen { print $3; seen = 1 }'
+  scope_parse ledger "$1" | awk -F'\t' -v k="$2" '$1 == "F" && $2 == k && !seen { print $3; seen = 1 }' || true
 }
 
 # ledger_mode <file> → "harvest" when the frontmatter says so, otherwise "converge"
@@ -93,19 +96,19 @@ ledger_mode() {
 # ledger_section <file> <heading-text> → the lines of that "## <heading>" section (heading excluded)
 ledger_section() {
   [ -f "$1" ] || return 0
-  scope_parse ledger "$1" | awk -F'\t' -v s="$2" '$1 == "S" && $2 == s { print $4 }'
+  scope_parse ledger "$1" | awk -F'\t' -v s="$2" '$1 == "S" && $2 == s { print $4 }' || true
 }
 
 # ledger_unchecked <file> → every top-level "- [ ] …" line inside "## In scope" (empty when none)
 ledger_unchecked() {
   [ -f "$1" ] || return 0
-  scope_parse ledger "$1" | awk -F'\t' '$1 == "I" && $3 == 0 { print $6 }'
+  scope_parse ledger "$1" | awk -F'\t' '$1 == "I" && $3 == 0 { print $6 }' || true
 }
 
 # ledger_frontmatter <file> → the leading --- block including both fences (empty when absent)
 ledger_frontmatter() {
   [ -f "$1" ] || return 0
-  scope_parse ledger "$1" | awk -F'\t' '$1 == "S" && $2 == "frontmatter" { print $4 }'
+  scope_parse ledger "$1" | awk -F'\t' '$1 == "S" && $2 == "frontmatter" { print $4 }' || true
 }
 
 # count_lines <text> → number of non-empty lines (0 for empty input)
@@ -184,8 +187,8 @@ ledger_bump_rounds() {
 # followups_open <file> → every open follow-up (entries the parser recognised, unticked), one raw line each;
 # followups_high <file> → the open HIGH ones. Lines the parser could not recognise are NOT here: they are
 # reported by scope_problem_notice, flagged as unticked when they would have been open work.
-followups_open() { [ -f "$1" ] || return 0; scope_parse followups "$1" | awk -F'\t' '$1 == "E" && $3 == 0 { print $10 }'; }
-followups_high() { [ -f "$1" ] || return 0; scope_parse followups "$1" | awk -F'\t' '$1 == "E" && $3 == 0 && $5 == "HIGH" { print $10 }'; }
+followups_open() { [ -f "$1" ] || return 0; scope_parse followups "$1" | awk -F'\t' '$1 == "E" && $3 == 0 { print $10 }' || true; }
+followups_high() { [ -f "$1" ] || return 0; scope_parse followups "$1" | awk -F'\t' '$1 == "E" && $3 == 0 && $5 == "HIGH" { print $10 }' || true; }
 
 # scope_problem_notice <label> <file> <ledger|followups> → a fixed-vocabulary notice listing the lines that
 # do not fit the grammar (line number + reason only — never the line's own text, which would replay file

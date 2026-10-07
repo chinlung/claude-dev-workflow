@@ -136,6 +136,7 @@ function followup(n, raw,    line, c, done, date, rest, sev, body, i, tail, r2, 
 # ---------------------------------------------------------------------------- ledger
 function check_frontmatter(    v) {
   if (!("goal" in fmval) || fmval["goal"] == "") prob(1, "warn", 0, "缺 goal")
+  if (!("mode" in fmval)) prob(1, "warn", 0, "缺 mode（未設時一律當 converge）")
   if ("mode" in fmval) {
     v = trim(fmval["mode"])
     if (v != "converge" && v != "harvest") prob(fmline["mode"], "warn", 0, "mode 須為 converge 或 harvest")
@@ -204,15 +205,32 @@ function ledger_line(n, raw,    line, h, key, val) {
       key = substr(raw, 1, RLENGTH - 1); val = substr(raw, RLENGTH + 1); sub(/^[ \t]+/, "", val)
       print "F", key, val
       fmline[key] = n; fmval[key] = val
+    } else if (raw !~ /^[ \t]*$/ && raw !~ /^#/ && raw !~ /^[ \t]/) {
+      # A frontmatter line that is not "key: value" (a missing colon, "mode : harvest") used to be dropped without a
+      # word, so mode silently fell back to converge. Blank lines, "#" comments and indented continuation lines are fine.
+      prob(n, "warn", 0, "frontmatter 有不是 key: value 形式的行（例如漏了冒號），該行不會被讀取")
     }
     return
   }
   if (raw ~ /^## /) {
     h = substr(raw, 4)
-    sect = (h == "In scope" || h == "Deferred" || h == "Log") ? h : "other"
+    if (h == "In scope" || h == "Deferred" || h == "Log") { sect = h; seen[h] = 1 }
+    else {
+      sect = "other"; other_warned = 0
+      # "## In Scope" / "## in scope" / "## Deferred " are read as an unknown section, so everything under them used to
+      # vanish — and the Stop hook then let the session end with open work. Say so.
+      k = tolower(h); gsub(/[ \t]+/, "", k)
+      if (k == "inscope" || k == "deferred" || k == "log") prob(n, "warn", 0, "區段標題與 In scope／Deferred／Log 只差大小寫或空白，其下內容不會被讀取")
+    }
     return
   }
-  if (sect == "" || sect == "other") return                # before the first heading, or a section we do not read
+  if (sect == "" || sect == "other") {                     # before the first heading, or a section we do not read
+    if (!other_warned && raw ~ /^- \[[ xX]\] /) {          # ...but a checklist there is work that nobody will count
+      prob(n, "warn", (substr(raw, 4, 1) == " "), "未知區段下有清單行（區段標題須為 In scope／Deferred／Log，其下內容不會被讀取）")
+      other_warned = 1
+    }
+    return
+  }
   print "S", sect, n, raw
   line = strip_meta(raw)
   if (line ~ /^[ ]*$/) return
@@ -253,4 +271,5 @@ BEGIN {
 END {
   if (bad_usage) exit 2
   if (kind == "ledger" && fm) prob(NR, "bad", 0, "frontmatter 未以 --- 收尾")
+  if (kind == "ledger" && NR > 0 && !("In scope" in seen)) prob(1, "warn", 0, "缺 ## In scope 區段（其下的未完成項才會被計入）")
 }
