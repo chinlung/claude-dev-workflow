@@ -39,12 +39,21 @@
 # no multibyte characters inside bracket expressions (byte-oriented awks), no gawk-only functions.
 
 function clean(s) { sub(/\r$/, "", s); gsub(/\t/, " ", s); return s }
-# Linear-time trim. `sub(/[ ]+$/, …)` is quadratic on a long run of spaces (the regex is retried from every
-# position of the run), which let a 50KB line of blanks outlast the hook's 10-second timeout under BWK awk.
-function rtrim(s,    i) {
-  i = length(s)
-  while (i > 0 && substr(s, i, 1) == " ") i--
-  return substr(s, 1, i)
+# Right-trim, linear in every awk we run on. Two traps, both measured: `sub(/[ ]+$/, …)` is quadratic on a long
+# run of spaces in the MIDDLE of a string (the regex is retried from every position of the run), and a loop that
+# walks back one blank at a time with substr()/length() is quadratic on a run at the END under BWK awk (every call
+# re-measures the whole string: 1MB of trailing blanks took 15 seconds). So: find the last non-blank character with
+# an anchored match, and trim only the short tail from there. match() overwrites the global RSTART/RLENGTH that the
+# caller (followup()) reads after trim(), so they are saved and restored.
+function rtrim(s,    rs, rl, t) {
+  if (s !~ / $/) return s
+  rs = RSTART; rl = RLENGTH
+  if (match(s, /[^ ][ ]*$/)) {
+    t = substr(s, RSTART); sub(/[ ]+$/, "", t)
+    s = substr(s, 1, RSTART - 1) t
+  } else s = ""
+  RSTART = rs; RLENGTH = rl
+  return s
 }
 function trim(s) { sub(/^[ ]+/, "", s); return rtrim(s) }
 # Strip only the LAST `<!-- scope:… -->`, and only when the line ends with it. Pi's comment() escapes every "-"
@@ -63,10 +72,16 @@ function addwhy(cur, w) { return (cur == "") ? w : cur "；" w }
 # Linear: split() cuts the string once; a loop that re-copies the remainder with substr() is O(n·k) and took
 # 25 seconds on a 1MB line of repeated markers under gawk. The markers used here contain no regex metacharacters
 # (split treats a multi-character separator as a regex).
-function lastpos(s, marker,    n, parts) {
+#
+# split() finds non-overlapping matches, but " ← 來源: " begins and ends with a blank and can overlap itself
+# (" ← 來源: ← 來源: x"): split() then reports the second-to-last occurrence. One extra index() just after the
+# position found catches the overlapping one; a marker can overlap itself at most once, so one look is enough.
+function lastpos(s, marker,    n, parts, p, q) {
   n = split(s, parts, marker)
   if (n < 2) return 0
-  return length(s) - length(parts[n]) - length(marker) + 1
+  p = length(s) - length(parts[n]) - length(marker) + 1
+  if ((q = index(substr(s, p + 1), marker)) > 0) p += q
+  return p
 }
 
 # ---------------------------------------------------------------------------- follow-ups

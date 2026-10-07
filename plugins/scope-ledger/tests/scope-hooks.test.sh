@@ -776,6 +776,13 @@ for AWKBIN in $AWKS; do
   # LC_ALL=C：BSD awk 在 UTF-8 locale 下比較字串會忽略 BOM，碰巧容錯會讓寫入端的 BOM 處理拿掉也看不出來
   out=$(LC_ALL=C bash -c '. "$1"; ledger_bump_rounds "$2" >/dev/null; printf "mode=%s rounds=%s\n" "$(ledger_mode "$2")" "$(ledger_rounds "$2")"' _ "$HOOKS/_ledger.sh" "$L" 2>&1)
   check "PL10[$fl] 帶 BOM 的帳本 bump 後 mode 不變、rounds=4" "$out" "mode=harvest rounds=4"
+  # PL10b 同一件事在 UTF-8 locale 下（使用者的實際環境）：計輪寫入端的 awk 不靠 LC_ALL=C 也要得到同樣結果（含無效 UTF-8 的行不能讓它中止）
+  u8=$(locale -a 2>/dev/null | awk '!f && (/^zh_TW\.UTF-?8$/ || /^en_US\.UTF-?8$/) { print; f = 1 }' || true)
+  if [ -n "$u8" ]; then
+    { printf '\357\273\277---\ngoal: g\nmode: harvest\nreview_rounds: 3\n---\n## In scope\n- [ ] A \377\376 \344\270 ← 來源: user\n'; } > "$L"
+    out=$(LC_ALL="$u8" bash -c '. "$1"; ledger_bump_rounds "$2" >/dev/null; printf "mode=%s rounds=%s\n" "$(ledger_mode "$2")" "$(ledger_rounds "$2")"' _ "$HOOKS/_ledger.sh" "$L" 2>&1)
+    check "PL10b[$fl][$u8] UTF-8 locale、帶 BOM 與無效位元組的帳本 bump：mode 不變、rounds=4" "$out" "mode=harvest rounds=4"
+  fi
 
   # ---- PERF（push 前安全審查 SEC1）parser 不能對長空白或大量重複標記變成二次方時間 ----
   # 舊的 grep 是線性的；以未錨定 `[ ]*` 開頭的 regex 與 O(n·k) 的字串搜尋會讓 BWK awk 在 50KB 空白上就跑 12 秒，超過 hook 的
@@ -795,6 +802,25 @@ for AWKBIN in $AWKS; do
   # 效能修法不能改變結果：長空白的行仍要解析出完整欄位
   printf '# scope-ledger follow-ups\n- [ ] 2026-01-01 HIGH x ← from: a%sy ｜ 來源: u ｜ 去處: z\n' "$(printf '%*s' 50 '')" > "$P_FU"
   check_eq "PERF5[$fl] 長空白在 from 欄中：欄位仍完整" "$(rec E "$(pf followups "$P_FU")" | cut -f8,9)" "$(printf 'u\tz')"
+  # 第二輪審查（c2993b9）：「行尾」空白串。BWK awk 的 substr()／length() 每次呼叫都對整個字串 strlen，一個一格往回走的 rtrim 對行尾空白仍是二次方
+  # （1MB 要 15 秒，舊的 sub(/[ ]+$/) 反而只要 0.05 秒）；PERF1-5 只測中段空白，所以沒抓到。
+  sp1m=$(printf '%*s' 1000000 '')
+  printf '# scope-ledger follow-ups\n- [ ] 2026-01-01 HIGH x ← from: a ｜ 來源: u ｜ 去處: z%s\n' "$sp1m" > "$P_FU"
+  check_eq "PERF6[$fl] follow-ups：行尾 100 萬個空白" "$(perf followups "$P_FU")" "0"
+  printf -- '---\ngoal: g\nmode: converge\nreview_rounds: 0\n---\n## In scope\n- [ ] A ← 來源: user%s\n' "$sp1m" > "$L"
+  check_eq "PERF7[$fl] In scope：行尾 100 萬個空白" "$(perf ledger "$L")" "0"
+  printf -- '---\ngoal: g\nmode: converge\nreview_rounds: 0\n---\n## Deferred\n- D ← 來源: s ｜ 嚴重度: LOW ｜ 理由: r ｜ 去處: x%s\n' "$sp1m" > "$L"
+  check_eq "PERF8[$fl] Deferred：最後一欄行尾 100 萬個空白" "$(perf ledger "$L")" "0"
+  printf -- '---\ngoal: g\nmode: converge\nreview_rounds: 0\n---\n## In scope\n- [ ] A ← 來源: user   \n' > "$L"
+  check_eq "PERF9[$fl] 行尾少量空白：來源仍被修剪乾淨" "$(rec I "$(pf ledger "$L")" | cut -f5)" "user"
+  # 第二輪審查（c2993b9）：lastpos 必須是「最後一個」出現位置，含重疊（` ← 來源: ` 前後都是空白，可以重疊）；split() 找的是不重疊比對，
+  # 偶數個重疊時會回傳倒數第二個，並吞掉一種「來源: 為空」的警告。472 個差異檔全是這個成因。
+  printf -- '---\ngoal: g\nmode: converge\nreview_rounds: 0\n---\n## In scope\n- [ ] A ← 來源: ← 來源: x\n' > "$L"
+  check_eq "PL11[$fl] 重疊的 ← 來源:：取最後一個（文字含前一個）" "$(rec I "$(pf ledger "$L")" | cut -f4,5)" "$(printf 'A ← 來源:\tx')"
+  printf -- '---\ngoal: g\nmode: converge\nreview_rounds: 0\n---\n## In scope\n- [ ] A ← 來源: ← 來源: \n' > "$L"
+  check "PL12[$fl] 重疊且來源為空：仍警告來源為空" "$(rec X "$(pf ledger "$L")")" "來源: 為空"
+  printf -- '---\ngoal: g\nmode: converge\nreview_rounds: 0\n---\n## Deferred\n- D ← 來源: ← 來源: s ｜ 嚴重度: LOW ｜ 理由: r ｜ 去處: x\n' > "$L"
+  check_eq "PL13[$fl] Deferred 重疊的 ← 來源:：取最後一個" "$(rec D "$(pf ledger "$L")" | cut -f3,4)" "$(printf 'D ← 來源:\ts')"
 done
 
 # ---- hook 層：壞行大聲報錯、有效行照常計入、報錯不回放原文 ----
@@ -841,6 +867,21 @@ check "HK5 Stop 原因仍列出該項" "$out" '缺來源的項目'
 out=$(run_hook scope-session-start.sh "$(start_json hk5 "$p" startup)" "$t" "$p")
 check "HK5 SessionStart 報帳本格式問題" "$out" '帳本.*格式問題'
 check "HK5 缺 來源 的行號" "$out" '缺 ← 來源:'
+# HK6 第二輪審查：macOS 的 awk 在 UTF-8 locale 下，對「缺日期、緊接中文」的行做 regex 比對會 `towc: multibyte conversion failure`、整支 awk 中止（rc=2），
+# 該行與其後所有行無聲消失——正是這支 parser 要消除的「靜默吞行」，而使用者的 locale 就是 zh_TW.UTF-8。所以 scope_parse 固定以 LC_ALL=C（位元組）執行。
+# 這個崩潰只在 macOS awk 出現；本機找不到 UTF-8 locale 時明說略過（不計為通過）。
+# awk 一律讀完整個輸出（不提早 exit）：本檔 set -o pipefail，提早結束的讀取端會讓 `locale` 吃 SIGPIPE、整支測試以 141 中止。
+UTF8LOC=$(locale -a 2>/dev/null | awk '!f && (/^zh_TW\.UTF-?8$/ || /^en_US\.UTF-?8$/) { print; f = 1 }' || true)
+[ -n "$UTF8LOC" ] || UTF8LOC=$(locale -a 2>/dev/null | awk '!f && tolower($0) ~ /utf-?8/ { print; f = 1 }' || true)
+if [ -z "$UTF8LOC" ]; then
+  echo "SKIP: HK6 本機沒有 UTF-8 locale，無法重現 BWK awk 的 towc 崩潰"
+else
+  p=$WORK/hk6; make_repo "$p"; t=$WORK/thk6; mkdir -p "$t"
+  write_followups "$p" '- [ ] 修正 X ← from: a ｜ 來源: u ｜ 去處: z' '- [ ] 2026-10-07 HIGH 真的 HIGH ← from: g ｜ 來源: u ｜ 去處: y'
+  out=$(printf '%s' "$(start_json hk6 "$p" startup)" | LC_ALL="$UTF8LOC" LANG="$UTF8LOC" TMPDIR="$t" CLAUDE_PROJECT_DIR="$p" bash "$HOOKS/scope-session-start.sh" 2>/dev/null || true)
+  check "HK6[$UTF8LOC] UTF-8 locale 下壞行之後的有效行仍被計入" "$out" 'follow-ups 1 項（HIGH 1）'
+  check "HK6[$UTF8LOC] UTF-8 locale 下壞行被報出（不無聲消失）" "$out" '第 2 行'
+fi
 
 # ---- summary ----
 echo "----"

@@ -60,9 +60,15 @@ SCOPE_PARSE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/scope-parse.awk"
 
 # scope_parse <ledger|followups> <file> → parser records on stdout (format: see scope-parse.awk).
 # Quiet and empty when the file or the parser is unusable, so callers fail open as before.
+# The parser runs with LC_ALL=C (bytes). macOS's awk (BWK) in a UTF-8 locale aborts the whole run with
+# "towc: multibyte conversion failure" when a regex meets a line that substr() cut in the middle of a character —
+# e.g. a follow-up with no date followed by Chinese text — so that line and every line after it vanished without a
+# word (2>/dev/null || true hides the abort). The grammar only needs ASCII markers and literal multibyte separators,
+# which match the same bytes in either mode. Only the parser needs this: the small awk filters that read its output
+# were tried on invalid UTF-8 in zh_TW/en_US/C locales and do not abort.
 scope_parse() {
   [ -f "$2" ] && [ -f "$SCOPE_PARSE" ] || return 0
-  awk -f "$SCOPE_PARSE" -v kind="$1" "$2" 2>/dev/null || true
+  LC_ALL=C awk -f "$SCOPE_PARSE" -v kind="$1" "$2" 2>/dev/null || true
 }
 
 # NOTE on SIGPIPE: the hooks run under `set -o pipefail` with an ERR trap, so a pipeline whose writer dies
