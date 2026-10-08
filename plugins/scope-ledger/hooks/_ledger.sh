@@ -53,14 +53,37 @@ followups_tracked() { path_tracked "$1" "$FOLLOWUPS_REL"; }
 ledger_usable()    { [ -f "$(ledger_path "$1")" ] && ! ledger_tracked "$1"; }
 followups_usable() { [ -f "$(followups_path "$1")" ] && ! followups_tracked "$1"; }
 
-# ledger_field <file> <key> → value of "<key>: …" inside the leading --- frontmatter block
+# The grammar of both files lives in ONE place, scope-parse.awk. Every reader below goes through it, so
+# "what counts as an open item" is decided once, and a line that does not fit is reported with a reason
+# instead of being silently counted by one hook and dropped by another.
+SCOPE_PARSE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/scope-parse.awk"
+
+# scope_parse <ledger|followups> <file> → parser records on stdout (format: see scope-parse.awk).
+# Quiet and empty when the file or the parser is unusable, so callers fail open as before.
+# The parser runs with LC_ALL=C (bytes). macOS's awk (BWK) in a UTF-8 locale aborts the whole run with
+# "towc: multibyte conversion failure" when a regex meets a line that substr() cut in the middle of a character —
+# e.g. a follow-up with no date followed by Chinese text — so that line and every line after it vanished without a
+# word (2>/dev/null || true hides the abort). The grammar only needs ASCII markers and literal multibyte separators,
+# which match the same bytes in either mode. Only the parser needs this: the small awk filters that read its output
+# were tried on invalid UTF-8 in zh_TW/en_US/C locales and do not abort.
+scope_parse() {
+  [ -f "$2" ] && [ -f "$SCOPE_PARSE" ] || return 0
+  LC_ALL=C awk -f "$SCOPE_PARSE" -v kind="$1" "$2" 2>/dev/null || true
+}
+
+# NOTE on SIGPIPE: the hooks run under `set -o pipefail` with an ERR trap, so a pipeline in which any stage dies
+# of SIGPIPE makes the whole hook exit silently. It can happen two ways here, each with its own guard:
+#  1. a reader quits early and kills the parser: absorbed by scope_parse's `|| true` (and every reader consumes all
+#     of its input anyway, so either guard alone is enough — the PL5 test only fails when both are gone);
+#  2. the CALLER quits early: scope-session-start.sh pipes followups_high and ledger_section into `head`, which kills
+#     the reader's own awk once the output exceeds a pipe buffer. Absorbed by the `|| true` that ends each reader.
+#     The grep-based readers had this for free; the first version of this parser lost it, and a 10,000-entry
+#     backlog made SessionStart exit before it printed the format notice (tests HK7 and HK7b).
+
+# ledger_field <file> <key> → value of "<key>: …" inside the leading --- frontmatter block (first one wins)
 ledger_field() {
   [ -f "$1" ] || return 0
-  awk -v k="$2" '
-    NR == 1 { if ($0 != "---") exit; next }
-    $0 == "---" { exit }
-    index($0, k ":") == 1 { s = substr($0, length(k) + 2); sub(/^[ \t]+/, "", s); print s; exit }
-  ' "$1" 2>/dev/null
+  scope_parse ledger "$1" | awk -F'\t' -v k="$2" '$1 == "F" && $2 == k && !seen { print $3; seen = 1 }' || true
 }
 
 # ledger_mode <file> → "harvest" when the frontmatter says so, otherwise "converge"
@@ -73,29 +96,19 @@ ledger_mode() {
 # ledger_section <file> <heading-text> → the lines of that "## <heading>" section (heading excluded)
 ledger_section() {
   [ -f "$1" ] || return 0
-  awk -v h="## $2" '
-    /^## / { insec = ($0 == h); next }
-    insec { print }
-  ' "$1" 2>/dev/null
+  scope_parse ledger "$1" | awk -F'\t' -v s="$2" '$1 == "S" && $2 == s { print $4 }' || true
 }
 
 # ledger_unchecked <file> → every top-level "- [ ] …" line inside "## In scope" (empty when none)
 ledger_unchecked() {
   [ -f "$1" ] || return 0
-  awk '
-    /^## / { insec = ($0 == "## In scope"); next }
-    insec && /^- \[ \] / { print }
-  ' "$1" 2>/dev/null
+  scope_parse ledger "$1" | awk -F'\t' '$1 == "I" && $3 == 0 { print $6 }' || true
 }
 
 # ledger_frontmatter <file> → the leading --- block including both fences (empty when absent)
 ledger_frontmatter() {
   [ -f "$1" ] || return 0
-  awk '
-    NR == 1 { if ($0 != "---") exit; print; next }
-    { print }
-    NR > 1 && $0 == "---" { exit }
-  ' "$1" 2>/dev/null
+  scope_parse ledger "$1" | awk -F'\t' '$1 == "S" && $2 == "frontmatter" { print $4 }' || true
 }
 
 # count_lines <text> → number of non-empty lines (0 for empty input)
@@ -107,7 +120,14 @@ count_lines() {
 ledger_rounds() {
   local v
   v=$(ledger_field "$1" review_rounds)
-  case "$v" in '' | *[!0-9]*) echo 0 ;; *) echo "$v" ;; esac
+  case "$v" in
+    '' | *[!0-9]*) echo 0 ;;
+    *)
+      # "08" is octal in bash arithmetic ("value too great for base"): hand back a canonical decimal. Very long digit
+      # strings would overflow the arithmetic that follows, so they count as 0.
+      v=${v#"${v%%[!0]*}"}
+      case "${#v}" in 0) echo 0 ;; [1-9] | 1[0-5]) echo "$v" ;; *) echo 0 ;; esac ;;
+  esac
 }
 
 # lock_take <lockdir> → 0 when the mkdir lock was taken. Waits up to ~1 s; a lock older than
@@ -136,7 +156,7 @@ lock_take() {
 # silently reporting 1 forever. Returns 1 (prints nothing) when the file cannot be rewritten or
 # the lock cannot be taken. Never writes through a symlink (the file or its directory).
 ledger_bump_rounds() {
-  local f="$1" n tmp lock rc
+  local f="$1" n tmp lock rc first
   [ -f "$f" ] || return 1
   [ -L "$f" ] && return 1
   [ -L "$(dirname "$f")" ] && return 1
@@ -145,11 +165,20 @@ ledger_bump_rounds() {
   n=$(( $(ledger_rounds "$f") + 1 ))
   tmp="$f.tmp.$$"
   rc=1
-  if [ "$(head -1 "$f" 2>/dev/null)" = "---" ]; then
-    awk -v n="$n" '
-      NR == 1 && $0 == "---" { fm = 1; print; next }
-      fm && !done && $0 == "---" { print "review_rounds: " n; done = 1; fm = 0; print; next }
-      fm && !done && index($0, "review_rounds:") == 1 { print "review_rounds: " n; done = 1; next }
+  # A UTF-8 BOM before the opening fence (Windows editors add one) must not make the file look frontmatter-less:
+  # the synthesised block that follows would hide the real one, and `mode` would silently fall back to converge.
+  # The rewrite below drops the BOM.
+  first=$(head -1 "$f" 2>/dev/null); first=${first#$'\357\273\277'}; first=${first%$'\r'}   # BOM and CR before the fence
+  if [ "$first" = "---" ]; then
+    # LC_ALL=C: the CR-stripping regex below aborts BSD awk in a UTF-8 locale on a line holding invalid UTF-8 (the
+    # round would silently not advance). An earlier version of this rewrite had no regex and did not need it.
+    LC_ALL=C awk -v n="$n" '
+      NR == 1 && index($0, "\357\273\277") == 1 { $0 = substr($0, length("\357\273\277") + 1) }
+      NR == 1 { crlf = ($0 ~ /\r$/) ? "\r" : "" }      # a CRLF file keeps its line endings, inserted lines included
+      { l = $0; sub(/\r$/, "", l) }                    # fence and key comparisons ignore the CR
+      NR == 1 && l == "---" { fm = 1; print; next }
+      fm && !done && l == "---" { print "review_rounds: " n crlf; done = 1; fm = 0; print; next }
+      fm && !done && index(l, "review_rounds:") == 1 { print "review_rounds: " n crlf; done = 1; next }
       { print }
     ' "$f" > "$tmp" 2>/dev/null && rc=0
   else
@@ -166,6 +195,26 @@ ledger_bump_rounds() {
   echo "$n"
 }
 
-# followups_open <file> → every open follow-up line; followups_high <file> → the open HIGH ones
-followups_open() { [ -f "$1" ] || return 0; grep -E '^- \[ \] ' "$1" 2>/dev/null || true; }
-followups_high() { [ -f "$1" ] || return 0; grep -E '^- \[ \] [0-9-]+ HIGH([[:space:]]|$)' "$1" 2>/dev/null || true; }
+# followups_open <file> → every open follow-up (entries the parser recognised, unticked), one raw line each;
+# followups_high <file> → the open HIGH ones. Lines the parser could not recognise are NOT here: they are
+# reported by scope_problem_notice, flagged as unticked when they would have been open work.
+followups_open() { [ -f "$1" ] || return 0; scope_parse followups "$1" | awk -F'\t' '$1 == "E" && $3 == 0 { print $10 }' || true; }
+followups_high() { [ -f "$1" ] || return 0; scope_parse followups "$1" | awk -F'\t' '$1 == "E" && $3 == 0 && $5 == "HIGH" { print $10 }' || true; }
+
+# scope_problem_notice <label> <file> <ledger|followups> → a fixed-vocabulary notice listing the lines that
+# do not fit the grammar (line number + reason only — never the line's own text, which would replay file
+# content into the model's context). Prints nothing when the file is clean.
+scope_problem_notice() {
+  local label="$1" file="$2" kind="$3" recs counts total bad warn nrec
+  recs=$(scope_parse "$kind" "$file" | awk -F'\t' '$1 == "X"')
+  [ -n "$recs" ] || return 0
+  # Count distinct LINES, not records: one line can break several rules (a frontmatter missing both goal and mode is
+  # two records on line 1). A line with any unrecognisable ("bad") record counts as bad, otherwise as incomplete.
+  counts=$(printf '%s\n' "$recs" | awk -F'\t' '{ l[$2] = 1; if ($3 == "bad") b[$2] = 1 } END { for (k in l) { t++; if (k in b) nb++; else nw++ } print t + 0, nb + 0, nw + 0 }')
+  total=${counts%% *}; counts=${counts#* }; bad=${counts%% *}; warn=${counts#* }
+  printf 'scope-ledger｜⚠ %s %s 有 %s 行格式問題（無法解析 %s 行、欄位不齊 %s 行）；只列行號與原因、不回放內容，請對照 /scope-ledger:scope 的格式修正：\n' "$label" "$file" "$total" "$bad" "$warn"
+  printf '%s\n' "$recs" | awk -F'\t' 'NR <= 10 { printf "  第 %s 行：%s%s\n", $2, $5, ($3 == "bad" && $4 == 1) ? "（未勾選的待辦行，不在上方件數內）" : "" }'
+  # The list shows the first 10 problem RECORDS (a line can have several), so the "rest" is counted in records too.
+  nrec=$(printf '%s\n' "$recs" | awk 'END { print NR }')
+  if [ "$nrec" -gt 10 ]; then printf '  …（其餘 %s 項問題未列出）\n' "$((nrec - 10))"; fi
+}

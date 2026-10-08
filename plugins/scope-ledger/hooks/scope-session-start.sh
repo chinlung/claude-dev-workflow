@@ -43,6 +43,7 @@ if [ -f "$ledger" ]; then
       ledger_section "$ledger" Deferred | head -10
       if [ "$deferred" -gt 10 ]; then echo "…（其餘 $((deferred - 10)) 項見 status）"; fi
     fi
+    scope_problem_notice "帳本" "$ledger" ledger
   fi
 fi
 
@@ -54,5 +55,6 @@ if followups_usable "$proj"; then
     echo "scope-ledger｜follow-ups ${n} 項（HIGH ${h}）待排程：${fu}——/scope-ledger:scope status 看清單，用 init 接手其中一項或一批。"
     followups_high "$fu" | head -5
   fi
+  scope_problem_notice "follow-ups" "$fu" followups
 fi
 exit 0
