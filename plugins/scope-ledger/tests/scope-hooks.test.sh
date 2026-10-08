@@ -902,6 +902,16 @@ TEMPLATE
   check_eq "PL25[$fl] follow-ups：「- [ ]2026-…」漏空格仍標未勾（open=1）" "$(rec X "$(pf followups "$P_FU")" | cut -f3,4)" "$(printf 'bad\t1')"
   printf -- '---\ngoal: g\nmode: converge\nreview_rounds: 0\n---\n## In scope\n- [ ]item ← 來源: user\n- [x]done ← 來源: user\n- [?] odd ← 來源: user\n' > "$L"
   check_eq "PL25[$fl] In scope：漏空格的未勾（1）、已勾（0）、怪字元（0）" "$(rec X "$(pf ledger "$L")" | cut -f4 | tr '\n' ,)" "1,0,0,"
+
+  # ---- Codex 第四輪（對 9e075eb）----
+  # PL26 frontmatter 值尾端有空白：F 記錄就是讀取端消費的值，必須與驗證看到的一致（去掉尾端空白）
+  printf -- '---\ngoal: g\nmode: harvest \nreview_rounds: 7  \n---\n## In scope\n' > "$L"
+  r=$(pf ledger "$L")
+  check_eq "PL26[$fl] mode 值尾端空白被去掉" "$(rec F "$r" | awk -F"$TAB" '$2 == "mode" { print $3 }')" "harvest"
+  check_eq "PL26[$fl] review_rounds 值尾端空白被去掉" "$(rec F "$r" | awk -F"$TAB" '$2 == "review_rounds" { print $3 }')" "7"
+  # PL27 Deferred 的 ← 來源: 後面是空值：In scope 與 follow-ups 早就會報
+  printf -- '---\ngoal: g\nmode: converge\nreview_rounds: 0\n---\n## In scope\n## Deferred\n- task ← 來源: ｜ 嚴重度: LOW ｜ 理由: r ｜ 去處: follow-ups\n' > "$L"
+  check "PL27[$fl] Deferred 來源為空值：報" "$(rec X "$(pf ledger "$L")")" "來源: 為空"
 done
 
 # ---- hook 層：壞行大聲報錯、有效行照常計入、報錯不回放原文 ----
@@ -1014,6 +1024,12 @@ out=$(bash -c '. "$1"; scope_problem_notice 帳本 "$2" ledger' _ "$HOOKS/_ledge
 check "HK12b 11 筆記錄落在 9 行：標題說 9 行" "$out" '有 9 行格式問題'
 check "HK12b 11 筆記錄：只列 10 筆" "$(printf '%s\n' "$out" | awk '/^  第 [0-9]+ 行：/ { n++ } END { print n + 0 }')" '^10$'
 check "HK12b 11 筆記錄：其餘 1 項未列出" "$out" '其餘 1 項問題未列出'
+# HK13 Codex 第四輪：尾端有空白的 mode／review_rounds（手滑最常見的一種）。讀取端要得到 harvest 與 7，下一次計輪是 8，不是被悄悄重設成 1。
+p=$WORK/hk13; make_repo "$p"; f="$p/.claude/scope-ledger.local.md"
+printf -- '---\ngoal: g\nmode: harvest \nreview_rounds: 7 \n---\n## In scope\n' > "$f"
+out=$(bash -c '. "$1"; echo "mode=$(ledger_mode "$2") rounds=$(ledger_rounds "$2")"; n=$(ledger_bump_rounds "$2"); echo "bumped=$n mode=$(ledger_mode "$2")"' _ "$HOOKS/_ledger.sh" "$f" 2>&1)
+check "HK13 尾端空白：mode=harvest、rounds=7" "$out" "mode=harvest rounds=7"
+check "HK13 尾端空白：計輪成 8（不是被重設成 1），mode 不變" "$out" "bumped=8 mode=harvest"
 # HK10 Codex 第二輪：review_rounds: 08 在 bash 算術裡是八進位，`value too great for base`，hook 在拿到鎖之後中止（留下鎖、也沒注入政策）。
 p=$WORK/hk10; make_repo "$p"; f="$p/.claude/scope-ledger.local.md"
 printf -- '---\ngoal: g\nmode: converge\nreview_rounds: 08\n---\n## In scope\n' > "$f"

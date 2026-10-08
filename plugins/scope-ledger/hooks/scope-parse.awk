@@ -179,6 +179,7 @@ function deferred(n, line,    body, last, text, tail, parts, np, k, p, src, sv, 
     text = trim(substr(body, 1, last - 1)); tail = substr(body, last + length(" ← 來源: "))
     np = split(tail, parts, /(｜|\|)/)
     src = trim(parts[1])
+    if (src == "") why = addwhy(why, "來源: 為空")
     for (k = 2; k <= np; k++) {
       p = trim(parts[k])
       sub(/^severity:/, "嚴重度:", p); sub(/^(why|reason):/, "理由:", p); sub(/^where:/, "去處:", p)   # README names
@@ -208,6 +209,7 @@ function ledger_line(n, raw,    line, h, key, val) {
     if (raw == "---") { fm = 0; check_frontmatter(); return }
     if (match(raw, /^[A-Za-z_][A-Za-z0-9_]*:/)) {
       key = substr(raw, 1, RLENGTH - 1); val = substr(raw, RLENGTH + 1); sub(/^[ \t]+/, "", val)
+      val = rtrim(val)                    # the readers consume this value verbatim: "harvest " would read as converge, "7 " as 0
       print "F", key, val
       # ledger_field() returns the FIRST occurrence, so that is the value to validate; a later duplicate is reported.
       if (key in fmval) prob(n, "warn", 0, "frontmatter 有重複的欄位，只採用第一個")
