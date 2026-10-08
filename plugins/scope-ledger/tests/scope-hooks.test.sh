@@ -849,6 +849,28 @@ for AWKBIN in $AWKS; do
   # PL19 完全沒有 ## In scope
   printf -- '---\ngoal: g\nmode: converge\nreview_rounds: 0\n---\n## Deferred\n' > "$L"
   check "PL19[$fl] 缺 ## In scope 區段" "$(rec X "$(pf ledger "$L")")" "缺 ## In scope"
+
+  # ---- Codex 第二輪（對 cc58587）----
+  # PL20 重複欄位：驗證必須看讀取端實際採用的那個（ledger_field 取第一個），並指出重複
+  printf -- '---\ngoal: g\nmode: invalid\nmode: harvest\nreview_rounds: 0\n---\n## In scope\n' > "$L"
+  r=$(pf ledger "$L")
+  check "PL20[$fl] 重複欄位、第一個無效：驗證到第一個（讀取端用的）" "$(rec X "$r")" "mode 須為"
+  check "PL20[$fl] 重複欄位：報重複" "$(rec X "$r")" "重複"
+  printf -- '---\ngoal: g\nmode: harvest\nmode: invalid\nreview_rounds: 0\n---\n## In scope\n' > "$L"
+  check_empty "PL20b[$fl] 重複欄位、第一個有效：不因後面的無效值誤報 mode" "$(rec X "$(pf ledger "$L")" | awk '/mode 須為/')"
+  # PL21 0 位元組帳本：gate 認為可用，SessionStart 卻回報 0 項且無警告，Stop 放行——要報；空的 follow-ups 則是合法的（Pi 也回 []）
+  : > "$L"
+  check "PL21[$fl] 0 位元組帳本：報空帳本" "$(rec X "$(pf ledger "$L")")" "bad.*帳本是空的"
+  : > "$P_FU"
+  check_empty "PL21b[$fl] 0 位元組 follow-ups：合法、不報" "$(rec X "$(pf followups "$P_FU")")"
+  # PL22 未知區段：已勾的行不能吃掉「未勾」的名額——未勾的待辦至少要被點名一次
+  printf -- '---\ngoal: g\nmode: converge\nreview_rounds: 0\n---\n## In scope\n- [ ] A ← 來源: user\n## Notes\n- [x] done\n- [ ] still pending\n' > "$L"
+  check_eq "PL22[$fl] 未知區段先有已勾、後有未勾：未勾那行被點名（open=1）" "$(rec X "$(pf ledger "$L")" | awk -F"$TAB" '$4 == 1' | wc -l | tr -d ' ')" "1"
+  # PL23 項目文字為空：In scope 與 Deferred 都要報（follow-ups 早就有這個檢查）
+  printf -- '---\ngoal: g\nmode: converge\nreview_rounds: 0\n---\n## In scope\n- [ ]  ← 來源: user\n' > "$L"
+  check "PL23[$fl] In scope 項目文字為空" "$(rec X "$(pf ledger "$L")")" "項目文字為空"
+  printf -- '---\ngoal: g\nmode: converge\nreview_rounds: 0\n---\n## In scope\n## Deferred\n-  ← 來源: user ｜ 嚴重度: LOW ｜ 理由: r ｜ 去處: x\n' > "$L"
+  check "PL23b[$fl] Deferred 項目文字為空" "$(rec X "$(pf ledger "$L")")" "項目文字為空"
 done
 
 # ---- hook 層：壞行大聲報錯、有效行照常計入、報錯不回放原文 ----
@@ -928,6 +950,26 @@ printf -- '---\ngoal: g\nmode: converge\nreview_rounds: 0\n---\n## In Scope\n- [
 out=$(run_hook scope-session-start.sh "$(start_json hk8 "$p" startup)" "$t" "$p")
 check "HK8 區段標題拼錯：SessionStart 報帳本格式問題" "$out" '帳本.*格式問題'
 check "HK8 區段標題拼錯：點出只差大小寫" "$out" '只差大小寫'
+# HK9 Codex 第二輪：CRLF 帳本。首行是 `---\r`，bump 的首行判斷與 awk 圍欄比對都認不出，會在前面再插一個 frontmatter，mode 從 harvest 悄悄變 converge
+# （與 BOM 同一類缺陷）。改寫後要保持 CRLF，且只有一個 frontmatter。
+p=$WORK/hk9; make_repo "$p"; f="$p/.claude/scope-ledger.local.md"
+printf -- '---\r\ngoal: g\r\nmode: harvest\r\nreview_rounds: 3\r\n---\r\n## In scope\r\n- [ ] A ← 來源: user\r\n' > "$f"
+out=$(bash -c '. "$1"; ledger_bump_rounds "$2" >/dev/null; printf "mode=%s rounds=%s\n" "$(ledger_mode "$2")" "$(ledger_rounds "$2")"' _ "$HOOKS/_ledger.sh" "$f" 2>&1)
+check "HK9 CRLF 帳本 bump 後 mode 不變、rounds=4" "$out" "mode=harvest rounds=4"
+check_eq "HK9 bump 後仍只有一個 frontmatter（兩條圍欄）" "$(awk '{ sub(/\r$/, "") } $0 == "---" { n++ } END { print n + 0 }' "$f")" "2"
+check_eq "HK9 bump 後檔案仍是 CRLF" "$(perl -ne '$c++ if /\r$/; $t++; END { print $c == $t ? "crlf" : "mixed" }' "$f")" "crlf"
+# HK9b 同一件事、但帳本沒有 review_rounds 這個鍵：新行是「插在結尾圍欄之前」（另一條分支），也要帶 CR，檔案不能變成 CRLF／LF 混合
+printf -- '---\r\ngoal: g\r\nmode: harvest\r\n---\r\n## In scope\r\n- [ ] A ← 來源: user\r\n' > "$f"
+out=$(bash -c '. "$1"; ledger_bump_rounds "$2" >/dev/null; printf "mode=%s rounds=%s\n" "$(ledger_mode "$2")" "$(ledger_rounds "$2")"' _ "$HOOKS/_ledger.sh" "$f" 2>&1)
+check "HK9b 沒有 review_rounds 鍵的 CRLF 帳本：mode 不變、rounds=1" "$out" "mode=harvest rounds=1"
+check_eq "HK9b 插入的新行也是 CRLF（沒有混合行尾）" "$(perl -ne '$c++ if /\r$/; $t++; END { print $c == $t ? "crlf" : "mixed" }' "$f")" "crlf"
+# HK10 Codex 第二輪：review_rounds: 08 在 bash 算術裡是八進位，`value too great for base`，hook 在拿到鎖之後中止（留下鎖、也沒注入政策）。
+p=$WORK/hk10; make_repo "$p"; f="$p/.claude/scope-ledger.local.md"
+printf -- '---\ngoal: g\nmode: converge\nreview_rounds: 08\n---\n## In scope\n' > "$f"
+out=$(bash -c '. "$1"; echo "r=$(ledger_rounds "$2")"; n=$(ledger_bump_rounds "$2"); echo "bump=$n rc=$?"; [ -d "$2.lock" ] && echo LOCK-LEFT-BEHIND; true' _ "$HOOKS/_ledger.sh" "$f" 2>&1)
+check "HK10 review_rounds: 08 當十進位（ledger_rounds=8）" "$out" "r=8"
+check "HK10 review_rounds: 08 bump 成 9" "$out" "bump=9 rc=0"
+check_empty "HK10 沒有留下鎖" "$(printf '%s\n' "$out" | awk '/LOCK-LEFT-BEHIND/')"
 
 # ---- summary ----
 echo "----"

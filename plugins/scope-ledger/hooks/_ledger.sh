@@ -120,7 +120,14 @@ count_lines() {
 ledger_rounds() {
   local v
   v=$(ledger_field "$1" review_rounds)
-  case "$v" in '' | *[!0-9]*) echo 0 ;; *) echo "$v" ;; esac
+  case "$v" in
+    '' | *[!0-9]*) echo 0 ;;
+    *)
+      # "08" is octal in bash arithmetic ("value too great for base"): hand back a canonical decimal. Very long digit
+      # strings would overflow the arithmetic that follows, so they count as 0.
+      v=${v#"${v%%[!0]*}"}
+      case "${#v}" in 0) echo 0 ;; [1-9] | 1[0-5]) echo "$v" ;; *) echo 0 ;; esac ;;
+  esac
 }
 
 # lock_take <lockdir> → 0 when the mkdir lock was taken. Waits up to ~1 s; a lock older than
@@ -161,13 +168,17 @@ ledger_bump_rounds() {
   # A UTF-8 BOM before the opening fence (Windows editors add one) must not make the file look frontmatter-less:
   # the synthesised block that follows would hide the real one, and `mode` would silently fall back to converge.
   # The rewrite below drops the BOM.
-  first=$(head -1 "$f" 2>/dev/null); first=${first#$'\357\273\277'}
+  first=$(head -1 "$f" 2>/dev/null); first=${first#$'\357\273\277'}; first=${first%$'\r'}   # BOM and CR before the fence
   if [ "$first" = "---" ]; then
-    awk -v n="$n" '
+    # LC_ALL=C: the CR-stripping regex below aborts BSD awk in a UTF-8 locale on a line holding invalid UTF-8 (the
+    # round would silently not advance). An earlier version of this rewrite had no regex and did not need it.
+    LC_ALL=C awk -v n="$n" '
       NR == 1 && index($0, "\357\273\277") == 1 { $0 = substr($0, length("\357\273\277") + 1) }
-      NR == 1 && $0 == "---" { fm = 1; print; next }
-      fm && !done && $0 == "---" { print "review_rounds: " n; done = 1; fm = 0; print; next }
-      fm && !done && index($0, "review_rounds:") == 1 { print "review_rounds: " n; done = 1; next }
+      NR == 1 { crlf = ($0 ~ /\r$/) ? "\r" : "" }      # a CRLF file keeps its line endings, inserted lines included
+      { l = $0; sub(/\r$/, "", l) }                    # fence and key comparisons ignore the CR
+      NR == 1 && l == "---" { fm = 1; print; next }
+      fm && !done && l == "---" { print "review_rounds: " n crlf; done = 1; fm = 0; print; next }
+      fm && !done && index(l, "review_rounds:") == 1 { print "review_rounds: " n crlf; done = 1; next }
       { print }
     ' "$f" > "$tmp" 2>/dev/null && rc=0
   else

@@ -162,6 +162,7 @@ function inscope(n, line,    c, done, body, last, text, src, why) {
   } else {
     text = trim(body); src = ""; why = "缺 ← 來源:"
   }
+  if (text == "") why = addwhy(why, "項目文字為空")
   print "I", n, done, text, src, line
   if (why != "") prob(n, "warn", !done, why)
 }
@@ -189,6 +190,7 @@ function deferred(n, line,    body, last, text, tail, parts, np, k, p, src, sv, 
     if (rs == "") why = addwhy(why, "缺 理由:")
     if (ds == "") why = addwhy(why, "缺 去處:")
   }
+  if (text == "") why = addwhy(why, "項目文字為空")
   print "D", n, text, src, sv, rs, ds, line
   if (why != "") prob(n, "warn", 0, why)
 }
@@ -204,7 +206,9 @@ function ledger_line(n, raw,    line, h, key, val) {
     if (match(raw, /^[A-Za-z_][A-Za-z0-9_]*:/)) {
       key = substr(raw, 1, RLENGTH - 1); val = substr(raw, RLENGTH + 1); sub(/^[ \t]+/, "", val)
       print "F", key, val
-      fmline[key] = n; fmval[key] = val
+      # ledger_field() returns the FIRST occurrence, so that is the value to validate; a later duplicate is reported.
+      if (key in fmval) prob(n, "warn", 0, "frontmatter 有重複的欄位，只採用第一個")
+      else { fmline[key] = n; fmval[key] = val }
     } else if (raw !~ /^[ \t]*$/ && raw !~ /^#/ && raw !~ /^[ \t]/) {
       # A frontmatter line that is not "key: value" (a missing colon, "mode : harvest") used to be dropped without a
       # word, so mode silently fell back to converge. Blank lines, "#" comments and indented continuation lines are fine.
@@ -216,7 +220,7 @@ function ledger_line(n, raw,    line, h, key, val) {
     h = substr(raw, 4)
     if (h == "In scope" || h == "Deferred" || h == "Log") { sect = h; seen[h] = 1 }
     else {
-      sect = "other"; other_warned = 0
+      sect = "other"; warned_t = 0; warned_u = 0
       # "## In Scope" / "## in scope" / "## Deferred " are read as an unknown section, so everything under them used to
       # vanish — and the Stop hook then let the session end with open work. Say so.
       k = tolower(h); gsub(/[ \t]+/, "", k)
@@ -225,9 +229,14 @@ function ledger_line(n, raw,    line, h, key, val) {
     return
   }
   if (sect == "" || sect == "other") {                     # before the first heading, or a section we do not read
-    if (!other_warned && raw ~ /^- \[[ xX]\] /) {          # ...but a checklist there is work that nobody will count
-      prob(n, "warn", (substr(raw, 4, 1) == " "), "未知區段下有清單行（區段標題須為 In scope／Deferred／Log，其下內容不會被讀取）")
-      other_warned = 1
+    if (raw ~ /^- \[[ xX]\] /) {                           # ...but a checklist there is work that nobody will count
+      unt = (substr(raw, 4, 1) == " ")
+      # one warning for a ticked line and one for an unticked line per section: a ticked line must not use up the slot
+      # of the unticked one, because the unticked line is the pending work the notice exists to point at
+      if (unt ? !warned_u : !warned_t) {
+        prob(n, "warn", unt, "未知區段下有清單行（區段標題須為 In scope／Deferred／Log，其下內容不會被讀取）")
+        if (unt) warned_u = 1; else warned_t = 1
+      }
     }
     return
   }
@@ -271,5 +280,6 @@ BEGIN {
 END {
   if (bad_usage) exit 2
   if (kind == "ledger" && fm) prob(NR, "bad", 0, "frontmatter 未以 --- 收尾")
+  if (kind == "ledger" && NR == 0) prob(1, "bad", 0, "帳本是空的（缺 frontmatter 與 ## In scope）")   # gate-usable, yet reads as zero open items
   if (kind == "ledger" && NR > 0 && !("In scope" in seen)) prob(1, "warn", 0, "缺 ## In scope 區段（其下的未完成項才會被計入）")
 }
