@@ -871,6 +871,37 @@ for AWKBIN in $AWKS; do
   check "PL23[$fl] In scope 項目文字為空" "$(rec X "$(pf ledger "$L")")" "項目文字為空"
   printf -- '---\ngoal: g\nmode: converge\nreview_rounds: 0\n---\n## In scope\n## Deferred\n-  ← 來源: user ｜ 嚴重度: LOW ｜ 理由: r ｜ 去處: x\n' > "$L"
   check "PL23b[$fl] Deferred 項目文字為空" "$(rec X "$(pf ledger "$L")")" "項目文字為空"
+
+  # ---- Codex 第三輪（對 1775fe8）----
+  # PL24 README 的帳本範本逐字當輸入：英文標籤（source／severity／why／where，`|` 分隔）是 README 教人寫的，不能每項都被警告。
+  # （範本是這個 PR 之前就有的；舊 hook 不看標籤所以沒事，新 parser 看，所以要接受別名。）
+  cat > "$L" <<'TEMPLATE'
+---
+goal: <the user's original request, verbatim, one sentence>
+mode: converge | harvest
+opened: 2026-09-23
+opened_on: feature/x          ← a record; the ledger is NOT bound to a branch
+review_rounds: 0
+---
+## In scope
+- [ ] item ← source: user
+- [x] item ← source: review-branch@r1
+## Deferred
+- item ← source: security-review@r2 | severity: HIGH | why: pre-existing, not introduced here | where: issue #123
+## Log
+- 2026-09-23 10:00 review-branch r1: 5 findings → 2 adopted / 3 deferred / 0 noise
+- 2026-09-23 PR #42 opened on feature/x
+TEMPLATE
+  r=$(pf ledger "$L")
+  check_eq "PL24[$fl] README 範本：In scope 的 ← source: 被認得" "$(rec I "$r" | cut -f5 | tr '\n' ,)" "user,review-branch@r1,"
+  check_eq "PL24[$fl] README 範本：Deferred 的 source／severity／why／where 被認得" "$(rec D "$r" | cut -f4-7)" "$(printf 'security-review@r2\tHIGH\tpre-existing, not introduced here\tissue #123')"
+  # 範本裡 mode 的值是 `converge | harvest`（說明用的佔位），那一項本來就該被警告；其餘不該有任何問題
+  check_empty "PL24[$fl] README 範本：除了佔位的 mode 值之外沒有其他問題" "$(rec X "$r" | awk '!/mode 須為/')"
+  # PL25 勾選框字元是空白（未勾）、後面空格打錯：仍是一筆「未勾」的待辦，open 必須是 1（字元不是空白／x 的才是 0）
+  printf '# scope-ledger follow-ups\n- [ ]2026-10-08 HIGH x ← from: g ｜ 來源: u ｜ 去處: y\n' > "$P_FU"
+  check_eq "PL25[$fl] follow-ups：「- [ ]2026-…」漏空格仍標未勾（open=1）" "$(rec X "$(pf followups "$P_FU")" | cut -f3,4)" "$(printf 'bad\t1')"
+  printf -- '---\ngoal: g\nmode: converge\nreview_rounds: 0\n---\n## In scope\n- [ ]item ← 來源: user\n- [x]done ← 來源: user\n- [?] odd ← 來源: user\n' > "$L"
+  check_eq "PL25[$fl] In scope：漏空格的未勾（1）、已勾（0）、怪字元（0）" "$(rec X "$(pf ledger "$L")" | cut -f4 | tr '\n' ,)" "1,0,0,"
 done
 
 # ---- hook 層：壞行大聲報錯、有效行照常計入、報錯不回放原文 ----
@@ -963,6 +994,26 @@ printf -- '---\r\ngoal: g\r\nmode: harvest\r\n---\r\n## In scope\r\n- [ ] A ← 
 out=$(bash -c '. "$1"; ledger_bump_rounds "$2" >/dev/null; printf "mode=%s rounds=%s\n" "$(ledger_mode "$2")" "$(ledger_rounds "$2")"' _ "$HOOKS/_ledger.sh" "$f" 2>&1)
 check "HK9b 沒有 review_rounds 鍵的 CRLF 帳本：mode 不變、rounds=1" "$out" "mode=harvest rounds=1"
 check_eq "HK9b 插入的新行也是 CRLF（沒有混合行尾）" "$(perl -ne '$c++ if /\r$/; $t++; END { print $c == $t ? "crlf" : "mixed" }' "$f")" "crlf"
+# HK11 Codex 第三輪：通知說「N 行」，數的卻是問題記錄數。同一行缺 goal 又缺 mode 是兩筆記錄、一行。
+p=$WORK/hk11; make_repo "$p"; f="$p/.claude/scope-ledger.local.md"
+printf -- '---\nreview_rounds: 0\n---\n## In scope\n' > "$f"
+out=$(bash -c '. "$1"; scope_problem_notice 帳本 "$2" ledger' _ "$HOOKS/_ledger.sh" "$f" 2>&1)
+check "HK11 同一行的兩個問題只算一行" "$out" '有 1 行格式問題（無法解析 0 行、欄位不齊 1 行）'
+# HK12 通知只列前 10 筆問題記錄，其餘以「項」計（一行可有多筆）：12 行壞行 → 列 10 筆、其餘 2 項
+p=$WORK/hk12; make_repo "$p"; t=$WORK/thk12; mkdir -p "$t"
+{ printf '# scope-ledger follow-ups\n'; i=0; while [ "$i" -lt 12 ]; do printf 'garbage line %s\n' "$i"; i=$((i+1)); done; } > "$p/.claude/scope-followups.local.md"
+out=$(run_hook scope-session-start.sh "$(start_json hk12 "$p" startup)" "$t" "$p")
+check "HK12 12 行壞行：標題說 12 行" "$out" '有 12 行格式問題'
+check_eq "HK12 12 行壞行：只列 10 筆" "$(printf '%s\n' "$out" | awk '/^  第 [0-9]+ 行：/ { n++ } END { print n + 0 }')" "10"
+check "HK12 12 行壞行：其餘 2 項未列出" "$out" '其餘 2 項問題未列出'
+# HK12b 記錄數與行數不同時，「其餘」要照記錄算：frontmatter 內 8 行壞行（8 筆，各在自己的行）＋第 1 行同時缺 goal／缺 mode／缺 ## In scope（3 筆）
+# ＝ 11 筆記錄、9 個不同的行。標題說 9 行；只列 10 筆；其餘 1 項。（若條件誤用行數 9 ≤ 10，就不會有那句。）
+p=$WORK/hk12b; make_repo "$p"; t=$WORK/thk12b; mkdir -p "$t"
+{ printf -- '---\nreview_rounds: 0\n'; i=0; while [ "$i" -lt 8 ]; do printf 'garbage %s\n' "$i"; i=$((i+1)); done; printf -- '---\n## Deferred\n'; } > "$p/.claude/scope-ledger.local.md"
+out=$(bash -c '. "$1"; scope_problem_notice 帳本 "$2" ledger' _ "$HOOKS/_ledger.sh" "$p/.claude/scope-ledger.local.md" 2>&1)
+check "HK12b 11 筆記錄落在 9 行：標題說 9 行" "$out" '有 9 行格式問題'
+check "HK12b 11 筆記錄：只列 10 筆" "$(printf '%s\n' "$out" | awk '/^  第 [0-9]+ 行：/ { n++ } END { print n + 0 }')" '^10$'
+check "HK12b 11 筆記錄：其餘 1 項未列出" "$out" '其餘 1 項問題未列出'
 # HK10 Codex 第二輪：review_rounds: 08 在 bash 算術裡是八進位，`value too great for base`，hook 在拿到鎖之後中止（留下鎖、也沒注入政策）。
 p=$WORK/hk10; make_repo "$p"; f="$p/.claude/scope-ledger.local.md"
 printf -- '---\ngoal: g\nmode: converge\nreview_rounds: 08\n---\n## In scope\n' > "$f"

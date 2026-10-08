@@ -91,7 +91,7 @@ function followup(n, raw,    line, c, done, date, rest, sev, body, i, tail, r2, 
   if (substr(line, 1, 3) != "- [") { prob(n, "bad", 0, "非清單行（須以 - [ ] 或 - [x] 開頭）"); return }
   c = substr(line, 4, 1)
   if (substr(line, 5, 2) != "] " || (c != " " && c != "x" && c != "X")) {
-    prob(n, "bad", 0, "勾選框須為 [ ] 或 [x]，其後一個空格"); return
+    prob(n, "bad", (c == " "), "勾選框須為 [ ] 或 [x]，其後一個空格"); return     # "- [ ]x": still an unticked task
   }
   done = (c == " ") ? 0 : 1
   date = substr(line, 7, 10)
@@ -151,10 +151,11 @@ function inscope(n, line,    c, done, body, last, text, src, why) {
   if (substr(line, 1, 3) != "- [") { prob(n, "bad", 0, "非清單行（頂層須為 - [ ] 或 - [x]）"); return }
   c = substr(line, 4, 1)
   if (substr(line, 5, 2) != "] " || (c != " " && c != "x" && c != "X")) {
-    prob(n, "bad", 0, "勾選框須為 [ ] 或 [x]，其後一個空格"); return
+    prob(n, "bad", (c == " "), "勾選框須為 [ ] 或 [x]，其後一個空格"); return     # "- [ ]x": still an unticked task
   }
   done = (c == " ") ? 0 : 1
   body = substr(line, 7); why = ""
+  gsub(/ ← source: /, " ← 來源: ", body)          # the README template writes "← source:"
   last = lastpos(body, " ← 來源: ")
   if (last > 0) {
     text = trim(substr(body, 1, last - 1)); src = trim(substr(body, last + length(" ← 來源: ")))
@@ -170,6 +171,7 @@ function inscope(n, line,    c, done, body, last, text, src, why) {
 function deferred(n, line,    body, last, text, tail, parts, np, k, p, src, sv, rs, ds, why, stray) {
   if (substr(line, 1, 2) != "- ") { prob(n, "bad", 0, "非清單行（Deferred 的頂層行須以 - 開頭）"); return }
   body = substr(line, 3); why = ""; src = ""; sv = ""; rs = ""; ds = ""
+  gsub(/ ← source: /, " ← 來源: ", body)
   last = lastpos(body, " ← 來源: ")
   if (last == 0) {
     text = trim(body); why = "缺 ← 來源:"
@@ -179,6 +181,7 @@ function deferred(n, line,    body, last, text, tail, parts, np, k, p, src, sv, 
     src = trim(parts[1])
     for (k = 2; k <= np; k++) {
       p = trim(parts[k])
+      sub(/^severity:/, "嚴重度:", p); sub(/^(why|reason):/, "理由:", p); sub(/^where:/, "去處:", p)   # README names
       if (index(p, "嚴重度:") == 1) sv = trim(substr(p, length("嚴重度:") + 1))
       else if (index(p, "理由:") == 1) rs = trim(substr(p, length("理由:") + 1))
       else if (index(p, "去處:") == 1) ds = trim(substr(p, length("去處:") + 1))

@@ -205,13 +205,16 @@ followups_high() { [ -f "$1" ] || return 0; scope_parse followups "$1" | awk -F'
 # do not fit the grammar (line number + reason only — never the line's own text, which would replay file
 # content into the model's context). Prints nothing when the file is clean.
 scope_problem_notice() {
-  local label="$1" file="$2" kind="$3" recs total bad warn
+  local label="$1" file="$2" kind="$3" recs counts total bad warn nrec
   recs=$(scope_parse "$kind" "$file" | awk -F'\t' '$1 == "X"')
   [ -n "$recs" ] || return 0
-  total=$(printf '%s\n' "$recs" | awk 'END { print NR }')
-  bad=$(printf '%s\n' "$recs" | awk -F'\t' '$3 == "bad" { n++ } END { print n + 0 }')
-  warn=$(printf '%s\n' "$recs" | awk -F'\t' '$3 == "warn" { n++ } END { print n + 0 }')
+  # Count distinct LINES, not records: one line can break several rules (a frontmatter missing both goal and mode is
+  # two records on line 1). A line with any unrecognisable ("bad") record counts as bad, otherwise as incomplete.
+  counts=$(printf '%s\n' "$recs" | awk -F'\t' '{ l[$2] = 1; if ($3 == "bad") b[$2] = 1 } END { for (k in l) { t++; if (k in b) nb++; else nw++ } print t + 0, nb + 0, nw + 0 }')
+  total=${counts%% *}; counts=${counts#* }; bad=${counts%% *}; warn=${counts#* }
   printf 'scope-ledger｜⚠ %s %s 有 %s 行格式問題（無法解析 %s 行、欄位不齊 %s 行）；只列行號與原因、不回放內容，請對照 /scope-ledger:scope 的格式修正：\n' "$label" "$file" "$total" "$bad" "$warn"
   printf '%s\n' "$recs" | awk -F'\t' 'NR <= 10 { printf "  第 %s 行：%s%s\n", $2, $5, ($3 == "bad" && $4 == 1) ? "（未勾選的待辦行，不在上方件數內）" : "" }'
-  if [ "$total" -gt 10 ]; then printf '  …（其餘 %s 行同樣有問題）\n' "$((total - 10))"; fi
+  # The list shows the first 10 problem RECORDS (a line can have several), so the "rest" is counted in records too.
+  nrec=$(printf '%s\n' "$recs" | awk 'END { print NR }')
+  if [ "$nrec" -gt 10 ]; then printf '  …（其餘 %s 項問題未列出）\n' "$((nrec - 10))"; fi
 }
