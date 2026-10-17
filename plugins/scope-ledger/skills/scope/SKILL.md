@@ -1,12 +1,12 @@
 ---
 name: scope
-description: 工作範圍帳本（<project>/.claude/scope-ledger.local.md，per goal、與分支無關）的維護指令：`init "<原始請求>"` 建帳本並判定 mode（converge／harvest）、`status` 看未完成項與 follow-ups（無參數時預設）、`defer` 把項目移到 Deferred（嚴重度、理由、去處必填）、`done` 收帳並把 Deferred 搬進跨帳本的 follow-ups。Use when — the scope-gate hook denied an edit and asked for init; the first-prompt reminder said there is no ledger; a review / scan / audit just produced findings and the triage hook said to put them in the ledger first; the Stop hook listed open In-scope items; the user asks what is still unfinished, what was deferred, or to wrap up. 政策：review／scan 的產出是 input、不是工單——每條 finding 先 triage 進帳本再動手；延後是排程不是裁決，可利用的安全 finding、同缺陷 sibling、守則命中、boy-scout 直接採納，HIGH 安全項延後必須有 issue 或下一個 goal；goal 本身是找／修 finding（harvest）時 finding 就是工單。本 skill 不改 .gitignore、不評判 triage 內容、不取代 OpenSpec 的 tasks.md。
-argument-hint: "[init \"<goal>\" | status | defer \"<item>\" --severity HIGH|MEDIUM|LOW --why <理由> --to <去處> | done]"
+description: 工作範圍帳本（<project>/.claude/scope-ledger.local.md，per goal、與分支無關）的維護指令：`init "<原始請求>"` 建帳本並判定 mode（converge／harvest）、`add "<請求>"` 把同一條工作線上的後續請求（commit、push、再審一輪）追加進現有帳本而不重開、`status` 看未完成項與 follow-ups（無參數時預設）、`defer` 把項目移到 Deferred（嚴重度、理由、去處必填）、`done` 收帳並把 Deferred 搬進跨帳本的 follow-ups。Use when — the scope-gate hook denied an edit and asked for init; the first-prompt reminder said there is no ledger; a review / scan / audit just produced findings and the triage hook said to put them in the ledger first; the Stop hook listed open In-scope items; the user asks what is still unfinished, what was deferred, or to wrap up. 政策：review／scan 的產出是 input、不是工單——每條 finding 先 triage 進帳本再動手；延後是排程不是裁決，可利用的安全 finding、同缺陷 sibling、守則命中、boy-scout 直接採納，HIGH 安全項延後必須有 issue 或下一個 goal；goal 本身是找／修 finding（harvest）時 finding 就是工單。本 skill 不改 .gitignore、不評判 triage 內容、不取代 OpenSpec 的 tasks.md。
+argument-hint: "[init \"<goal>\" | add \"<請求>\" | status | defer \"<item>\" --severity HIGH|MEDIUM|LOW --why <理由> --to <去處> | done]"
 ---
 
 # /scope-ledger:scope — 工作範圍帳本
 
-帳本是一個檔案：`<project>/.claude/scope-ledger.local.md`，**一個 goal 一份**，與分支無關——一個 goal 底下開幾個分支、幾個 PR 都記在同一份帳本的 Log 裡；切分支是正常工作，不會被閘門擋。它是本次工作的基線：原始請求逐字、mode、In scope 清單、被延後的項目與去處。六個 hook 讀它：主代理首次改程式碼（Edit／Write，或 Bash 的 `sed -i`／`perl -pi`／重導向／`cp`／`mv`／`patch`）沒有帳本會被 deny 一次（子代理放行）；每 session 第一則提示若無帳本會提醒一次（不阻擋）；review 入口指令啟動時（模型呼叫 Skill，或使用者手打 `/指令`）依 mode 注入 triage 政策並把 `review_rounds` 加一（review 型子代理與 codex 伴隨 pass 只注入不計輪）；Stop 時 In scope 有未勾項會 block 一次；SessionStart（含 compaction 後）把帳本與 follow-ups 印回 context。帳本若被 git 追蹤（或經 symlink／submodule 進入 repo），所有 hook 一律忽略它——`init` 會檢查並提醒。
+帳本是一個檔案：`<project>/.claude/scope-ledger.local.md`，**一條工作線一份**，與分支無關——一個 goal 底下開幾個分支、幾個 PR 都記在同一份帳本的 Log 裡；切分支是正常工作，不會被閘門擋。同一條線上接續丟來的請求（commit、push、再審一輪、修審查結果）用 `add` 追加進同一本，不為每句祈使句重開：`done` 是收尾動作，不是每句話的例行步驟（曾一個 session 開了 6 本、其中 3 本的 goal 就是一個字 `commit`）。它是本次工作的基線：原始請求逐字、mode、In scope 清單、被延後的項目與去處。六個 hook 讀它：主代理首次改程式碼（Edit／Write，或 Bash 的 `sed -i`／`perl -pi`／重導向／`cp`／`mv`／`patch`）沒有帳本會被 deny 一次（子代理放行）；每 session 第一則提示若無帳本會提醒一次（不阻擋）；review 入口指令啟動時（模型呼叫 Skill，或使用者手打 `/指令`）依 mode 注入 triage 政策並把 `review_rounds` 加一（review 型子代理與 codex 伴隨 pass 只注入不計輪；完整政策每 session 只注入一次，之後只提一行指回本檔的「Triage 政策」節，compaction／resume 後重新完整注入）；Stop 時 In scope 有未勾項會 block 一次；SessionStart（含 compaction 後）把帳本與 follow-ups 印回 context。帳本若被 git 追蹤（或經 symlink／submodule 進入 repo），所有 hook 一律忽略它——`init` 會檢查並提醒。
 
 跨帳本的 backlog 是第二個檔案：`<project>/.claude/scope-followups.local.md`。`done` 把 Deferred 搬進去；SessionStart 與 `status` 會報它的件數（HIGH 優先），首則提示在專案沒有可用帳本時也報。延後的東西在這裡，不在記憶裡——記憶是會被忘的地方。
 
@@ -43,14 +43,17 @@ follow-ups 格式（`done` 產生，也可手寫）：
 
 硬規則：
 
-1. `goal` 是使用者的話，逐字，不改寫成你的理解。
+1. `goal` 是使用者的話，逐字，不改寫成你的理解；`add` 追加的請求同樣逐字進 In scope，goal 不改。
 2. In scope 每一行都以 `← 來源: user` 或 `← 來源: <工具>@r<N>` 結尾（`N` 取 hook 訊息裡的輪數）。只有頂層的 `- [ ]` 算未完成，縮排子項不算。
 3. Deferred 每一行都有 `嚴重度:`、`理由:`、`去處:`；沒有去處的延後等於遺忘。
 4. `mode`、`review_rounds` 由 `init` 與 hook 維護；Log 由你維護，每輪 review 與每個 PR 各記一行。
 
 ## `init "<goal>"`
 
-1. 若帳本已存在且可用：拒絕，印出它的 goal，請使用者先 `done`（或 `status` 看內容）。一個 goal 一份帳本；同一個 goal 換分支不需要新帳本。
+1. 若帳本已存在且可用，看 In scope：
+   - **全勾** → 不重開，視同 `add "<這句請求>"`（見下節）：追加一行、Log 記一行，goal／mode／`review_rounds` 不動，回覆說明「已追加到現有帳本（goal: …）」。只有使用者明說收尾（`done`、merge、走收尾 SOP），或請求明顯是另一件事（換 repo、換功能、harvest 型請求落在 converge 帳本、上一本已閒置很久）才先 `done` 再 `init`。
+   - **有未勾項** → 拒絕，印出 goal 與未勾項：要接續就 `add`，要換目標先處理未勾項（完成或 `defer`）再 `done`。
+   同一個 goal 換分支不需要新帳本。
 2. 判定 `mode`：
    - **harvest**——請求本身就是「找出／掃描／審查／修一批 finding」：security-audit、claude-security、Dependabot／依賴漏洞、CI review 一批 comment、hardening follow-ups、「把報告裡的項目修掉」。finding 就是工單。
    - **converge**（預設）——其他所有：修一個 bug、做一個功能、一次重構。
@@ -73,6 +76,16 @@ follow-ups 格式（`done` 產生，也可手寫）：
 ## `status`（無參數時的預設）
 
 Read 帳本、原樣印出，最後一行：`mode <m>｜In scope 未完成 N 項｜Deferred M 項｜review 第 R 輪`。接著印 follow-ups 未勾項（HIGH 優先）：`follow-ups K 項（HIGH H）`。帳本不存在就說沒有，並提示 `init`；follow-ups 仍要印。
+
+## `add "<請求>"`
+
+同一條工作線上的下一句請求進現有帳本，不重開。
+
+1. 帳本不存在或不可用 → 等同 `init "<請求>"`。
+2. In scope 追加 `- [ ] <請求逐字> ← 來源: user`（請求含幾件事就拆成幾行，仍只寫請求裡有的事）；Log 記 `- <YYYY-MM-DD> add: <請求前 40 字>`。
+3. 不改 goal、mode、`review_rounds`；不在此處提議 follow-ups（那是 `init` 的事）。
+4. 「同一條線」的判準：同一個 repo、同一個原始目標的後續步驟——commit、push、再審一輪、修審查結果、補測試、更新文件。**不是**同一條線（開新帳本）：換 repo、換功能、goal 已 `done` 後隔很久的新需求、harvest 型請求（掃描／修一批 finding）落在 converge 帳本。
+5. In scope 有未勾項時也可以 `add`（例如使用者在等結果時又丟一句）；未勾項照舊由 Stop hook 盯著。
 
 ## Triage 政策（每次 review／scan／audit 的結果在你面前時都適用）
 
@@ -105,7 +118,7 @@ goal 本身就是找／修 finding：**finding 就是工單**。全部進 In sco
 
 ## `done`
 
-前置條件，任一不滿足就列出缺什麼並停止：
+收尾動作：使用者說收尾、merge、走收尾 SOP，或這條工作線確實結束時才做；一本帳本通常跨多個 commit／push，中間的請求用 `add`。前置條件，任一不滿足就列出缺什麼並停止：
 
 - In scope 沒有頂層 `- [ ]`。
 - Deferred 每行都有 `嚴重度:` 與 `去處:`；HIGH 安全項的去處是 `issue #N` 或 `next: <goal>`。

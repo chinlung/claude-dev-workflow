@@ -18,6 +18,11 @@
 # find / fix findings — findings ARE the work, batch them by severity). With no usable ledger the
 # policy is still injected and `init` is pointed at. Fires at dispatch time, before the review's
 # own output lands — the policy is read before the findings are.
+# The full policy text goes out once per session and mode; every later call in that session carries
+# a one-line pointer to it instead (one measured session fired this hook 25 times, each repeating
+# ~450 characters verbatim). The state-bound sentences — round count, convergence warning, harvest
+# check-in, the `init` pointer, open follow-ups — go out every time. SessionStart clears the flag: a
+# compacted or resumed context no longer holds the full text.
 # Fail-open: any unexpected condition exits 0 silently.
 set -uo pipefail
 quiet() { exit 0; }
@@ -99,6 +104,24 @@ if ledger_usable "$proj"; then
 fi
 if [ -n "$n" ] && [ "$n" -gt 0 ]; then tag="${name}@r${n}"; else tag="${name}@r?"; fi
 
+# Full policy once per session and mode: the flag holds the mode whose policy was last sent in full,
+# so a ledger that changes mode mid-session gets the other mode's text in full once more. A flag
+# path that is a symlink was planted by someone else (shared /tmp): never written through, and the
+# policy then simply goes out in full every time. A failed write means the same. The write itself
+# happens after the policy is on stdout (end of file): a flag set before a failed output would hide
+# the full text for the rest of the session.
+sid=$(printf '%s' "$input" | jq -r '.session_id // "unknown"')
+sid="${sid//[^a-zA-Z0-9._-]/_}"
+pflag="${TMPDIR:-/tmp}/claude-scope-triage-${sid}"
+full=1; writeflag=0
+if [ -L "$pflag" ]; then
+  :
+elif [ -f "$pflag" ] && [ "$(cat "$pflag" 2>/dev/null)" = "$mode" ]; then
+  full=0
+else
+  writeflag=1
+fi
+
 fu=$(followups_path "$proj")
 fu_high=0
 if followups_usable "$proj"; then fu_high=$(count_lines "$(followups_high "$fu")"); fi
@@ -108,13 +131,15 @@ if followups_usable "$proj"; then fu_high=$(count_lines "$(followups_high "$fu")
 head="scope-ledger｜review／scan 的產出是 input、不是工單。每條 finding 先進帳本 ${ledger} triage 再動手，附「← 來源: ${tag}」。"
 converge="分四類：①採納（現在修）——屬本次變更引入或直接相關；或可利用的安全 finding（講得出誰攻擊／做什麼／拿到什麼，且修在本次觸碰的範圍內）；或同一缺陷的其他實例（sibling，一次改齊）；或專案 MUST 守則命中；或 boy-scout（<10 行、零退化風險、實際改善）。②延後（Deferred：附嚴重度 HIGH／MEDIUM／LOW、理由、去處）——真問題但不屬本次；延後是排程不是裁決，HIGH 安全項必須有 issue 或下一個 goal。③需使用者裁定——業務決策／取捨／範圍。④噪音／won't-fix——只記 Log 一行，須附反證錨點（file:line）。未進帳本的 finding 不得直接修；原目標 In scope 未全勾前，不屬①的一律②，別把這一輪滾成新目標。"
 harvest="本帳本 mode 是 harvest（goal 本身就是找／修 finding）：finding 就是工單——全部進 In scope，依嚴重度 HIGH→MEDIUM→LOW 分批、每批一個 PR；LOW 或可利用性不確定者可進 Deferred（附嚴重度與去處）而非丟棄；誤報須附反證錨點記 Log。"
+# The pointers name the mode and the skill section, nothing from the full text: a test (or a reader)
+# can tell the two apart by the full text's own phrases.
+converge_short="政策（converge）同本 session 首次注入——四類：採納、延後、使用者裁定、噪音；完整文字見 /scope-ledger:scope 的 Triage 政策節。"
+harvest_short="政策（harvest）同本 session 首次注入——finding 就是工單、依嚴重度分批；完整文字見 /scope-ledger:scope 的 Triage 政策節。"
+if [ "$mode" = harvest ]; then policy="$harvest"; short="$harvest_short"; else policy="$converge"; short="$converge_short"; fi
+[ "$full" -eq 1 ] || policy="$short"
 
 if [ -n "$n" ]; then
-  if [ "$mode" = harvest ]; then
-    msg="${head} ${harvest}"
-  else
-    msg="${head} ${converge}"
-  fi
+  msg="${head} ${policy}"
   if [ "$n" -gt 0 ]; then
     msg="${msg} 本 goal review 累計第 ${n} 輪。"
   else
@@ -128,11 +153,12 @@ if [ -n "$n" ]; then
     msg="${msg} ⚠️ 收斂告警：已達 ${n} 輪。先在回覆中列出 In scope 剩餘項與 Deferred 清單（/scope-ledger:scope status），確認原目標是否已達成、是否該收尾，再決定要不要再開一輪。"
   fi
 else
-  msg="${head} ${converge} ⚠️ 目前沒有可用的帳本（${ledger} 不存在或已被 git 追蹤），finding 的 triage 無處落地——先 \`/scope-ledger:scope init \"<使用者的原始請求>\"\`，再處理這次 review 的結果。"
+  msg="${head} ${policy} ⚠️ 目前沒有可用的帳本（${ledger} 不存在或已被 git 追蹤），finding 的 triage 無處落地——先 \`/scope-ledger:scope init \"<使用者的原始請求>\"\`，再處理這次 review 的結果。"
 fi
 if [ "$fu_high" -gt 0 ]; then
   msg="${msg} 本 repo follow-ups 尚有 HIGH ${fu_high} 項未排程（${fu}）。"
 fi
 
-jq -cn --arg e "$event" --arg m "$msg" '{hookSpecificOutput:{hookEventName:$e,additionalContext:$m}}'
+jq -cn --arg e "$event" --arg m "$msg" '{hookSpecificOutput:{hookEventName:$e,additionalContext:$m}}' || quiet
+if [ "$writeflag" -eq 1 ]; then printf '%s' "$mode" > "$pflag" 2>/dev/null || true; fi
 exit 0

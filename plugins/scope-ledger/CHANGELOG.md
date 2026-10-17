@@ -2,6 +2,20 @@
 
 All notable changes to the `scope-ledger` plugin will be documented in this file.
 
+## [1.0.3] - 2026-10-17
+
+### Added
+
+- **`add "<request>"`: the next request on the same line of work goes into the existing ledger, not a new one.** `init` refused whenever a usable ledger existed and asked for `done` first, so a run of imperatives for one piece of work (build it → commit → review again → commit → push) produced one ledger per imperative, each with its own init, Log, `done` and memory entry: one measured session opened six ledgers, three of them with the one-word goal `commit`. `init` on a ledger whose In scope is fully ticked now appends the request (verbatim, `← 來源: user`, one Log line) and leaves goal, mode and `review_rounds` alone; on a ledger with open items it still refuses and points at `add` or `done`. A different repository, a different feature, a long-idle ledger or a harvest-type request on a converge ledger still start a new ledger. Skill text only — no hook reads the verb; the Stop hook never blocked on a fully ticked ledger, so leaving one open costs nothing.
+
+### Changed
+
+- **The triage policy is injected in full once per session and mode; later triggers carry a one-line pointer.** `scope-review-triage.sh` fires on every review entry, companion pass and review-type subagent dispatch — 25 times in one measured session — and repeated the ~450-character policy verbatim each time. The hook now keeps a flag under `$TMPDIR` (`claude-scope-triage-<session>`) holding the mode whose policy last went out in full; a later call in that session sends the head line, a pointer to the skill's Triage policy section, and the sentences that depend on state and must go out every time (round count, convergence warning, harvest check-in, the `init` pointer when there is no usable ledger, open HIGH follow-ups). A ledger that changes mode gets the other mode's text in full once more. `scope-session-start.sh` removes the flag on startup, resume, compact and clear, because that context no longer holds the earlier text. A flag path that is a symlink is never written through (the policy then goes out in full every time) and never removed. The flag is written after the policy is on stdout, so a flag can only exist once the full text has actually been emitted (the self-review found no reachable failure between the two in the current code; the order is kept because it makes that true by construction).
+
+### Tests
+
+- 41 new assertions (481 with a single awk installed): first call full, second call pointer — for a Skill entry, a review-type Agent dispatch and the no-ledger path; the convergence warning and the harvest check-in still present in the pointer form; a second session id and a mode change both get the full text again; the symlinked flag is neither written through by the triage hook nor removed by SessionStart; SessionStart on compact and resume clears the flag and still replays the ledger. Written first and seen red (14 of them). Seven mutations each turn the suite red: flag never written, flag written before the output (caught by a run with stdout closed), pointer never used, mode ignored by the flag, the triage hook's symlink guard removed, the SessionStart reset removed, the SessionStart symlink guard removed.
+
 ## [1.0.2] - 2026-10-07
 
 ### Fixed

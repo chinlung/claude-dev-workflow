@@ -39,6 +39,7 @@ first source write (Edit/Write, or sed -i / perl -pi /    first prompt of the se
         subagents, .claude/, openspec/, $TMPDIR,               └─ scope-review-triage.sh (PostToolUse, UserPromptSubmit)
         outside-project paths exempt)                              entry: review_rounds += 1 and inject the mode's policy
                                                                    companion / Agent: inject only
+                                                                   (policy in full once per session, a pointer after)
 Stop                                                               converge: warn from round 3 · harvest: check-in every 5
   └─ scope-stop-check.sh
        In scope still has "- [ ]" items?                     SessionStart (startup/resume/compact/clear)
@@ -54,6 +55,8 @@ Every hook exits 0 on any unexpected condition (missing `jq`, unreadable ledger,
 **A review command counts by either route it can arrive by**: the model calling the Skill tool (PostToolUse), or you typing `/<command>` (UserPromptSubmit — the prompt must *start* with the command; prose that mentions one does not count). A typed slash command is expanded inline and never becomes a Skill tool call, so before 1.0.1 every typed review went uncounted — including every `/claude-security` run, which is `disable-model-invocation` and can only be typed. That left a ledger reading round 4 while its Log recorded five.
 
 **Which commands count as a review round** is an explicit allowlist, not a keyword match: `review-branch`, `review-pr` (bare and plugin-prefixed), `security-review`, `claude-security` (also `claude-security:claude-security`), `security-audit`, `code-review`, `simplify`, `debate`, `high-precision-dev:start`, `engineering:code-review`. Keyword matching was tried first and counted `verification-before-completion`, `security-ci-setup` and `codex:setup` as reviews. The Codex companion pass (`codex-review-bg`, `codex:review`, `codex:adversarial-review`) accompanies `/review-branch` as the same self-review, so it injects the policy without counting. To add your own entry points, put one extended regex per line in `~/.claude/scope-ledger-review-patterns` (blank lines and `#` comments ignored), e.g. `^acme:audit-all$`.
+
+**The policy text goes out in full once per session and mode.** Every review entry, companion pass and review-type subagent dispatch fires this hook — 25 times in one measured session — and each used to repeat the same ~450 characters. Now a per-session flag under `$TMPDIR` records the mode whose policy was last sent in full; later triggers in that session carry the head line, a one-line pointer to the skill's Triage policy section, and the sentences that depend on state and must go out every time: the round count, the convergence warning, the harvest check-in, the `init` pointer when there is no usable ledger, the open HIGH follow-ups. A ledger that changes mode gets the other mode's text in full once more. SessionStart (startup, resume, compact, clear) removes the flag, because the context that starts there no longer holds the earlier text. A flag path that is a symlink is never written through or removed; the policy then simply goes out in full every time.
 
 ## The ledger — one per goal
 
@@ -108,7 +111,8 @@ The unit is the goal. Switching branches for a hotfix, a Dependabot batch or the
 
 | Verb | What it does |
 |---|---|
-| `init "<goal>"` | Writes the ledger for this goal; decides the mode; refuses if a usable ledger exists (finish it with `done` first); offers open follow-ups for pickup; reports git-ignore status (`check-ignore` rc 0 / 1 / 128 all handled) and names the exact `.gitignore` line without editing it |
+| `init "<goal>"` | Writes the ledger for this goal; decides the mode; when a usable ledger already exists: every In scope item ticked → appends this request to it (same as `add`), open items → refuses and points at `add` or `done`; offers open follow-ups for pickup; reports git-ignore status (`check-ignore` rc 0 / 1 / 128 all handled) and names the exact `.gitignore` line without editing it |
+| `add "<request>"` | The next request on the same line of work (commit, push, another review round, fixing review findings, tests, docs) goes into the existing ledger as an In scope item — verbatim, `← 來源: user`, one Log line — leaving goal, mode and round count untouched; with no usable ledger it behaves as `init`. A different repository, a different feature, a long-idle ledger or a harvest-type request on a converge ledger start a new ledger instead |
 | `status` (default) | Prints the ledger, `mode · open N · deferred M · round R`, then the open follow-ups (HIGH first) |
 | `defer "<item>" --severity HIGH\|MEDIUM\|LOW --why <reason> --to <destination>` | Moves an In scope item to Deferred; all three flags mandatory; a HIGH security item only to `issue #N` or `next: <goal>` |
 | `done` | Only when no item is open and every Deferred line has a severity and a destination (HIGH security: issue or next goal): moves Deferred into the follow-ups file, writes a narrative memory entry, deletes the ledger |

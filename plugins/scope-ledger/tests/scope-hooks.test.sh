@@ -1038,6 +1038,85 @@ check "HK10 review_rounds: 08 當十進位（ledger_rounds=8）" "$out" "r=8"
 check "HK10 review_rounds: 08 bump 成 9" "$out" "bump=9 rc=0"
 check_empty "HK10 沒有留下鎖" "$(printf '%s\n' "$out" | awk '/LOCK-LEFT-BEHIND/')"
 
+# ===== PO：triage 政策每 session 只完整注入一次，之後一行指回；SessionStart 重置 =====
+# 同一 session 內 review 入口／伴隨 pass／review 型子代理會反覆觸發（一個 session 25 次實測），完整政策
+# 每次約 450 字全是重複；狀態相關的句子（輪數、收斂告警、盤點、init 指引、follow-ups）每次都要在。
+p=$WORK/p5; make_repo "$p"; t=$WORK/pt5; mkdir -p "$t"; write_ledger "$p" converge 0 '- [ ] A'
+out1=$(run_hook scope-review-triage.sh "$(skill_json p5 "$p" review-branch)" "$t" "$p")
+check "POa 第一次：完整 converge 政策（boy-scout）" "$out1" 'boy-scout'
+check "POa 第一次：完整 converge 政策（HIGH 去處長句）" "$out1" 'HIGH 安全項必須有 issue 或下一個 goal'
+check_flag "POa 旗標寫入" "$t/claude-scope-triage-p5" exists
+check_eq "POa 旗標記錄 mode" "$(cat "$t/claude-scope-triage-p5")" "converge"
+out2=$(run_hook scope-review-triage.sh "$(skill_json p5 "$p" security-review)" "$t" "$p")
+check "POb 第二次：仍注入" "$out2" '"additionalContext"'
+check "POb 第二次：頭句仍在" "$out2" '不是工單'
+check "POb 第二次：一行指回" "$out2" '同本 session 首次注入'
+check "POb 第二次：仍報輪數" "$out2" '第 2 輪'
+check_empty "POb 第二次：不再帶完整政策" "$(printf '%s' "$out2" | grep -o 'boy-scout' || true)"
+check_empty "POb 第二次：不帶 HIGH 去處長句" "$(printf '%s' "$out2" | grep -o 'HIGH 安全項必須有 issue' || true)"
+# 第二個觸發輸入：review 型 Agent 的注入也走短版
+out3=$(run_hook scope-review-triage.sh "$(agent_json p5 "$p" pr-review-toolkit:code-reviewer x)" "$t" "$p")
+check "POc Agent：一行指回" "$out3" '同本 session 首次注入'
+check_empty "POc Agent：不帶完整政策" "$(printf '%s' "$out3" | grep -o 'boy-scout' || true)"
+# 短版仍帶收斂告警（第 3、4 輪兩例）
+out=$(run_hook scope-review-triage.sh "$(skill_json p5 "$p" review-pr)" "$t" "$p")
+check "POd 短版第 3 輪仍有收斂告警" "$out" '收斂告警'
+check_empty "POd 短版第 3 輪不帶完整政策" "$(printf '%s' "$out" | grep -o 'boy-scout' || true)"
+out=$(run_hook scope-review-triage.sh "$(skill_json p5 "$p" code-review)" "$t" "$p")
+check "POd 短版第 4 輪仍有收斂告警" "$out" '收斂告警'
+# 另一個 session id → 再次完整
+out=$(run_hook scope-review-triage.sh "$(skill_json p5x "$p" review-branch)" "$t" "$p")
+check "POe 不同 session → 完整政策" "$out" 'boy-scout'
+# mode 改變 → 再次完整（harvest 全文）並改記旗標；之後 harvest 短版，盤點提示仍在
+write_ledger "$p" harvest 3 '- [ ] A'
+out=$(run_hook scope-review-triage.sh "$(skill_json p5 "$p" review-branch)" "$t" "$p")
+check "POf mode 換成 harvest → 完整 harvest 政策" "$out" '每批一個 PR'
+check_eq "POf 旗標改記 harvest" "$(cat "$t/claude-scope-triage-p5")" "harvest"
+out=$(run_hook scope-review-triage.sh "$(skill_json p5 "$p" review-branch)" "$t" "$p")
+check "POg harvest 第二次：一行指回" "$out" '同本 session 首次注入'
+check_empty "POg harvest 第二次：不帶完整政策" "$(printf '%s' "$out" | grep -o '每批一個 PR' || true)"
+check "POg harvest 短版仍帶第 5 輪盤點" "$out" '盤點'
+# 無帳本：第一次完整＋指向 init；第二次短版仍指向 init
+p=$WORK/p5n; make_repo "$p"; t=$WORK/pt5n; mkdir -p "$t"
+out=$(run_hook scope-review-triage.sh "$(skill_json p5n "$p" review-branch)" "$t" "$p")
+check "POh 無帳本第一次：完整" "$out" 'boy-scout'
+check "POh 無帳本第一次：指向 init" "$out" 'scope init'
+out=$(run_hook scope-review-triage.sh "$(skill_json p5n "$p" review-branch)" "$t" "$p")
+check "POi 無帳本第二次：短版" "$out" '同本 session 首次注入'
+check "POi 無帳本第二次：仍指向 init" "$out" 'scope init'
+check_empty "POi 無帳本第二次：不帶完整政策" "$(printf '%s' "$out" | grep -o 'boy-scout' || true)"
+# 旗標路徑被預先放成 symlink（共用 /tmp）→ 不寫穿、每次都完整注入
+p=$WORK/p5s; make_repo "$p"; t=$WORK/pt5s; mkdir -p "$t"; write_ledger "$p" converge 0 '- [ ] A'
+ln -s "$t/target" "$t/claude-scope-triage-p5s"
+out=$(run_hook scope-review-triage.sh "$(skill_json p5s "$p" review-branch)" "$t" "$p")
+check "POj symlink 旗標 → 仍完整注入" "$out" 'boy-scout'
+check_flag "POj symlink 目標未被寫出" "$t/target" absent
+out=$(run_hook scope-review-triage.sh "$(skill_json p5s "$p" review-branch)" "$t" "$p")
+check "POj symlink 旗標 → 第二次仍完整" "$out" 'boy-scout'
+# SessionStart（compact／resume）清旗標 → 下一次再完整；帳本照常印出
+p=$WORK/p5r; make_repo "$p"; t=$WORK/pt5r; mkdir -p "$t"; write_ledger "$p" converge 0 '- [ ] A'
+run_hook scope-review-triage.sh "$(skill_json p5r "$p" review-branch)" "$t" "$p" >/dev/null
+check_flag "POk 旗標存在" "$t/claude-scope-triage-p5r" exists
+for src in compact resume; do
+  sout=$(printf '{"session_id":"p5r","cwd":"%s","hook_event_name":"SessionStart","source":"%s"}' "$p" "$src" | TMPDIR="$t" CLAUDE_PROJECT_DIR="$p" bash "$HOOKS/scope-session-start.sh" 2>/dev/null || true)
+  check "POk SessionStart($src) 仍印帳本" "$sout" '工作範圍帳本'
+  check_flag "POk SessionStart($src) 清掉旗標" "$t/claude-scope-triage-p5r" absent
+  out=$(run_hook scope-review-triage.sh "$(skill_json p5r "$p" review-branch)" "$t" "$p")
+  check "POk $src 後再次完整" "$out" 'boy-scout'
+done
+# 輸出失敗（stdout 已關閉、jq 寫不出去）→ 旗標不寫：旗標存在必須等於完整政策真的送出過；下一次照常完整
+p=$WORK/p5o; make_repo "$p"; t=$WORK/pt5o; mkdir -p "$t"; write_ledger "$p" converge 0 '- [ ] A'
+printf '%s' "$(skill_json p5o "$p" review-branch)" | TMPDIR="$t" CLAUDE_PROJECT_DIR="$p" bash "$HOOKS/scope-review-triage.sh" >&- 2>/dev/null || true
+check_flag "POm 輸出失敗 → 旗標不寫" "$t/claude-scope-triage-p5o" absent
+out=$(run_hook scope-review-triage.sh "$(skill_json p5o "$p" review-branch)" "$t" "$p")
+check "POm 輸出失敗後的下一次仍完整注入" "$out" 'boy-scout'
+check_flag "POm 成功輸出後旗標才寫入" "$t/claude-scope-triage-p5o" exists
+# SessionStart 不碰被放成 symlink 的旗標（連結與目標都留著）
+ln -s "$t/keep" "$t/claude-scope-triage-p5y"; : > "$t/keep"
+printf '{"session_id":"p5y","cwd":"%s","hook_event_name":"SessionStart","source":"startup"}' "$p" | TMPDIR="$t" CLAUDE_PROJECT_DIR="$p" bash "$HOOKS/scope-session-start.sh" >/dev/null 2>&1 || true
+check_flag "POl SessionStart 不碰 symlink 旗標（連結仍在）" "$t/claude-scope-triage-p5y" exists
+check_flag "POl SessionStart 不碰 symlink 目標" "$t/keep" exists
+
 # ---- summary ----
 echo "----"
 echo "PASS=$PASS FAIL=$FAIL"
