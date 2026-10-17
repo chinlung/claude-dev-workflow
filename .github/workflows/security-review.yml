@@ -10,6 +10,11 @@
 # The prompt's exclusions and confidence bar mirror the built-in /security-review
 # (anthropics/claude-code-security-review, .claude/commands/security-review.md); e.g. "log spoofing"
 # is its hard exclusion #12.
+# Actions are pinned to commit SHAs (tag in the trailing comment) because this job holds the OAuth
+# token. Pair it with ~/.claude/templates/dependabot-github-actions.yml so Dependabot bumps the
+# SHAs; without it the pins freeze.
+# The action only runs when this file is identical to the default branch's copy: on a PR that adds
+# or edits it (Dependabot bumps included) the step is skipped and the check is still green.
 name: security-review
 
 on:
@@ -32,9 +37,12 @@ jobs:
     # Drafts are skipped (docs filtering is the paths-ignore above). Fork PRs are skipped
     # too: they run with empty secrets, so the action would fail red instead of reviewing —
     # the OAuth token must never be exposed to a fork anyway. Review those by hand.
+    # Dependabot PRs are skipped for the same reason: they get Dependabot secrets, not Actions
+    # secrets, and the action rejects bot actors by default, so the run would fail red.
     if: >-
       github.event.pull_request.draft == false &&
-      github.event.pull_request.head.repo.full_name == github.repository
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
@@ -43,11 +51,11 @@ jobs:
       issues: write
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 1
 
-      - uses: anthropics/claude-code-action@v1
+      - uses: anthropics/claude-code-action@f27be6b65a4652f08a2ba3cff79114829b588967 # v1.0.252
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
