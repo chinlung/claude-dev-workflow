@@ -1,12 +1,12 @@
 ---
 name: scope
-description: 工作範圍帳本（<project>/.claude/scope-ledger.local.md，per goal、與分支無關）的維護指令：`init "<原始請求>"` 建帳本並判定 mode（converge／harvest）、`add "<請求>"` 把同一條工作線上的後續請求（commit、push、再審一輪）追加進現有帳本而不重開、`status` 看未完成項與 follow-ups（無參數時預設）、`defer` 把項目移到 Deferred（嚴重度、理由、去處必填）、`done` 收帳並把 Deferred 搬進跨帳本的 follow-ups。Use when — the scope-gate hook denied an edit and asked for init; the first-prompt reminder said there is no ledger; a review / scan / audit just produced findings and the triage hook said to put them in the ledger first; the Stop hook listed open In-scope items; the user asks what is still unfinished, what was deferred, or to wrap up. 政策：review／scan 的產出是 input、不是工單——每條 finding 先 triage 進帳本再動手；延後是排程不是裁決，可利用的安全 finding、同缺陷 sibling、守則命中、boy-scout 直接採納，HIGH 安全項延後必須有 issue 或下一個 goal；goal 本身是找／修 finding（harvest）時 finding 就是工單。本 skill 不改 .gitignore、不評判 triage 內容、不取代 OpenSpec 的 tasks.md。
-argument-hint: "[init \"<goal>\" | add \"<請求>\" | status | defer \"<item>\" --severity HIGH|MEDIUM|LOW --why <理由> --to <去處> | done]"
+description: 工作範圍帳本（<project>/.claude/scope-ledger.local.md，per goal、與分支無關）的維護指令：`init "<原始請求>"` 建帳本並判定 mode（converge／harvest）、`add "<請求>"` 把同一條工作線上的後續請求（commit、push、再審一輪）追加進現有帳本而不重開、`status` 看未完成項與 follow-ups（無參數時預設）、`facts <findings.json>` 跑 scope-facts 腳本替每條 finding 補機械事實（in_diff、hunk 距離、sibling、MUST 守則候選；輸出同時是 jev_decide 的 state）、`defer` 把項目移到 Deferred（嚴重度、理由、去處必填）、`done` 收帳並把 Deferred 搬進跨帳本的 follow-ups。Use when — the scope-gate hook denied an edit and asked for init; the first-prompt reminder said there is no ledger; a review / scan / audit just produced findings and the triage hook said to put them in the ledger first; the Stop hook listed open In-scope items; the user asks what is still unfinished, what was deferred, or to wrap up. 政策：review／scan 的產出是 input、不是工單——每條 finding 先 triage 進帳本再動手；延後是排程不是裁決，可利用的安全 finding、同缺陷 sibling、守則命中、boy-scout 直接採納，HIGH 安全項延後必須有 issue 或下一個 goal；goal 本身是找／修 finding（harvest）時 finding 就是工單。本 skill 不改 .gitignore、不評判 triage 內容、不取代 OpenSpec 的 tasks.md。
+argument-hint: "[init \"<goal>\" | add \"<請求>\" | status | facts <findings.json> | defer \"<item>\" --severity HIGH|MEDIUM|LOW --why <理由> --to <去處> | done]"
 ---
 
 # /scope-ledger:scope — 工作範圍帳本
 
-帳本是一個檔案：`<project>/.claude/scope-ledger.local.md`，**一條工作線一份**，與分支無關——一個 goal 底下開幾個分支、幾個 PR 都記在同一份帳本的 Log 裡；切分支是正常工作，不會被閘門擋。同一條線上接續丟來的請求（commit、push、再審一輪、修審查結果）用 `add` 追加進同一本，不為每句祈使句重開：`done` 是收尾動作，不是每句話的例行步驟（曾一個 session 開了 6 本、其中 3 本的 goal 就是一個字 `commit`）。它是本次工作的基線：原始請求逐字、mode、In scope 清單、被延後的項目與去處。六個 hook 讀它：主代理首次改程式碼（Edit／Write，或 Bash 的 `sed -i`／`perl -pi`／重導向／`cp`／`mv`／`patch`）沒有帳本會被 deny 一次（子代理放行）；每 session 第一則提示若無帳本會提醒一次（不阻擋）；review 入口指令啟動時（模型呼叫 Skill，或使用者手打 `/指令`）依 mode 注入 triage 政策並把 `review_rounds` 加一（review 型子代理與 codex 伴隨 pass 只注入不計輪；完整政策每 session 只注入一次，之後只提一行指回本檔的「Triage 政策」節，compaction／resume 後重新完整注入）；Stop 時 In scope 有未勾項會 block 一次；SessionStart（含 compaction 後）把帳本與 follow-ups 印回 context。帳本若被 git 追蹤（或經 symlink／submodule 進入 repo），所有 hook 一律忽略它——`init` 會檢查並提醒。
+帳本是一個檔案：`<project>/.claude/scope-ledger.local.md`，**一條工作線一份**，與分支無關——一個 goal 底下開幾個分支、幾個 PR 都記在同一份帳本的 Log 裡；切分支是正常工作，不會被閘門擋。同一條線上接續丟來的請求（commit、push、再審一輪、修審查結果）用 `add` 追加進同一本，不為每句祈使句重開：`done` 是收尾動作，不是每句話的例行步驟（曾一個 session 開了 6 本、其中 3 本的 goal 就是一個字 `commit`）。它是本次工作的基線：原始請求逐字、mode、In scope 清單、被延後的項目與去處。六個 hook 讀它：主代理首次改程式碼（Edit／Write，或 Bash 的 `sed -i`／`perl -pi`／重導向／`cp`／`mv`／`patch`）沒有帳本會被 deny 一次（子代理放行）；每 session 第一則提示若無帳本會提醒一次（不阻擋）；review 入口啟動時（模型呼叫 Skill、使用者手打 `/指令`，或 Workflow 工具跑 `tree` 的 review recipe／`claude-security:scan`）依 mode 注入 triage 政策並把 `review_rounds` 加一（review 型子代理與 codex 伴隨 pass 只注入不計輪；完整政策每 session 只注入一次，之後只提一行指回本檔的「Triage 政策」節，compaction／resume 後重新完整注入）；Stop 時 In scope 有未勾項會 block 一次；SessionStart（含 compaction 後）把帳本與 follow-ups 印回 context。帳本若被 git 追蹤（或經 symlink／submodule 進入 repo），所有 hook 一律忽略它——`init` 會檢查並提醒。
 
 跨帳本的 backlog 是第二個檔案：`<project>/.claude/scope-followups.local.md`。`done` 把 Deferred 搬進去；SessionStart 與 `status` 會報它的件數（HIGH 優先），首則提示在專案沒有可用帳本時也報。延後的東西在這裡，不在記憶裡——記憶是會被忘的地方。
 
@@ -91,6 +91,26 @@ Read 帳本、原樣印出，最後一行：`mode <m>｜In scope 未完成 N 項
 
 review 的產出是 **input，不是工單**。先把每條 finding 分類、寫進帳本，然後才動手。**延後是排程，不是裁決**：被延後的真問題仍然是真問題，它只是換了落點；`done` 會擋住沒有落點的延後。
 
+### 第一步：先跑 `facts`，再分類
+
+四分類最關鍵的判準「屬本次變更引入」不是判斷，是事實：finding 的 file:line 在不在分支 diff 的 hunk 裡。先把一批 finding 寫成 JSON（每條 `path`、`line`、`claim`、`evidence`，可帶 `id`），跑：
+
+```
+node "${CLAUDE_PLUGIN_ROOT}/scripts/scope-facts.cjs" --findings "$TMPDIR/findings.json" > "$TMPDIR/facts.json"
+```
+
+（`--repo <dir>` 指定專案；`--base <ref>` 指定基準，預設是與 `origin/HEAD` 的 merge-base、沒有 origin 時是 HEAD——這時輸出的 `base_fallback` 是 `HEAD`、stderr 也會提醒，`in_diff` 只反映工作樹；diff 含已 commit 與工作樹，未追蹤的新檔整檔算新增。）每條 finding 會補上 `facts`：
+
+| 欄位 | 用在哪一條判準 |
+|---|---|
+| `change_kind`、`outside_repo`、`line_invalid` | 先看這三個再看其他：`change_kind` 是 deleted／binary／mode／untracked 時整檔算在 diff 內（`-U0` 不會印 hunk）；`outside_repo` 為真表示路徑解析到 repo 外（含 repo 內的 symlink 指出去），腳本沒讀它，finding 本身先存疑；`line_invalid` 為真表示行號不是正整數，`in_diff` 一律 false，回頭查 finding 的 `line` |
+| `in_diff`、`nearest_hunk_distance`、`file_in_diff`、`untracked` | ①「屬本次變更引入」：`in_diff` 為真就是；距離小是「直接相關」的候選；`file_in_diff` 為假通常是 pre-existing → ② |
+| `sibling.count`、`sibling.matches[]` | ①「同缺陷 sibling」：同一段文字在 repo 的其他位置，逐一讀過再決定是否一次改齊 |
+| `must_rules[]` | ①「專案 MUST 守則命中」：守則檔裡與 claim 共用字詞的規則行，是候選不是結論，要讀原文 |
+| `patch_lines` | boy-scout 的「<10 行」與修復範圍估計 |
+
+這些事實決定分類的主幹；剩下要判斷的只有「是不是真問題」與嚴重度。**同一份 `facts.json` 就是 `jev_decide` 的 state**——要先排序一批 finding 的驗證順序時，直接把它當 `state`、每條一題 `noul`，不必另外手寫中性 state（手寫 state 的成本正是 Jev 被跳過的原因）。Jev 的回答只用來排序與分配驗證強度，不用來決定分類。
+
 ### converge 模式（預設）
 
 | 分類 | 判準（任一成立即採納） | 帳本動作 |
@@ -109,6 +129,10 @@ review 的產出是 **input，不是工單**。先把每條 finding 分類、寫
 goal 本身就是找／修 finding：**finding 就是工單**。全部進 In scope，依嚴重度 HIGH→MEDIUM→LOW 分批、每批一個 PR；LOW 或可利用性不確定的項目可進 Deferred（附嚴重度、去處）而不是丟棄；誤報一樣要附反證錨點記 Log。hook 每 5 輪會要求一次盤點（已完成／剩餘／Deferred／follow-ups），照做，並確認是否該收尾。
 
 每輪 review 結束在 Log 記一行：`- <日期時間> <工具> r<N>: <n> findings → <a> adopted / <d> deferred / <x> noise`。
+
+## `facts <findings.json>`
+
+跑 `scripts/scope-facts.cjs`（見「Triage 政策 › 第一步」），把輸出存到 `$TMPDIR/facts.json` 並印出 `summary` 與每條的 `in_diff`／`sibling.count`／`must_rules` 數；接著依 facts 分類、寫進帳本。沒有帳本時先 `init`。
 
 ## `defer "<item>" --severity HIGH|MEDIUM|LOW --why <理由> --to <去處>`
 

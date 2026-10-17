@@ -1,7 +1,7 @@
 #!/bin/bash
-# scope-ledger PostToolUse — matcher: Skill|Agent — and UserPromptSubmit
+# scope-ledger PostToolUse — matcher: Skill|Agent|Workflow — and UserPromptSubmit
 #
-# Three kinds of call reach this hook, and only one of them counts a round:
+# Four kinds of call reach this hook, and two of them count a round:
 #   * A review / scan / audit command on the REVIEW ENTRY allowlist injects the triage policy AND
 #     increments review_rounds — one round per review run. It arrives by one of two routes: the
 #     model calls the Skill tool (PostToolUse), or the person types `/<command>` (UserPromptSubmit).
@@ -13,6 +13,13 @@
 #   * An Agent dispatch whose subagent_type (or, when that is omitted, description) looks review-
 #     like injects the policy only. It never counts: review commands fan out into N parallel
 #     subagents, so counting dispatches would fire the convergence warning inside the first review.
+#   * A Workflow run whose name (or scriptPath basename) is on the WORKFLOW ENTRY allowlist is a
+#     review the same way a Skill entry is: `tree` with recipe review (the script's default when the
+#     recipe is omitted) and `claude-security:scan` count a round and inject; a resume of such a run
+#     (resumeFromRunId) injects only — it replays cached agents, it is not a new review; `tree`'s
+#     other recipes (fix, migrate, tests, docs-sync) produce no findings and stay silent, as does an
+#     inline `script` or any other workflow. Before this route existed a Workflow review was invisible
+#     here: rounds did not advance and the convergence warning could never fire on that path.
 # The policy depends on the ledger's mode: `converge` (default — findings are input, adopt only
 # what belongs to this change plus four explicit exceptions) or `harvest` (the goal itself is to
 # find / fix findings — findings ARE the work, batch them by severity). With no usable ledger the
@@ -33,6 +40,9 @@ trap quiet ERR
 # security-ci-setup, codex:setup, codex:status — every helper with one of those words counted.
 ENTRY_RE='^(code-audit-rigor:)?review-(branch|pr)$|^pr-review-toolkit:review-pr$|^security-review$|^claude-security(:scan|:claude-security)?$|^(security-audit:)?security-audit$|^code-review$|^simplify$|^(multi-agent-debate:)?debate$|^high-precision-dev:start$|^engineering:code-review$'
 COMPANION_RE='^codex-review-bg$|^codex:(review|adversarial-review)$'
+# Workflow names (tool_input.name, or the scriptPath's basename without .js) that are review runs.
+# `tree` is gated further on its recipe; the user's EXTRA_RE_FILE patterns apply to these names too.
+WORKFLOW_RE='^tree$|^claude-security:scan$'
 # One extended regex per line in this file is OR-ed into ENTRY_RE (a user's own review commands).
 EXTRA_RE_FILE="${HOME:-/nonexistent}/.claude/scope-ledger-review-patterns"
 # Subagent types that get the policy (inject only, never count).
@@ -57,6 +67,10 @@ else
   tool=$(printf '%s' "$input" | jq -r '.tool_name // empty')
 fi
 counts=0
+extra=""
+if [ -f "$EXTRA_RE_FILE" ]; then
+  extra=$(grep -v '^[[:space:]]*$' "$EXTRA_RE_FILE" 2>/dev/null | grep -v '^#' | paste -sd '|' - 2>/dev/null || true)
+fi
 case "$tool" in
   Skill)
     if [ -n "$typed" ]; then
@@ -68,10 +82,7 @@ case "$tool" in
     # The skill argument may carry arguments after the name ("review-branch main --focus x").
     name="${name%% *}"
     re="$ENTRY_RE"
-    if [ -f "$EXTRA_RE_FILE" ]; then
-      extra=$(grep -v '^[[:space:]]*$' "$EXTRA_RE_FILE" 2>/dev/null | grep -v '^#' | paste -sd '|' - 2>/dev/null || true)
-      [ -n "$extra" ] && re="$re|$extra"
-    fi
+    [ -n "$extra" ] && re="$re|$extra"
     if printf '%s' "$name" | grep -Eq "$re"; then
       counts=1
     elif printf '%s' "$name" | grep -Eq "$COMPANION_RE"; then
@@ -84,6 +95,28 @@ case "$tool" in
     name=$(printf '%s' "$input" | jq -r '(.tool_input.subagent_type // "") as $t | if $t == "" then (.tool_input.description // "") else $t end')
     [ -n "$name" ] || quiet
     printf '%s' "$name" | grep -Eiq "$AGENT_RE" || quiet
+    ;;
+  Workflow)
+    name=$(printf '%s' "$input" | jq -r '.tool_input.name // empty')
+    if [ -z "$name" ]; then
+      spath=$(printf '%s' "$input" | jq -r '.tool_input.scriptPath // empty')
+      case "$spath" in *.js) name=$(basename "$spath" .js) ;; esac
+    fi
+    [ -n "$name" ] || quiet
+    re="$WORKFLOW_RE"
+    [ -n "$extra" ] && re="$re|$extra"
+    printf '%s' "$name" | grep -Eq "$re" || quiet
+    # args arrive as an object, or as a JSON string when the caller stringified them (the tree
+    # script normalises that itself; so does this hook). Only `tree` reads the recipe. The verdict is
+    # computed inside jq by equality, not by piping the value to grep: an omitted recipe is the
+    # script's default (review); a recipe that is not exactly the string "review" — fix, a number, an
+    # object, a string with a newline in it — is some other run.
+    if [ "$name" = tree ]; then
+      verdict=$(printf '%s' "$input" | jq -r '(.tool_input.args // {}) as $a | (if ($a | type) == "string" then ($a | fromjson? // {}) else $a end) as $o | (if ($o | type) != "object" then "review" elif $o.recipe == null then "review" elif $o.recipe == "review" then "review" else "other" end)')
+      [ "$verdict" = review ] || quiet
+    fi
+    resume=$(printf '%s' "$input" | jq -r '.tool_input.resumeFromRunId // empty')
+    if [ -z "$resume" ]; then counts=1; fi
     ;;
   *) quiet ;;
 esac
