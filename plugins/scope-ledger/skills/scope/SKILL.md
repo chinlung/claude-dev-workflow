@@ -10,6 +10,8 @@ argument-hint: "[init \"<goal>\" | add \"<請求>\" | status | facts <findings.j
 
 跨帳本的 backlog 是第二個檔案：`<project>/.claude/scope-followups.local.md`。`done` 把 Deferred 搬進去；SessionStart 與 `status` 會報它的件數（HIGH 優先），首則提示在專案沒有可用帳本時也報。延後的東西在這裡，不在記憶裡——記憶是會被忘的地方。
 
+**`<project>` 是哪個目錄**：hook 用的專案目錄，也就是 session 的專案目錄（hook 讀 `CLAUDE_PROJECT_DIR`）。它不隨 Bash 的 `cd` 改變，**也不是你正在改的那個 repo**：在 A 開的 session 改 B 的檔案，帳本與 follow-ups 仍在 A（見 README 的 limits）。Bash 環境讀不到 `CLAUDE_PROJECT_DIR`，所以以 hook 訊息印出的路徑為準：首則提示的「本專案（…）」，或閘門、review 入口、Stop、SessionStart 印出的帳本路徑去掉結尾的 `/.claude/scope-ledger.local.md`。context 裡找不到這類訊息時用 session 開始時的工作目錄，不確定就問；**不要用 Bash 當下目錄推**，它會被並行呼叫的 `cd` 帶走。本 skill 其餘提到的 `.claude/…` 一律指 `<project>/.claude/…` 的絕對路徑，git 一律寫成 `git -C <project> …`。
+
 ## 帳本格式（逐字使用）
 
 ```markdown
@@ -57,19 +59,19 @@ follow-ups 格式（`done` 產生，也可手寫）：
 2. 判定 `mode`：
    - **harvest**——請求本身就是「找出／掃描／審查／修一批 finding」：security-audit、claude-security、Dependabot／依賴漏洞、CI review 一批 comment、hardening follow-ups、「把報告裡的項目修掉」。finding 就是工單。
    - **converge**（預設）——其他所有：修一個 bug、做一個功能、一次重構。
-3. `git rev-parse --abbrev-ref HEAD` 取 `opened_on`；今天日期填 `opened`。
+3. `git -C <project> rev-parse --abbrev-ref HEAD` 取 `opened_on`；今天日期填 `opened`。
 4. 決定 In scope：
    - `openspec/changes/<name>/`（`archive` 以外）存在 → 只寫三個階段項：`- [ ] 完成 openspec/changes/<name>/tasks.md 全部任務 ← 來源: user`、`- [ ] Phase 5 review-notes 收斂 ← 來源: user`、`- [ ] Phase 6 archive ← 來源: user`。不要把 tasks.md 的內容抄進來。
    - harvest → 先寫 `- [ ] 取得 finding 清單（<工具>） ← 來源: user`，finding 到手後依嚴重度分批加項（HIGH 一批、MEDIUM 一批…），每批對應一個 PR。
    - converge → 從請求本身拆 1 到 7 項，只寫請求裡有的事，不寫你猜「順便該做」的事。
-5. 若 `.claude/scope-followups.local.md` 有未勾項：列出（HIGH 優先）並問使用者要不要把其中哪些併進這個 goal；使用者明說了才併，併入的行在 In scope 標 `← 來源: follow-ups`，並在 follow-ups 把該行勾掉。
-6. 用 Write 寫檔（`.claude/` 路徑不受 gate 管；目錄不存在就建）。
+5. 若 `<project>/.claude/scope-followups.local.md` 有未勾項：列出（HIGH 優先）並問使用者要不要把其中哪些併進這個 goal；使用者明說了才併，併入的行在 In scope 標 `← 來源: follow-ups`，並在 follow-ups 把該行勾掉。
+6. 用 Write 寫到 `<project>/.claude/scope-ledger.local.md`（絕對路徑；`.claude/` 路徑不受 gate 管；目錄不存在就建）。
 7. 檢查是否被 git 忽略，三個 rc 都要處理：
    ```bash
-   git check-ignore -q -- .claude/scope-ledger.local.md; echo "check-ignore rc=$?"
+   git -C <project> check-ignore -q -- .claude/scope-ledger.local.md; echo "check-ignore rc=$?"
    ```
    - rc 0：已忽略，不用做事。
-   - rc 1：未忽略。先 `git ls-files --error-unmatch -- .claude/scope-ledger.local.md` 看是否已被追蹤；然後**在回覆裡明確給出該加的一行**——「請在專案 `.gitignore` 加 `*.local.md`」（已追蹤要先 `git rm --cached`）——並請使用者確認。**不要自己改 `.gitignore`**，那是專案自己的設定；但在使用者加上之前，每次 `status` 都重複提醒。
+   - rc 1：未忽略。先 `git -C <project> ls-files --error-unmatch -- .claude/scope-ledger.local.md` 看是否已被追蹤；然後**在回覆裡明確給出該加的一行**——「請在專案 `.gitignore` 加 `*.local.md`」（已追蹤要先 `git -C <project> rm --cached -- .claude/scope-ledger.local.md`）——並請使用者確認。**不要自己改 `.gitignore`**，那是專案自己的設定；但在使用者加上之前，每次 `status` 都重複提醒。
    - rc 128：不是 git repo 或 git 失敗，略過。
 8. 回覆：印出帳本，並說明之後 review finding 會先進帳本。
 
@@ -96,10 +98,10 @@ review 的產出是 **input，不是工單**。先把每條 finding 分類、寫
 四分類最關鍵的判準「屬本次變更引入」不是判斷，是事實：finding 的 file:line 在不在分支 diff 的 hunk 裡。先把一批 finding 寫成 JSON（每條 `path`、`line`、`claim`、`evidence`，可帶 `id`），跑：
 
 ```
-node "${CLAUDE_PLUGIN_ROOT}/scripts/scope-facts.cjs" --findings "$TMPDIR/findings.json" > "$TMPDIR/facts.json"
+node "${CLAUDE_PLUGIN_ROOT}/scripts/scope-facts.cjs" --repo "<被審 diff 所在 repo 的絕對路徑>" --findings "$TMPDIR/findings.json" > "$TMPDIR/facts.json"
 ```
 
-（`--repo <dir>` 指定專案；`--base <ref>` 指定基準，預設是與 `origin/HEAD` 的 merge-base、沒有 origin 時是 HEAD——這時輸出的 `base_fallback` 是 `HEAD`、stderr 也會提醒，`in_diff` 只反映工作樹；diff 含已 commit 與工作樹，未追蹤的新檔整檔算新增。）每條 finding 會補上 `facts`：
+（`--repo` 一律明寫：預設是 Bash 當下目錄，會被並行呼叫的 `cd` 帶走；跨 repo 工作時它是被審 diff 所在的 repo，不是 `<project>`。跑完先核對輸出的 `root` 就是那個 repo；`--base <ref>` 指定基準，預設是與 `origin/HEAD` 的 merge-base、沒有 origin 時是 HEAD——這時輸出的 `base_fallback` 是 `HEAD`、stderr 也會提醒，`in_diff` 只反映工作樹；diff 含已 commit 與工作樹，未追蹤的新檔整檔算新增。）每條 finding 會補上 `facts`：
 
 | 欄位 | 用在哪一條判準 |
 |---|---|
@@ -132,7 +134,7 @@ goal 本身就是找／修 finding：**finding 就是工單**。全部進 In sco
 
 ## `facts <findings.json>`
 
-跑 `scripts/scope-facts.cjs`（見「Triage 政策 › 第一步」），把輸出存到 `$TMPDIR/facts.json` 並印出 `summary` 與每條的 `in_diff`／`sibling.count`／`must_rules` 數；接著依 facts 分類、寫進帳本。沒有帳本時先 `init`。
+跑 `scripts/scope-facts.cjs`（見「Triage 政策 › 第一步」），把輸出存到 `$TMPDIR/facts.json` 並印出 `root`、`summary` 與每條的 `in_diff`／`sibling.count`／`must_rules` 數；接著依 facts 分類、寫進帳本。沒有帳本時先 `init`。
 
 ## `defer "<item>" --severity HIGH|MEDIUM|LOW --why <理由> --to <去處>`
 
@@ -149,7 +151,7 @@ goal 本身就是找／修 finding：**finding 就是工單**。全部進 In sco
 
 滿足後：
 
-1. 把每一行 Deferred（`去處: won't-fix` 以外）搬進 `.claude/scope-followups.local.md`：`- [ ] <今天> <嚴重度> <item> ← from: <goal 前 40 字> ｜ 來源: <原來源> ｜ 去處: <去處>`。檔案不存在就建（第一行 `# scope-ledger follow-ups`）。`去處: next: <goal>` 的項目另外在回覆裡建議下一個 `init` 的 goal。
+1. 把每一行 Deferred（`去處: won't-fix` 以外）搬進 `<project>/.claude/scope-followups.local.md`：`- [ ] <今天> <嚴重度> <item> ← from: <goal 前 40 字> ｜ 來源: <原來源> ｜ 去處: <去處>`。檔案不存在就建（第一行 `# scope-ledger follow-ups`）。`去處: next: <goal>` 的項目另外在回覆裡建議下一個 `init` 的 goal。
 2. 寫一則專案記憶（`~/.claude/projects/<專案>/memory/`，type `project`）：goal、日期、Log 摘要（幾輪 review、幾個 PR）、搬進 follow-ups 的件數；已有同主題記憶就更新它。這是敘事，不是待辦——待辦在 follow-ups。
 3. 刪除帳本檔。
 4. 回覆摘要：做了什麼、延後了什麼到哪裡、follow-ups 現在總共幾項（HIGH 幾項）。

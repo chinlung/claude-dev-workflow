@@ -2,6 +2,14 @@
 
 All notable changes to the `scope-ledger` plugin will be documented in this file.
 
+## [1.0.4] - 2026-10-17
+
+### Fixed
+
+- **The skill names the directory the hooks use, and its own steps stop depending on the shell's current directory.** `<project>` was never defined, so a model working on another repository could write the ledger there, where no hook ever reads it: the gate, the Stop check and the SessionStart replay would all stay silent. The skill now defines `<project>` as the hooks' project directory (`CLAUDE_PROJECT_DIR`), which neither follows a `cd` nor is necessarily the repository being edited, and tells the model to read it from the hooks' own messages, because the Bash tool cannot see that variable. Every `.claude/…` path is `<project>/.claude/…`, `init`'s git commands (`rev-parse`, `check-ignore`, `ls-files`, the `rm --cached` advice) run as `git -C <project>`, and `facts` is called with an explicit `--repo` and its `root` is checked, because its default is the shell's current directory and a wrong repo would silently decide which findings count as part of this change. README's limits say the same.
+
+  **Why:** the Bash tool's working directory persists between calls and is shared by parallel ones, so a `cd` anywhere moves it. Checked on 2026-10-17 against the hooks: all six resolve the project from `CLAUDE_PROJECT_DIR` and never drift; the model-run steps were the part that did.
+
 ## [1.0.3] - 2026-10-17
 
 ### Added

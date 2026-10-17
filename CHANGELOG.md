@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.11.5] - 2026-10-17
+
+### Fixed
+
+- **scope-ledger 1.0.3 → 1.0.4: the skill defines `<project>` and its own steps no longer depend on the shell's current directory.** `<project>` is the hooks' project directory, read from the hooks' messages; `init`'s git commands run as `git -C <project>`, and `facts` gets an explicit `--repo` with its `root` checked. Before, a model working on another repository could write the ledger where no hook reads it, and `facts` could compute which findings belong to the change against the wrong repo. (Follows 1.11.4, code-audit-rigor 2.0.5, #11.)
+
 ## [1.11.4] - 2026-10-17
 
 ### Fixed
