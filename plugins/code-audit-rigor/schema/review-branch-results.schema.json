@@ -64,7 +64,8 @@
         "properties": {
           "file": { "type": "string", "minLength": 1 },
           "quotedCode": { "type": "string", "minLength": 1 },
-          "round": { "type": "integer", "minimum": 1 }
+          "round": { "type": "integer", "minimum": 1 },
+          "blob": { "type": "string", "minLength": 1, "description": "The file's content hash when the anchor was dismissed (2.1.1). The dismissal binds only while scopedFiles[].blob for that file still equals it." }
         }
       }
     },

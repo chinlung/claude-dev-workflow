@@ -24,15 +24,25 @@
       "description": "Module-level store grows without bound (pre-existing).",
       "severity": "LOW",
       "introduced": false
+    },
+    {
+      "file": ".github/workflows/deploy.yml",
+      "line": 22,
+      "quotedCode": "run: curl -sSL $INSTALL_URL | sh",
+      "description": "Pipes a remote script into sh; dismissed in round 1 when INSTALL_URL was a pinned constant, but the file has changed since and the URL now comes from a workflow input.",
+      "severity": "HIGH",
+      "introduced": true
     }
   ],
   "verifications": [
     { "id": "V-001", "verdict": "PASS", "suggestion": 0, "notes": "RFC 6585 §4: delta-seconds." },
-    { "id": "V-002", "verdict": "FAIL", "suggestion": 1, "notes": "Entries expire via setTimeout at line 30; bounded in practice." }
+    { "id": "V-002", "verdict": "FAIL", "suggestion": 1, "notes": "Entries expire via setTimeout at line 30; bounded in practice." },
+    { "id": "V-003", "verdict": "PASS", "suggestion": 2, "notes": "INSTALL_URL is now `inputs.install_url` (line 9), attacker-controlled on workflow_dispatch." }
   ],
   "dismissed": [
     { "file": "src/middleware/rate-limiter.ts", "quotedCode": "if (!req.ip) return next();", "round": 1 },
-    { "file": "src/middleware/rate-limiter.ts", "quotedCode": "const store = new Map();", "round": 2 }
+    { "file": ".github/workflows/deploy.yml", "quotedCode": "run: curl -sSL $INSTALL_URL | sh", "round": 1, "blob": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+    { "file": "src/middleware/rate-limiter.ts", "quotedCode": "const store = new Map();", "round": 2, "blob": "3b18e512dba79e4c8300dd08aeb37f8e728b8dad" }
   ],
   "carried": [
     { "file": "src/middleware/auth.ts", "line": 7, "quotedCode": "const secret = process.env.JWT_SECRET;", "description": "No startup check that JWT_SECRET is set.", "severity": "HIGH", "round": 1 }

@@ -18,7 +18,8 @@ const RISK_TIER_ENUM = ['standard', 'deep'];
 const isNonEmptyString = (v) => typeof v === 'string' && v.length > 0;
 const isPosInt = (v) => Number.isInteger(v) && v >= 1;
 
-// A list of {file, quotedCode, round} anchors — `dismissed` and `carried` share the shape.
+// A list of {file, quotedCode, round} anchors — `dismissed` and `carried` share the shape. A dismissed
+// anchor may carry `blob`, the file's content hash when it was dismissed (2.1.1).
 function checkAnchors(list, name, errors) {
   if (list === undefined) return;
   if (!Array.isArray(list)) { errors.push(`${name} must be an array`); return; }
@@ -28,6 +29,7 @@ function checkAnchors(list, name, errors) {
     if (!isNonEmptyString(d.file)) errors.push(`${p}.file required`);
     if (!isNonEmptyString(d.quotedCode)) errors.push(`${p}.quotedCode required`);
     if (!isPosInt(d.round)) errors.push(`${p}.round must be integer >= 1`);
+    if (d.blob !== undefined && !isNonEmptyString(d.blob)) errors.push(`${p}.blob must be a non-empty string when present`);
   });
 }
 
@@ -122,18 +124,24 @@ function validate(data) {
 
   // A suggestion whose anchor was dismissed in an EARLIER round is a re-post. Same-round entries are
   // this round's own FAIL verdicts (annotate records them), so only strictly earlier rounds count.
+  // A dismissal binds only while the file still has the blob it had when dismissed: an entry with a
+  // `blob` that differs from the file's current `scopedFiles[].blob` is history, not a block. An entry
+  // without a blob, or a file without a current blob, is taken to bind.
   if (Array.isArray(data.suggestions) && Array.isArray(data.dismissed)) {
     const current = isPosInt(data.round) ? data.round : 1;
+    const blobNow = new Map();
+    if (Array.isArray(data.scopedFiles)) for (const f of data.scopedFiles) if (f && isNonEmptyString(f.file) && isNonEmptyString(f.blob)) blobNow.set(f.file, f.blob);
     const earlier = new Map();
     for (const d of data.dismissed) {
       if (d && isNonEmptyString(d.file) && isNonEmptyString(d.quotedCode) && isPosInt(d.round) && d.round < current) {
-        earlier.set(`${d.file}\u0000${d.quotedCode}`, d.round);
+        const binds = !isNonEmptyString(d.blob) || !blobNow.has(d.file) || blobNow.get(d.file) === d.blob;
+        if (binds) earlier.set(`${d.file}\u0000${d.quotedCode}`, d.round);
       }
     }
     data.suggestions.forEach((s, i) => {
       if (!s || !isNonEmptyString(s.file) || !isNonEmptyString(s.quotedCode)) return;
       const r = earlier.get(`${s.file}\u0000${s.quotedCode}`);
-      if (r !== undefined) errors.push(`suggestions[${i}] re-posts an anchor dismissed in round ${r} (${s.file}) — drop it or re-open it with new evidence in the report`);
+      if (r !== undefined) errors.push(`suggestions[${i}] re-posts an anchor dismissed in round ${r} (${s.file}) on a file unchanged since — drop it or re-open it with new evidence in the report`);
     });
   }
 

@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.11.7] - 2026-10-18
+
+### Security
+
+- **code-audit-rigor 2.1.0 → 2.1.1: a branch under review can no longer steer its own `/review-branch` round.** The previous round is read from `<gitdir>/review-branch-last.json` (saved by `annotate`) or `--previous`, never from the work tree's results file, which a branch could ship to mark its files unchanged and pre-dismiss findings, and only when it annotated an ancestor of the current HEAD against the same base; the whole project `.reviewrules` layer is read from the base branch tip and the work tree's manifest is not parsed, so a branch cannot downgrade its own tier, remap files to a looser doc or break the manifest, and rule docs it touched are flagged so their suppression lists do not apply; without `--base` the work tree's manifest is bounded and anything broken or over a limit is a warning; C-quoted non-ASCII paths are decoded (they used to match no pattern at all), files are hashed as raw bytes so a branch's `.gitattributes` `ident` filter cannot make an edit look unchanged, scoped symlinks are hashed as link text (`git hash-object` on a link to `/dev/zero` never returned), and a dismissed anchor binds only while its file keeps the content it was judged on; the untrusted manifest is matched by a state-set simulation (a 36-character brace pattern took 7 s per file under the old RegExp).
+
 ## [1.11.6] - 2026-10-18
 
 ### Added

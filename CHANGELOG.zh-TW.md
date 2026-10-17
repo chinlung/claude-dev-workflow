@@ -4,6 +4,12 @@
 
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
+## [1.11.7] - 2026-10-18
+
+### Security
+
+- **code-audit-rigor 2.1.0 → 2.1.1：被審分支不能再透過工作樹操控自己的 `/review-branch`。** 上一輪狀態改讀 `<gitdir>/review-branch-last.json`（`annotate` 存的）或 `--previous`，從不讀工作樹的結果檔——分支可以夾帶一份把自己的檔標成未變動、預先駁回 finding 的結果檔——而且只有它標註的 commit 是本次 HEAD 的祖先、base 相同時才算數；整個專案 `.reviewrules` 層改從 base 分支的 tip 讀、工作樹的 manifest 不解析，分支無法把自己的 tier 降級、把檔案改指到較寬鬆的 doc 或弄壞 manifest，分支改過的規則檔會被標出、其 suppression list 本輪不生效；沒帶 `--base` 時工作樹的 manifest 有上限，壞掉或超限只出警告；C-quoted 的非 ASCII 路徑會被解碼（原本比對不到任何樣式）、檔案改以原始位元組雜湊（分支的 `.gitattributes` `ident` filter 不能再讓改過的檔看起來沒變）、被審的 symlink 以連結文字雜湊（`git hash-object` 跟著連結讀 `/dev/zero` 永遠不會結束）、被駁回的 anchor 只在檔案內容與駁回當時相同時才擋重提；不受信任的 manifest 改成狀態集合模擬比對（36 字元的大括號樣式在舊的 RegExp 下每個檔要 7 秒）。
+
 ## [1.11.6] - 2026-10-18
 
 ### Added

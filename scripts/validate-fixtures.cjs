@@ -1218,6 +1218,13 @@ function main() {
     { label: 'unchangedSince 0', mutate: o => { o.scopedFiles[1].unchangedSince = 0; } },
     { label: 'verification.suggestion negative', mutate: o => { o.verifications[0].suggestion = -1; } },
     { label: 'an anchor dismissed in an earlier round is posted again', mutate: o => { o.suggestions.push({ ...o.suggestions[0], file: o.dismissed[0].file, quotedCode: o.dismissed[0].quotedCode }); } },
+    // 2.1.1: a dismissal binds only while the file keeps the blob it had when dismissed. The fixture
+    // re-posts a deploy.yml anchor whose round-1 dismissal blob differs from the file's current blob
+    // (valid); making the two equal, or dropping the blob, turns that same re-post into a violation.
+    { label: 'a re-posted anchor whose dismissal blob equals the current blob', mutate: o => { const d = o.dismissed.find(x => x.file === '.github/workflows/deploy.yml'); d.blob = o.scopedFiles.find(f => f.file === '.github/workflows/deploy.yml').blob; } },
+    { label: 'a re-posted anchor whose dismissal has no blob (binds)', mutate: o => { delete o.dismissed.find(x => x.file === '.github/workflows/deploy.yml').blob; } },
+    { label: 'a re-posted anchor on a file with no current blob (binds)', mutate: o => { delete o.scopedFiles.find(f => f.file === '.github/workflows/deploy.yml').blob; } },
+    { label: 'dismissed blob empty string', mutate: o => { o.dismissed.find(x => x.file === '.github/workflows/deploy.yml').blob = ''; } },
   ]);
 
   // ── Code Audit Rigor: review-pr-comments ──────────────────────────────────

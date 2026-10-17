@@ -10,11 +10,11 @@
  * Most of what a reviewer flags on round N+1 was already there on round 1. This script makes the
  * two halves of convergence mechanical, so neither depends on the reviewer remembering:
  *
- *   plan      before Phase 1. Reads the previous round's results file (same branch), hashes every
- *             scoped file, and reports: `unchanged` (byte-identical to a file the previous round
- *             reviewed → skip it), `carried` (verified-but-unfixed suggestions on unchanged files →
- *             report, do not re-verify), `dismissed` (anchors judged false positives in earlier
- *             rounds → must not be proposed again), the round number and the scope mode. Written to
+ *   plan      before Phase 1. Reads the previous round's state (same branch), hashes every scoped
+ *             file, and reports: `unchanged` (byte-identical to a file the previous round reviewed
+ *             → skip it), `carried` (verified-but-unfixed suggestions on unchanged files → report,
+ *             do not re-verify), `dismissed` (anchors judged false positives in earlier rounds →
+ *             must not be proposed again), the round number and the scope mode. Written to
  *             <gitdir>/review-branch-plan.json so `annotate` finds it after the results file has been
  *             overwritten (`--no-write` prints only; pass the saved JSON to `annotate --plan`).
  *   annotate  after Phase 2. Fills `introduced` on every suggestion (is its line inside this
@@ -23,7 +23,16 @@
  *             `scopeMode`, `dismissed` (previous ∪ this round's FAIL verdicts), `carried`, and `risk`
  *             (from resolve-rules when present); REFUSES to write a results file that re-posts an
  *             anchor dismissed in an earlier round, or that skips a file as "unchanged" the plan did
- *             not report as such.
+ *             not report as such. Saves a copy of the annotated results to
+ *             <gitdir>/review-branch-last.json — the state the next `plan` reads.
+ *
+ * Where the previous round comes from (2.1.1): <gitdir>/review-branch-last.json, written by
+ * `annotate`, or the file named by --previous. Never <root>/review-branch-results.json: the work
+ * tree belongs to the branch under review, and a results file shipped with it (under that name or
+ * any name a case-folding file system maps to it) would mark the branch's own files unchanged, pre-
+ * dismiss the findings it fears and inject text through `carried`. The git dir is not something a
+ * branch can write to. When annotate cannot write there (sandbox), it says so and the next plan
+ * takes --previous <that results file>.
  *
  *   node review-branch-rounds.cjs plan --root <repo> --files <list|-> [--base <sha>] [--full] [--previous <json>]
  *   node review-branch-rounds.cjs annotate <results.json> --root <repo> --base <sha> [--plan <json>] [--rules <json>]
@@ -39,6 +48,7 @@ const path = require('path');
 
 const PLAN_FILE = 'review-branch-plan.json';
 const RULES_FILE = 'review-branch-rules.json';
+const LAST_FILE = 'review-branch-last.json';
 const RESULTS_FILE = 'review-branch-results.json';
 // The skipReason the command writes for a file that `plan` reported as unchanged.
 const UNCHANGED_SKIP_RE = /^unchanged since r\d+ \(blob match\)/;
@@ -49,7 +59,7 @@ function die(msg, code = 2) {
 }
 
 function git(root, args, opts = {}) {
-  const r = cp.spawnSync('git', ['-C', root, '-c', 'core.fsmonitor=false', '-c', 'core.quotePath=false', ...args], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  const r = cp.spawnSync('git', ['-C', root, '-c', 'core.fsmonitor=false', '-c', 'core.quotePath=false', ...args], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, input: opts.input });
   if (r.error) throw r.error;
   if (r.status !== 0 && !(opts.ok || []).includes(r.status)) {
     const err = new Error((r.stderr || '').trim() || `git ${args.join(' ')} exited ${r.status}`);
@@ -90,8 +100,37 @@ function gitDir(root) {
   return path.resolve(root, d);
 }
 
+function isAncestor(root, maybeAncestor, commit) {
+  const r = cp.spawnSync('git', ['-C', root, '-c', 'core.fsmonitor=false', 'merge-base', '--is-ancestor', maybeAncestor, commit], { encoding: 'utf8' });
+  return !r.error && r.status === 0;
+}
+
+function resolveCommit(root, rev) {
+  try { return git(root, ['rev-parse', '--verify', `${rev}^{commit}`]).trim(); } catch (e) { return null; }
+}
+
 function currentBranch(root) {
   return git(root, ['rev-parse', '--abbrev-ref', 'HEAD']).trim();
+}
+
+// git C-quotes a path with non-ASCII or special bytes when core.quotePath is on: `"auth/s\303\251.ts"`.
+// A list built from such output must be decoded, or the path matches nothing, lstat fails and the file
+// hashes as "deleted" on every round. A line without the surrounding quotes is returned as is.
+function unquoteC(s) {
+  if (s.length < 2 || s[0] !== '"' || s[s.length - 1] !== '"') return s;
+  const body = s.slice(1, -1);
+  const bytes = [];
+  const simple = { n: 10, t: 9, r: 13, a: 7, b: 8, f: 12, v: 11, '\\': 92, '"': 34 };
+  for (let i = 0; i < body.length; i++) {
+    const c = body[i];
+    if (c !== '\\') { for (const b of Buffer.from(c, 'utf8')) bytes.push(b); continue; }
+    const oct = body.slice(i + 1, i + 4);
+    if (/^[0-7]{3}$/.test(oct)) { bytes.push(parseInt(oct, 8)); i += 3; continue; }
+    const n = body[i + 1];
+    if (n !== undefined && Object.prototype.hasOwnProperty.call(simple, n)) { bytes.push(simple[n]); i += 1; continue; }
+    bytes.push(92);
+  }
+  return Buffer.from(bytes).toString('utf8');
 }
 
 function readList(spec) {
@@ -105,7 +144,7 @@ function readList(spec) {
   const seen = new Set();
   const out = [];
   for (const raw of text.split('\n')) {
-    const f = raw.trim().replace(/^\.\//, '');
+    const f = unquoteC(raw.trim()).replace(/^\.\//, '');
     if (!f || f === RESULTS_FILE || seen.has(f)) continue;
     seen.add(f);
     out.push(f);
@@ -113,15 +152,21 @@ function readList(spec) {
   return out;
 }
 
-// Content hash of the file as it is on disk — the same identity `git hash-object` gives a blob, so
-// an unchanged file produces the same value on every round, tracked or not. A missing file is a
-// deletion under review and hashes as the literal "deleted".
+// Content hash of the file's bytes as they are on disk, so an unchanged file produces the same value
+// on every round, tracked or not. `--no-filters`: the branch owns `.gitattributes`, and a clean
+// filter such as `ident` would hash `$Id: <anything> $` as `$Id$` — an edited file would look
+// unchanged and be skipped. A symlink hashes as its raw link target (`hash-object <path>` would
+// follow it, and a link to /dev/zero never ends). A missing or special file is a deletion under
+// review and hashes as the literal "deleted", which `plan` never treats as unchanged.
 function blobOf(root, rel) {
   const abs = path.join(root, rel);
   let st;
   try { st = fs.lstatSync(abs); } catch (e) { return 'deleted'; }
-  if (!st.isFile() && !st.isSymbolicLink()) return 'deleted';
-  try { return git(root, ['hash-object', '--', rel]).trim(); } catch (e) { return 'deleted'; }
+  if (st.isSymbolicLink()) {
+    try { return git(root, ['hash-object', '--no-filters', '--stdin'], { input: fs.readlinkSync(abs, { encoding: 'buffer' }) }).trim(); } catch (e) { return 'deleted'; }
+  }
+  if (!st.isFile()) return 'deleted';
+  try { return git(root, ['hash-object', '--no-filters', '--', rel]).trim(); } catch (e) { return 'deleted'; }
 }
 
 const anchorKey = (s) => `${s.file}\u0000${s.quotedCode}`;
@@ -134,16 +179,32 @@ function verdictByIndex(results) {
   return m;
 }
 
+// A dismissed anchor carries the blob of its file at the time of the dismissal: the verdict was about
+// that content. It blocks a re-post only while the file still has that blob; once the file changes,
+// the anchor stays in the list as history but no longer stops the reviewer from flagging the line.
+// The same anchor dismissed again on new content is a second entry (one per content), so a file that
+// changes back to an earlier content is covered by that content's dismissal again.
 function mergeDismissed(...lists) {
   const seen = new Map();
   for (const list of lists) {
     for (const d of list || []) {
       if (!d || typeof d.file !== 'string' || typeof d.quotedCode !== 'string') continue;
-      const k = anchorKey(d);
-      if (!seen.has(k)) seen.set(k, { file: d.file, quotedCode: d.quotedCode, round: Number.isInteger(d.round) ? d.round : 1 });
+      const blob = typeof d.blob === 'string' && d.blob ? d.blob : '';
+      const k = `${anchorKey(d)}\u0000${blob}`;
+      if (!seen.has(k)) {
+        const e = { file: d.file, quotedCode: d.quotedCode, round: Number.isInteger(d.round) ? d.round : 1 };
+        if (blob) e.blob = blob;
+        seen.set(k, e);
+      }
     }
   }
   return [...seen.values()];
+}
+
+// Does this dismissed anchor still apply to the file as it is now? Without a recorded blob (a
+// pre-2.1.1 entry) it is taken to apply.
+function dismissalApplies(d, currentBlob) {
+  return typeof d.blob !== 'string' || !d.blob || d.blob === currentBlob;
 }
 
 // ---------------------------------------------------------------------------------------- plan
@@ -153,9 +214,27 @@ function plan(opts) {
   const files = readList(opts.files);
   if (files.length === 0) die('the file list is empty — nothing to plan');
   const branch = currentBranch(root);
-  const previousPath = opts.previous || path.join(root, RESULTS_FILE);
+  // The previous round is read from the git dir (see the header), never from the work tree.
+  const previousPath = opts.previous || path.join(gitDir(root), LAST_FILE);
   const previous = readJson(previousPath);
-  const sameWork = !!(previous && typeof previous === 'object' && previous.branch === branch && Array.isArray(previous.scopedFiles));
+  const workTreeResultsIgnored = fs.existsSync(path.join(root, RESULTS_FILE));
+  const head = git(root, ['rev-parse', 'HEAD']).trim();
+  // Same work = same branch name AND a continuation of the commit the previous round annotated (that
+  // head is an ancestor of this one) AND the same base when both are known. A branch name is the
+  // branch author's to choose: a later PR checked out under the same name, or any detached review
+  // (branch "HEAD"), must not inherit dismissals and skips earned by different code. A rebase or
+  // force-push breaks the ancestry and simply starts a full round.
+  let previousRejected = null;
+  let sameWork = !!(previous && typeof previous === 'object' && previous.branch === branch && Array.isArray(previous.scopedFiles));
+  if (sameWork) {
+    if (typeof previous.head !== 'string' || !/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/.test(previous.head)) previousRejected = 'no-head'; // SHA-1 or SHA-256 object format
+    else if (!isAncestor(root, previous.head, head)) previousRejected = 'not-a-continuation';
+    else if (opts.base && typeof previous.base === 'string' && previous.base !== resolveCommit(root, opts.base)) previousRejected = 'different-base';
+    if (previousRejected) {
+      sameWork = false;
+      process.stderr.write(`review-branch-rounds: ${previousPath} is not a previous round of this work (${previousRejected}) — starting a full round without its dismissed/carried\n`);
+    }
+  }
   const prevRound = sameWork ? (Number.isInteger(previous.round) && previous.round >= 1 ? previous.round : 1) : 0;
   const round = prevRound + 1;
   const full = !!opts.full || !sameWork;
@@ -173,7 +252,9 @@ function plan(opts) {
   if (!full) {
     for (const { file, blob } of blobs) {
       const p = prevByFile.get(file);
-      if (!p || typeof p.blob !== 'string' || p.blob === '' || p.blob !== blob) continue;
+      // "deleted" is the absence of a hash, not a hash: two rounds that both failed to read a file are
+      // not evidence that it did not change.
+      if (blob === 'deleted' || !p || typeof p.blob !== 'string' || p.blob === '' || p.blob !== blob) continue;
       const settled = p.status === 'reviewed' || (p.status === 'skipped' && Number.isInteger(p.unchangedSince));
       if (settled) unchanged.push(file);
     }
@@ -185,15 +266,14 @@ function plan(opts) {
   if (sameWork) {
     const verdict = verdictByIndex(previous);
     const suggestions = Array.isArray(previous.suggestions) ? previous.suggestions : [];
-    const failed = [];
     const passedOnUnchanged = [];
     suggestions.forEach((s, i) => {
       if (!s || typeof s.file !== 'string' || typeof s.quotedCode !== 'string') return;
-      const v = verdict.get(i);
-      if (v === 'FAIL') failed.push({ file: s.file, quotedCode: s.quotedCode, round: prevRound });
-      else if (v === 'PASS' && unchangedSet.has(s.file)) passedOnUnchanged.push({ ...s, round: prevRound });
+      if (verdict.get(i) === 'PASS' && unchangedSet.has(s.file)) passedOnUnchanged.push({ ...s, round: prevRound });
     });
-    dismissed = mergeDismissed(previous.dismissed, failed);
+    // The previous round's FAIL verdicts are already in its `dismissed` (annotate merges them, with the
+    // file's blob); nothing to add here.
+    dismissed = mergeDismissed(previous.dismissed);
     const prevCarried = (Array.isArray(previous.carried) ? previous.carried : []).filter((c) => c && unchangedSet.has(c.file));
     const seen = new Set();
     for (const c of [...prevCarried, ...passedOnUnchanged]) {
@@ -208,10 +288,12 @@ function plan(opts) {
     root,
     branch,
     base: opts.base || null,
-    head: git(root, ['rev-parse', 'HEAD']).trim(),
+    head,
     round,
     scopeMode: full ? 'full' : 'since-last',
-    previous: sameWork ? { path: previousPath, round: prevRound } : null,
+    previous: sameWork ? { path: previousPath, round: prevRound, source: opts.previous ? 'explicit' : 'gitdir' } : null,
+    previousRejected,
+    workTreeResultsIgnored,
     files: blobs,
     unchanged,
     carried,
@@ -311,12 +393,28 @@ function annotate(opts) {
   const planData = readJson(opts.plan || path.join(gd, PLAN_FILE));
   const planOk = !!(planData && typeof planData === 'object' && planData.branch === currentBranch(root));
   const priorDismissed = planOk ? mergeDismissed(planData.dismissed) : [];
-  const priorKeys = new Set(priorDismissed.map(anchorKey));
+  const priorByKey = new Map();
+  for (const d of priorDismissed) {
+    const k = anchorKey(d);
+    if (!priorByKey.has(k)) priorByKey.set(k, []);
+    priorByKey.get(k).push(d);
+  }
+  const planBlob = new Map();
+  if (planOk) for (const f of planData.files || []) if (f && typeof f.file === 'string') planBlob.set(f.file, f.blob);
+  const blobNow = (file) => (planBlob.has(file) ? planBlob.get(file) : blobOf(root, file));
 
-  // Refuse before writing anything: a re-posted dismissed finding is the exact waste this exists to stop.
-  const reposted = results.suggestions.filter((s) => s && priorKeys.has(anchorKey(s)));
+  // Refuse before writing anything: a re-posted dismissed finding is the exact waste this exists to stop —
+  // as long as the file still has the content the dismissal was about. A dismissal of code that has since
+  // changed does not bind: the reviewer may well be right this time.
+  const reposted = results.suggestions.filter((s) => {
+    if (!s || typeof s.file !== 'string' || typeof s.quotedCode !== 'string') return false;
+    const entries = priorByKey.get(anchorKey(s));
+    if (!entries) return false;
+    const now = blobNow(s.file);
+    return entries.some((d) => dismissalApplies(d, now));
+  });
   if (reposted.length) {
-    process.stderr.write(`review-branch-rounds: ${reposted.length} suggestion(s) re-post an anchor dismissed in an earlier round — drop them (or argue the dismissal was wrong in the report, with new evidence):\n`);
+    process.stderr.write(`review-branch-rounds: ${reposted.length} suggestion(s) re-post an anchor dismissed in an earlier round on a file that has not changed since — drop them (or argue the dismissal was wrong in the report, with new evidence):\n`);
     for (const s of reposted) process.stderr.write(`  - ${s.file}:${s.line} ${JSON.stringify(String(s.quotedCode).slice(0, 80))}\n`);
     process.exit(1);
   }
@@ -327,8 +425,6 @@ function annotate(opts) {
     s.introduced = introducedOf(facts, s.file, s.line);
   }
 
-  const planBlob = new Map();
-  if (planOk) for (const f of planData.files || []) if (f && typeof f.file === 'string') planBlob.set(f.file, f.blob);
   // The "unchanged" fact is the plan's, not the reviewer's: a scoped file the plan reported unchanged gets
   // `unchangedSince` (the round that last settled it), which the next `plan` reads instead of the
   // skipReason text. A skipReason that CLAIMS unchanged for a file the plan did not report is refused —
@@ -353,12 +449,18 @@ function annotate(opts) {
   }
 
   const verdict = verdictByIndex(results);
+  const scopedBlob = new Map();
+  for (const e of results.scopedFiles) if (e && typeof e.file === 'string' && typeof e.blob === 'string') scopedBlob.set(e.file, e.blob);
   const failedNow = [];
   results.suggestions.forEach((s, i) => {
-    if (s && verdict.get(i) === 'FAIL' && typeof s.file === 'string' && typeof s.quotedCode === 'string') failedNow.push({ file: s.file, quotedCode: s.quotedCode });
+    if (s && verdict.get(i) === 'FAIL' && typeof s.file === 'string' && typeof s.quotedCode === 'string') {
+      failedNow.push({ file: s.file, quotedCode: s.quotedCode, blob: scopedBlob.has(s.file) ? scopedBlob.get(s.file) : blobNow(s.file) });
+    }
   });
   const round = planOk ? planData.round : (Number.isInteger(results.round) && results.round >= 1 ? results.round : 1);
   results.round = round;
+  results.head = git(root, ['rev-parse', 'HEAD']).trim();
+  results.base = base;
   results.scopeMode = planOk ? planData.scopeMode : (results.scopeMode || 'full');
   results.dismissed = mergeDismissed(priorDismissed, failedNow.map((d) => ({ ...d, round })));
   results.carried = planOk ? (planData.carried || []) : (Array.isArray(results.carried) ? results.carried : []);
@@ -368,7 +470,14 @@ function annotate(opts) {
     results.risk = { tier: rules.risk.tier, hits: Array.isArray(rules.risk.hits) ? rules.risk.hits : [] };
   }
 
-  fs.writeFileSync(path.resolve(resultsPath), JSON.stringify(results, null, 2) + '\n');
+  const text = JSON.stringify(results, null, 2) + '\n';
+  fs.writeFileSync(path.resolve(resultsPath), text);
+  // The round state the next `plan` reads. Unwritable (sandbox) is not an error: the results file
+  // still has everything, and the next plan takes it through --previous.
+  let stateSaved = false;
+  try { fs.writeFileSync(path.join(gd, LAST_FILE), text); stateSaved = true; } catch (e) {
+    process.stderr.write(`review-branch-rounds: could not save the round state to ${path.join(gd, LAST_FILE)} (${e.code || e.message}) — pass --previous ${path.resolve(resultsPath)} to the next plan\n`);
+  }
   const introduced = results.suggestions.filter((s) => s && s.introduced === true).length;
   const summary = {
     round,
@@ -380,6 +489,7 @@ function annotate(opts) {
     dismissedThisRound: failedNow.length,
     carried: results.carried.length,
     risk: results.risk ? results.risk.tier : null,
+    stateSaved,
   };
   process.stdout.write(JSON.stringify(summary) + '\n');
 }
