@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.11.4] - 2026-10-17
+
+### Fixed
+
+- **code-audit-rigor 2.0.4 → 2.0.5: `/review-branch` and `/review-pr` no longer depend on the Bash tool's current directory.** Both resolve the repository root once and confirm it is the intended one, then run every git call as `git -C <root>`, keep their artifacts at absolute paths under it, and `/review-pr` replies with `gh pr comment -R {owner}/{repo}`. The working directory persists across Bash calls and is shared by parallel ones, so a `cd` anywhere could make these commands review another repository's branch, or, for `/review-pr`, fetch and reply to another repository's PR with the same number.
+
 ## [1.11.3] - 2026-10-17
 
 ### Changed

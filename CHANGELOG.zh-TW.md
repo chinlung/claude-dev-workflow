@@ -4,6 +4,12 @@
 
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
+## [1.11.4] - 2026-10-17
+
+### Fixed
+
+- **code-audit-rigor 2.0.4 → 2.0.5：`/review-branch` 與 `/review-pr` 不再依賴 Bash 當下目錄。** 兩者先解析一次 repo 根並確認就是要處理的 repo，之後每個 git 一律 `git -C <root>`、產物放在其下的絕對路徑，`/review-pr` 回覆改用 `gh pr comment -R {owner}/{repo}`。Bash 的工作目錄在呼叫間延續、並行呼叫共用，任何一處的 `cd` 都可能讓這兩個指令審到別的 repo 的分支；`/review-pr` 甚至會抓取並回覆另一個 repo 的同號 PR。
+
 ## [1.11.3] - 2026-10-17
 
 ### Changed

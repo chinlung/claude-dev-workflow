@@ -2,6 +2,14 @@
 
 All notable changes to the `code-audit-rigor` plugin will be documented in this file.
 
+## [2.0.5] - 2026-10-17
+
+### Fixed
+
+- **`/review-branch` and `/review-pr` no longer depend on the Bash tool's current directory.** Both now start by resolving the repository root once (`git rev-parse --show-toplevel`, recorded as `<root>`) and checking that it is the repository meant; every later git call is written `git -C <root> …`, the artifact is written to and validated at `<root>/review-branch-results.json` / `<root>/review-pr-comments.json`, and `/review-pr` posts its reply with `gh pr comment <PR> -R {owner}/{repo}`. `/review-branch` used to tell the model to `cd "$(git rev-parse --show-toplevel)"` first.
+
+  **Why:** in Claude Code the Bash tool's working directory persists between calls and is shared by calls sent in parallel, so a `cd` in one call silently moves the others, and a `cd` in any other call can move this command's. On 2026-10-17 a sibling call's `cd` made another repository's fast-forward and push run in the wrong repo, and a cross-vendor review audited the wrong work tree. With a drifted directory `/review-branch` built its coverage list from the wrong repo and its validators read a missing or stale artifact, and `/review-pr` derived owner/repo from the wrong remote: it would fetch, and reply to, another repository's PR with the same number. `git -C` runs git from the root without moving the shell's directory, so `ls-files` still lists the whole tree with root-relative paths.
+
 ## [2.0.4] - 2026-09-18
 
 ### Added

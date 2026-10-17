@@ -9,7 +9,7 @@ argument-hint: "<PR號碼>"
 
 ## Phase 1：抓取評論
 
-使用 `gh api --paginate` 並行抓取以下 3 個 endpoint（缺一不可，從 `git remote get-url origin` 推導 owner/repo）——加上 `--paginate` 確保大型 PR 的分頁評論不遺漏：
+使用 `gh api --paginate` 並行抓取以下 3 個 endpoint（缺一不可；先 `git rev-parse --show-toplevel` 取 repo 根的絕對路徑、記為 `<root>`，確認它就是這個 PR 所屬的 repo——Bash 的 cwd 會被並行呼叫的 `cd` 帶走，推導錯 repo 就會抓到別的 repo 的同號 PR——再從 `git -C <root> remote get-url origin` 推導 owner/repo；之後本命令的 git 一律 `git -C <root>`、產物一律寫到 `<root>/` 底下，不 `cd`）——加上 `--paginate` 確保大型 PR 的分頁評論不遺漏：
 
 ```
 gh api --paginate repos/{owner}/{repo}/pulls/{id}/comments    # inline review comments（Copilot 等行級別）
@@ -42,7 +42,7 @@ gh api --paginate repos/{owner}/{repo}/issues/{id}/comments    # 一般留言（
 
 ### 結構化輸出：`review-pr-comments.json`
 
-Phase 1 抓取並分類後，**在進入 Phase 3 修復前**，將所有評論寫入 `review-pr-comments.json`（schema: `${CLAUDE_PLUGIN_ROOT}/schema/review-pr-comments.schema.json`）：
+Phase 1 抓取並分類後，**在進入 Phase 3 修復前**，將所有評論寫入 `<root>/review-pr-comments.json`（schema: `${CLAUDE_PLUGIN_ROOT}/schema/review-pr-comments.schema.json`）：
 
 ```json
 {
@@ -97,15 +97,15 @@ Phase 1 抓取並分類後，**在進入 Phase 3 修復前**，將所有評論�
 寫檔後先確認它不會被 commit 進版控（這是命令的產物，不是專案內容）：
 
 ```bash
-git check-ignore -q -- "<剛寫入的產物路徑>"; echo "check-ignore rc=$?"
+git -C <root> check-ignore -q -- "<剛寫入的產物路徑>"; echo "check-ignore rc=$?"
 ```
 
-**`rc` 必須 `echo` 出來才看得到**：`-q` 抑制輸出，而結尾若寫成 `; RC=$?`，賦值本身 exit 0 會把命令的 exit status 吃掉——`0`／`1`／`128` 三種狀態在工具回報上都變成一樣的「exit 0、無輸出」，最可能被當成 `rc=0` 放行（靜默 false-pass）。判定只認 `git check-ignore` 自身的 rc，不要接管線。**路徑用剛才寫檔的那一個**：`git check-ignore` 以 Bash 的 cwd 解析相對路徑，而產物可能是以絕對路徑寫出的，基準不一致會兩個方向都錯（已 ignore 卻報未 ignore，或未 ignore 卻放行）。
+**`rc` 必須 `echo` 出來才看得到**：`-q` 抑制輸出，而結尾若寫成 `; RC=$?`，賦值本身 exit 0 會把命令的 exit status 吃掉——`0`／`1`／`128` 三種狀態在工具回報上都變成一樣的「exit 0、無輸出」，最可能被當成 `rc=0` 放行（靜默 false-pass）。判定只認 `git check-ignore` 自身的 rc，不要接管線。**路徑用剛才寫檔的那個絕對路徑**：相對路徑由 git 的執行目錄解析，而 Bash 的 cwd 可能已被別的呼叫帶走，基準不一致會兩個方向都錯（已 ignore 卻報未 ignore，或未 ignore 卻放行）。
 
 三態處置：
 
 - `rc=0` — 已被 ignore，繼續。
-- `rc=1` — **未被 ignore**。先問「是否已經進版控」：`git ls-files --error-unmatch -- "<產物路徑>"` 成功即代表它已被追蹤，此時單加 `.gitignore` 一行**無效**（ignore 不影響已追蹤的檔案），須提醒使用者先 `git rm --cached <產物>` 再加那一行；否則只需在分類表格提醒加一行 `review-pr-comments.json`。`.gitignore` 是專案的版控設定，由使用者決定，**不要自行修改**。
+- `rc=1` — **未被 ignore**。先問「是否已經進版控」：`git -C <root> ls-files --error-unmatch -- "<產物路徑>"` 成功即代表它已被追蹤，此時單加 `.gitignore` 一行**無效**（ignore 不影響已追蹤的檔案），須提醒使用者先 `git rm --cached <產物>` 再加那一行；否則只需在分類表格提醒加一行 `review-pr-comments.json`。`.gitignore` 是專案的版控設定，由使用者決定，**不要自行修改**。
 - `rc=128` — 不在 git repo，或 git 本身失敗（bare repo、路徑在 worktree 之外、`GIT_DIR` 壞掉皆為 128）。跳過此檢查，不視為錯誤。
 
 這一步存在的理由：把「確保產物不進版控」交給使用者的一次性記性會漏——本 plugin 所在的 repo 自己就漏過**三個**同類產物（`review-branch-results.json`、`review-pr-comments.json`、`debate-output.json`），直到 2026-09-18 才一次補齊。
@@ -113,7 +113,7 @@ git check-ignore -q -- "<剛寫入的產物路徑>"; echo "check-ignore rc=$?"
 接著執行驗證（**Phase 3 修復前**必須通過）：
 
 ```bash
-node ${CLAUDE_PLUGIN_ROOT}/validators/validate-review-pr-comments.cjs review-pr-comments.json
+node ${CLAUDE_PLUGIN_ROOT}/validators/validate-review-pr-comments.cjs <root>/review-pr-comments.json
 ```
 
 輸出分類表格供使用者確認後再進入修復階段。
@@ -135,10 +135,10 @@ node ${CLAUDE_PLUGIN_ROOT}/validators/validate-review-pr-comments.cjs review-pr-
 
 > **推送前確認**：Phase 2 的使用者確認只看到「分類表格」，並未看到實際修改內容。因此推送前必須先向使用者展示本次所有修改的**完整 diff**（非僅分類表格），取得明確確認後，方可 Commit / Push / 發布回覆。
 
-所有修復完成後，更新 `review-pr-comments.json` 中各評論的 `fix.evidence`（補入 commit SHA 或測試結果），再次執行驗證：
+所有修復完成後，更新 `<root>/review-pr-comments.json` 中各評論的 `fix.evidence`（補入 commit SHA 或測試結果），再次執行驗證：
 
 ```bash
-node ${CLAUDE_PLUGIN_ROOT}/validators/validate-review-pr-comments.cjs review-pr-comments.json
+node ${CLAUDE_PLUGIN_ROOT}/validators/validate-review-pr-comments.cjs <root>/review-pr-comments.json
 ```
 
 驗證通過後方可進行後續提交與回覆。
@@ -146,7 +146,7 @@ node ${CLAUDE_PLUGIN_ROOT}/validators/validate-review-pr-comments.cjs review-pr-
 1. 顯示本次所有修改的完整 diff，等待使用者確認
 2. Commit — 訊息包含處理了哪些評論
 3. Push 到遠端
-4. 使用 `gh pr comment` 在 PR 發布回覆，格式：
+4. 使用 `gh pr comment <PR號碼> -R {owner}/{repo}` 在 PR 發布回覆（`-R` 用 Phase 1 從 `<root>` 推導的 owner/repo；不帶時 gh 從 Bash 當下目錄推斷 repo，cwd 被帶走就會把回覆貼到別的 repo 的同號 PR），格式：
 
 ```markdown
 ## PR Review 回應摘要
