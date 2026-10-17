@@ -7,20 +7,20 @@ argument-hint: "[base-branch] [--focus <pathspec>]"
 
 ## 前置：確認分支與差異（機械化清單）
 
-1. `git branch --show-current` 確認當前分支
-2. **解析 base ref——一律用 fetch 後的遠端追蹤分支，不信本機 base 分支**（base 名稱來自 `$ARGUMENTS` 或步驟 4 的自動偵測）：先 `git fetch origin <base-branch>`，再用 `git merge-base HEAD origin/<base-branch>` 找分歧點，並記下 `git rev-parse origin/<base-branch>` 的 SHA 供最終報告標頭。無 `origin` 或 fetch 失敗（離線）時才退回本機 `<base-branch>`，且報告標頭必須註明「未 fetch，以本機 base 為準」。本機 base 分支可能停在從未推送的 commit、或落後遠端數個 commit——以它算出的清單會整批漏掉那些檔案，而覆蓋核對表對照的正是這份清單，所以仍會全綠
-3. 在 **repo 根目錄**（先 `cd "$(git rev-parse --show-toplevel)"`——`ls-files` 只列 cwd 子樹且路徑相對 cwd，在子目錄跑會與 diff 的根相對路徑拼不起來、untracked 檔沉默消失）以三個機械來源的**聯集**取得變更檔案清單——**此清單是覆蓋核對表的唯一基準**（Phase 3 必須逐檔核銷），不可事後憑記憶重建：
-   - 已 commit 的分支變更：`git diff <merge-base>...HEAD --name-only`
-   - 工作樹修改（已 stage 與未 stage 皆含）：`git diff --name-only HEAD`
-   - 未追蹤的新檔：`git ls-files --others --exclude-standard --full-name`，排除本命令自身的產物 `review-branch-results.json`（修完再跑一輪自審時它會是 untracked；Phase 3 寫檔後的 `git check-ignore` 步驟會確認它已被 ignore）
+1. **先取 repo 根的絕對路徑，之後全程用它、不 `cd`**：`git rev-parse --show-toplevel`，記為 `<root>`，並確認它就是要審的 repo（不是就停下來說明，別照審）——Bash 的 cwd 在呼叫間延續、同批並行呼叫共用，可能已被別的呼叫帶到另一個 repo，而 `cd` 本身又會把同批其他呼叫帶走。之後本命令的每個 git 一律寫成 `git -C <root> …`，產物一律寫到 `<root>/review-branch-results.json`。接著 `git -C <root> branch --show-current` 確認當前分支
+2. **解析 base ref——一律用 fetch 後的遠端追蹤分支，不信本機 base 分支**（base 名稱來自 `$ARGUMENTS` 或步驟 4 的自動偵測）：先 `git -C <root> fetch origin <base-branch>`，再用 `git -C <root> merge-base HEAD origin/<base-branch>` 找分歧點，並記下 `git -C <root> rev-parse origin/<base-branch>` 的 SHA 供最終報告標頭。無 `origin` 或 fetch 失敗（離線）時才退回本機 `<base-branch>`，且報告標頭必須註明「未 fetch，以本機 base 為準」。本機 base 分支可能停在從未推送的 commit、或落後遠端數個 commit——以它算出的清單會整批漏掉那些檔案，而覆蓋核對表對照的正是這份清單，所以仍會全綠
+3. **從 repo 根執行**（`git -C <root>`——`ls-files` 只列執行目錄的子樹且路徑相對該目錄，在子目錄跑會與 diff 的根相對路徑拼不起來、untracked 檔沉默消失；`-C` 讓 git 從根執行而不改動 Bash 的 cwd）以三個機械來源的**聯集**取得變更檔案清單——**此清單是覆蓋核對表的唯一基準**（Phase 3 必須逐檔核銷），不可事後憑記憶重建：
+   - 已 commit 的分支變更：`git -C <root> diff <merge-base>...HEAD --name-only`
+   - 工作樹修改（已 stage 與未 stage 皆含）：`git -C <root> diff --name-only HEAD`
+   - 未追蹤的新檔：`git -C <root> ls-files --others --exclude-standard --full-name`，排除本命令自身的產物 `review-branch-results.json`（修完再跑一輪自審時它會是 untracked；Phase 3 寫檔後的 `git check-ignore` 步驟會確認它已被 ignore）
 
    三者去重後每個路徑只留**一筆**，`source` 依**磁碟現況**判定（寫入 Phase 3 的 `scopedFiles[].source`，必填）：
    - 檔案在磁碟上且未被追蹤（含 `git rm --cached` 後仍留在磁碟者——這種路徑會同時出現在第二、三個清單）→ `untracked`
    - 檔案在磁碟上且同時出現在已 commit 與工作樹清單 → `working-tree`；僅出現在已 commit 清單 → `committed`
-   - 檔案不在磁碟上（被刪除）→ 依來源記 `committed`（分支 commit 刪除）或 `working-tree`（工作樹刪除、未 commit），**仍須 reviewed、不可自動 skipped**：用 `git show <merge-base>:<path>`（committed）或 `git show HEAD:<path>`（working-tree）讀被刪內容、查呼叫點確認刪除安全——ORM 動態關聯、magic method、字串類名的呼叫點 grep 零命中不算證據
+   - 檔案不在磁碟上（被刪除）→ 依來源記 `committed`（分支 commit 刪除）或 `working-tree`（工作樹刪除、未 commit），**仍須 reviewed、不可自動 skipped**：用 `git -C <root> show <merge-base>:<path>`（committed）或 `git -C <root> show HEAD:<path>`（working-tree）讀被刪內容、查呼叫點確認刪除安全——ORM 動態關聯、magic method、字串類名的呼叫點 grep 零命中不算證據
 
    **審查對象一律是磁碟上的工作樹版本**（Read 讀到的即是），不是 HEAD 版本。若帶 `--focus <pathspec>`（如 `--focus 'src/auth/**'`），三個命令都加 `-- <pathspec>`，只審符合路徑的變更——大 PR 省 token + 範圍紀律；此時覆蓋核對表的基準即為**過濾後**的清單。（2.0.0（含）以前只取已 commit diff，commit 前自審時最新的未 commit 工作被沉默略過而覆蓋表仍全綠——2.0.1 修正）
-4. 若無 `$ARGUMENTS`（或僅提供 `--focus`），自動偵測 base branch：先取 `origin/HEAD`（`git symbolic-ref -q refs/remotes/origin/HEAD`，缺時 `git remote set-head origin -a` 補上），無 remote 才依序嘗試本機 `main`、`master`；偵測到的名稱同樣走步驟 2 的 fetch 與 `origin/<base-branch>` 規則
+4. 若無 `$ARGUMENTS`（或僅提供 `--focus`），自動偵測 base branch：先取 `origin/HEAD`（`git -C <root> symbolic-ref -q refs/remotes/origin/HEAD`，缺時 `git -C <root> remote set-head origin -a` 補上），無 remote 才依序嘗試本機 `main`、`master`；偵測到的名稱同樣走步驟 2 的 fetch 與 `origin/<base-branch>` 規則
 
 ## 前置：解析適用審查規則（path-matched rule packs）
 
@@ -77,7 +77,7 @@ argument-hint: "[base-branch] [--focus <pathspec>]"
 
 ### 結構化輸出：`review-branch-results.json`
 
-Phase 2 完成後，將審查結果寫入 `review-branch-results.json`，須符合以下合約（schema: `${CLAUDE_PLUGIN_ROOT}/schema/review-branch-results.schema.json`）：
+Phase 2 完成後，將審查結果寫入 `<root>/review-branch-results.json`（絕對路徑，不靠 cwd），須符合以下合約（schema: `${CLAUDE_PLUGIN_ROOT}/schema/review-branch-results.schema.json`）：
 
 ```json
 {
@@ -112,15 +112,15 @@ Phase 2 完成後，將審查結果寫入 `review-branch-results.json`，須符�
 寫檔後先確認它不會被 commit 進版控（這是命令的產物，不是專案內容）：
 
 ```bash
-git check-ignore -q -- "<剛寫入的產物路徑>"; echo "check-ignore rc=$?"
+git -C <root> check-ignore -q -- "<剛寫入的產物路徑>"; echo "check-ignore rc=$?"
 ```
 
-**`rc` 必須 `echo` 出來才看得到**：`-q` 抑制輸出，而結尾若寫成 `; RC=$?`，賦值本身 exit 0 會把命令的 exit status 吃掉——`0`／`1`／`128` 三種狀態在工具回報上都變成一樣的「exit 0、無輸出」，最可能被當成 `rc=0` 放行（靜默 false-pass）。判定只認 `git check-ignore` 自身的 rc，不要接管線。**路徑用剛才寫檔的那一個**：`git check-ignore` 以 Bash 的 cwd 解析相對路徑，而產物可能是以絕對路徑寫出的，基準不一致會兩個方向都錯（已 ignore 卻報未 ignore，或未 ignore 卻放行）。
+**`rc` 必須 `echo` 出來才看得到**：`-q` 抑制輸出，而結尾若寫成 `; RC=$?`，賦值本身 exit 0 會把命令的 exit status 吃掉——`0`／`1`／`128` 三種狀態在工具回報上都變成一樣的「exit 0、無輸出」，最可能被當成 `rc=0` 放行（靜默 false-pass）。判定只認 `git check-ignore` 自身的 rc，不要接管線。**路徑用剛才寫檔的那個絕對路徑**：相對路徑由 git 的執行目錄解析，而 Bash 的 cwd 可能已被別的呼叫帶走，基準不一致會兩個方向都錯（已 ignore 卻報未 ignore，或未 ignore 卻放行）。
 
 三態處置：
 
 - `rc=0` — 已被 ignore，繼續。
-- `rc=1` — **未被 ignore**。先問「是否已經進版控」：`git ls-files --error-unmatch -- "<產物路徑>"` 成功即代表它已被追蹤，此時單加 `.gitignore` 一行**無效**（ignore 不影響已追蹤的檔案），須提醒使用者先 `git rm --cached <產物>` 再加那一行；否則只需在最終報告提醒加一行 `review-branch-results.json`。`.gitignore` 是專案的版控設定，由使用者決定，**不要自行修改**。
+- `rc=1` — **未被 ignore**。先問「是否已經進版控」：`git -C <root> ls-files --error-unmatch -- "<產物路徑>"` 成功即代表它已被追蹤，此時單加 `.gitignore` 一行**無效**（ignore 不影響已追蹤的檔案），須提醒使用者先 `git rm --cached <產物>` 再加那一行；否則只需在最終報告提醒加一行 `review-branch-results.json`。`.gitignore` 是專案的版控設定，由使用者決定，**不要自行修改**。
 - `rc=128` — 不在 git repo，或 git 本身失敗（bare repo、路徑在 worktree 之外、`GIT_DIR` 壞掉皆為 128）。跳過此檢查，不視為錯誤。
 
 這一步存在的理由：把「確保產物不進版控」交給使用者的一次性記性會漏——本 plugin 所在的 repo 自己就漏過**三個**同類產物（`review-branch-results.json`、`review-pr-comments.json`、`debate-output.json`），直到 2026-09-18 才一次補齊。
@@ -128,7 +128,7 @@ git check-ignore -q -- "<剛寫入的產物路徑>"; echo "check-ignore rc=$?"
 接著執行驗證指令（必須通過才能進入最終 Markdown 表格）：
 
 ```bash
-node ${CLAUDE_PLUGIN_ROOT}/validators/validate-review-branch-results.cjs review-branch-results.json
+node ${CLAUDE_PLUGIN_ROOT}/validators/validate-review-branch-results.cjs <root>/review-branch-results.json
 ```
 
 驗證失敗表示 JSON 格式不符合合約（缺欄位、型別錯誤、skipped 缺 skipReason 等），需修正後重跑，確認 `VALID` 後繼續。
@@ -136,7 +136,7 @@ node ${CLAUDE_PLUGIN_ROOT}/validators/validate-review-branch-results.cjs review-
 接著執行覆蓋核對（coverage reconciliation）：
 
 ```bash
-node ${CLAUDE_PLUGIN_ROOT}/validators/coverage-reconcile.cjs review-branch-results.json
+node ${CLAUDE_PLUGIN_ROOT}/validators/coverage-reconcile.cjs <root>/review-branch-results.json
 ```
 
 此步驟驗證覆蓋完整性（超出 schema 檢查範圍）：
