@@ -1,0 +1,86 @@
+# Security review on every pull request — claude-code-action with a Claude Code OAuth token.
+#
+# Source: ~/.claude/templates/github-security-review.yml (copied in by /security-ci-setup).
+# Auth: repository secret CLAUDE_CODE_OAUTH_TOKEN, generated locally with `claude setup-token`
+#       (Pro/Max). The token is a full account credential: keep this workflow on trusted PRs only
+#       and enable "Require approval for all external contributors" in the repo's Actions settings.
+# Findings land as inline review comments (pulls/comments), so /review-pr picks them up.
+# Advisory, not fail-closed: the job exits 0 whether or not findings were posted, so a green
+# check means "the review ran", NOT "the diff is clean" — read the PR comments before merging.
+# The prompt's exclusions and confidence bar mirror the built-in /security-review
+# (anthropics/claude-code-security-review, .claude/commands/security-review.md); e.g. "log spoofing"
+# is its hard exclusion #12.
+name: security-review
+
+on:
+  pull_request:
+    # ready_for_review: a PR opened as draft is skipped by the job `if` below, so the
+    # draft→ready transition must itself start a run.
+    types: [opened, synchronize, reopened, ready_for_review]
+    # Docs-only PRs never start a run (a run costs up to 25 min of OAuth-token time).
+    paths-ignore:
+      - '**/*.md'
+      - '**/*.txt'
+      - 'docs/**'
+
+concurrency:
+  group: security-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  security-review:
+    # Drafts are skipped (docs filtering is the paths-ignore above). Fork PRs are skipped
+    # too: they run with empty secrets, so the action would fail red instead of reviewing —
+    # the OAuth token must never be exposed to a fork anyway. Review those by hand.
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            You are a senior security engineer reviewing ONLY the changes in this pull request
+            (`gh pr diff ${{ github.event.pull_request.number }}`). Use the repository exploration
+            tools to understand existing security patterns, then judge the diff against them.
+            Do not report pre-existing issues outside the diff.
+
+            Report ONLY HIGH and MEDIUM findings with a concrete, exploitable attack path:
+            who the attacker is, what input they control, the vulnerable sink, and what they gain.
+            Assign each finding a confidence score 1-10 and drop anything below 8.
+
+            Categories: injection (SQL/NoSQL/command/template/XXE), path traversal, authentication
+            and authorization bypass, IDOR, privilege escalation, session/JWT flaws, hard-coded
+            secrets, weak crypto or randomness, unsafe deserialization, eval/code execution, SSRF
+            (host or protocol control only), XSS in server-rendered or unsafe-sink client code,
+            sensitive data exposure (secrets/PII in logs, responses, or storage).
+
+            Hard exclusions — never report: denial of service or resource exhaustion; rate limiting;
+            missing hardening or best-practice gaps without a concrete exploit; outdated dependencies;
+            memory-safety in memory-safe languages; test-only or documentation files; log spoofing;
+            regex injection or ReDoS; user content in AI prompts; missing audit logs; client-side
+            authorization checks; open redirects, prototype pollution, tabnabbing unless extremely
+            high confidence; React/Angular templates unless dangerouslySetInnerHTML or equivalent.
+            Environment variables and CI secrets are trusted inputs.
+
+            Output: post each surviving finding as an inline review comment on the exact line
+            (severity, category, description, exploit scenario, fix). Post ONE summary comment
+            only when there is at least one finding (list them with file:line). When there are
+            none, post nothing; do not add a comment on every push. Never post speculative or
+            low-confidence items.
+          claude_args: |
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Read,Grep,Glob"
