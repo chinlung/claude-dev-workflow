@@ -78,7 +78,7 @@ review_rounds: 0
 ## Deferred
 - item ← source: security-review@r2 | severity: HIGH | why: pre-existing, not introduced here | where: issue #123
 ## Log
-- 2026-09-23 10:00 review-branch r1: 5 findings → 2 adopted / 3 deferred / 0 noise
+- 2026-09-23 10:00 review-branch r1: 5 findings → 2 fixed / 2 deferred / 1 wrong / 0 intentional / 0 moot
 - 2026-09-23 PR #42 opened on feature/x
 ```
 
@@ -117,6 +117,7 @@ The unit is the goal. Switching branches for a hotfix, a Dependabot batch or the
 | `add "<request>"` | The next request on the same line of work (commit, push, another review round, fixing review findings, tests, docs) goes into the existing ledger as an In scope item — verbatim, `← 來源: user`, one Log line — leaving goal, mode and round count untouched; with no usable ledger it behaves as `init`. A different repository, a different feature, a long-idle ledger or a harvest-type request on a converge ledger start a new ledger instead |
 | `status` (default) | Prints the ledger, `mode · open N · deferred M · round R`, then the open follow-ups (HIGH first) |
 | `facts <findings.json>` | Runs `scripts/scope-facts.cjs`: for each finding (`path`, `line`, `claim`, `evidence`) attaches the mechanical half of its triage — `in_diff` and the distance to the nearest hunk of the branch diff (committed since the base plus the working tree; untracked files count as added), `change_kind` (whole-file kinds — deleted, binary, mode-only, untracked — count as in the diff although `-U0` prints no hunk), `outside_repo`, `line_invalid`, `patch_lines`, `sibling` candidates (the same text elsewhere in the repo), `must_rules` candidates (guideline lines that read as a rule and share words with the claim). The output is the ledger prefill and, unchanged, the `state` for `jev_decide` |
+| `stats [--all] [--project <dir>]…` | Runs `scripts/scope-stats.cjs` (1.1.0): sums the Log's per-round outcomes per review tool — rounds, findings, fixed / deferred / wrong / intentional / moot, precision = (fixed + deferred) / judged — and the open items per source in In scope, Deferred and follow-ups, across the given projects (`--all`: every project under `~/.claude/projects`, its directory name decoded against the file system). The 1.0.x `adopted / noise` lines are read too; a Log line that does not parse is reported by number. It counts what was judged; it judges nothing |
 | `defer "<item>" --severity HIGH\|MEDIUM\|LOW --why <reason> --to <destination>` | Moves an In scope item to Deferred; all three flags mandatory; a HIGH security item only to `issue #N` or `next: <goal>` |
 | `done` | Only when no item is open and every Deferred line has a severity and a destination (HIGH security: issue or next goal): moves Deferred into the follow-ups file, writes a narrative memory entry, deletes the ledger |
 

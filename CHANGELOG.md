@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.11.6] - 2026-10-18
+
+### Added
+
+- **code-audit-rigor 2.0.5 → 2.1.0: `/review-branch` converges across rounds, and every finding says whether this change introduced it.** `scripts/review-branch-rounds.cjs plan` skips files byte-identical to the previous round, carries verified-but-unfixed suggestions forward without re-verifying them, and lists every anchor dismissed in earlier rounds; `annotate` fills `introduced` from the branch diff and refuses to write a results file that re-posts a dismissed anchor (the validator rejects one too). Also new: `class` per defect type, a fifth facet for guideline / documentation drift, `scripts/resolve-rules.cjs` for mechanical rule-pack and risk-tier resolution (`risk` lists in the manifests; `tier: deep` printed first), and `/review-pr` replying in each inline thread and resolving it — the clearing path under "Require conversation resolution before merging". Prompted by the Claude Code team's account of review convergence (round caps, diff-only re-review, no repeated findings, a Pre-existing tag).
+- **scope-ledger 1.0.4 → 1.1.0: `scope stats`.** Log outcomes become five buckets (`fixed / deferred / wrong / intentional / moot`; the old `adopted / noise` still read), and `scripts/scope-stats.cjs` sums them per review tool across projects with a precision figure — the measurement that decides whether a second opinion or a piloted reviewer earns its cost.
+
 ## [1.11.5] - 2026-10-17
 
 ### Fixed

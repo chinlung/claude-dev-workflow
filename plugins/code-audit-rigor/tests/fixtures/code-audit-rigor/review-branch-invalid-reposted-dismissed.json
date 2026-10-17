@@ -1,0 +1,24 @@
+{
+  "branch": "feature/rate-limiting",
+  "round": 2,
+  "scopeMode": "since-last",
+  "scopedFiles": [
+    { "file": "src/middleware/rate-limiter.ts", "status": "reviewed", "source": "working-tree", "blob": "3b18e512dba79e4c8300dd08aeb37f8e728b8dad" }
+  ],
+  "suggestions": [
+    {
+      "file": "src/middleware/rate-limiter.ts",
+      "line": 5,
+      "quotedCode": "if (!req.ip) return next();",
+      "description": "Requests without an IP bypass the limiter.",
+      "severity": "HIGH",
+      "introduced": false
+    }
+  ],
+  "verifications": [
+    { "id": "V-001", "verdict": "PASS", "suggestion": 0, "notes": "Re-verified." }
+  ],
+  "dismissed": [
+    { "file": "src/middleware/rate-limiter.ts", "quotedCode": "if (!req.ip) return next();", "round": 1 }
+  ]
+}

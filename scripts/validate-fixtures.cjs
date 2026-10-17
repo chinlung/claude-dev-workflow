@@ -1187,6 +1187,10 @@ function main() {
   // 2.0.1: scope = committed ∪ working-tree ∪ untracked; each scoped file carries `source`.
   run(rbV, path.join(carF, 'review-branch-valid-working-tree.json'), true);
   run(rbV, path.join(carF, 'review-branch-invalid-bad-source.json'), false);
+  // 2.1.0: round memory — `introduced` is required on every suggestion, and an anchor dismissed in an
+  // EARLIER round cannot be posted again (a same-round dismissed entry is this round's own FAIL verdict).
+  run(rbV, path.join(carF, 'review-branch-valid-round2.json'), true);
+  run(rbV, path.join(carF, 'review-branch-invalid-reposted-dismissed.json'), false);
   // Look entries up by path, not by index, so a reordered fixture cannot silently retarget a mutation.
   const rbEntry = (o, file) => {
     const e = o.scopedFiles.find(f => f.file === file);
@@ -1197,6 +1201,23 @@ function main() {
     { label: 'scopedFiles.source outside enum', mutate: o => { rbEntry(o, 'src/export.ts').source = 'staged'; } },
     { label: 'scopedFiles.source wrong type', mutate: o => { rbEntry(o, 'src/utils/csv.ts').source = 3; } },
     { label: 'scopedFiles entry loses source', mutate: o => { delete rbEntry(o, 'src/utils/csv-escape.ts').source; } },
+    { label: 'suggestion loses introduced (2.1.0: required)', mutate: o => { delete o.suggestions[0].introduced; } },
+    { label: 'suggestion introduced not boolean', mutate: o => { o.suggestions[0].introduced = 'yes'; } },
+    { label: 'verification.suggestion out of range', mutate: o => { o.verifications[0].suggestion = 7; } },
+  ]);
+  runMutations(rbV, path.join(carF, 'review-branch-valid-round2.json'), 'review-branch-results (round memory)', [
+    { label: 'round 0', mutate: o => { o.round = 0; } },
+    { label: 'scopeMode outside enum', mutate: o => { o.scopeMode = 'partial'; } },
+    { label: 'dismissed entry missing quotedCode', mutate: o => { delete o.dismissed[0].quotedCode; } },
+    { label: 'dismissed entry round 0', mutate: o => { o.dismissed[0].round = 0; } },
+    { label: 'carried entry missing round', mutate: o => { delete o.carried[0].round; } },
+    { label: 'risk.tier outside enum', mutate: o => { o.risk.tier = 'critical'; } },
+    { label: 'risk.hits not an array', mutate: o => { o.risk.hits = 'x'; } },
+    { label: 'class empty string', mutate: o => { o.suggestions[0].class = ''; } },
+    { label: 'blob empty string', mutate: o => { o.scopedFiles[0].blob = ''; } },
+    { label: 'unchangedSince 0', mutate: o => { o.scopedFiles[1].unchangedSince = 0; } },
+    { label: 'verification.suggestion negative', mutate: o => { o.verifications[0].suggestion = -1; } },
+    { label: 'an anchor dismissed in an earlier round is posted again', mutate: o => { o.suggestions.push({ ...o.suggestions[0], file: o.dismissed[0].file, quotedCode: o.dismissed[0].quotedCode }); } },
   ]);
 
   // ── Code Audit Rigor: review-pr-comments ──────────────────────────────────
