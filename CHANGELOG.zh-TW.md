@@ -4,6 +4,12 @@
 
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
+## [1.11.5] - 2026-10-17
+
+### Fixed
+
+- **scope-ledger 1.0.3 → 1.0.4：skill 定義 `<project>`，模型自己跑的步驟不再依賴 Bash 當下目錄。** `<project>` 是 hook 用的專案目錄，從 hook 訊息讀取；`init` 的 git 一律 `git -C <project>`，`facts` 明寫 `--repo` 並核對輸出的 `root`。先前在改另一個 repo 時，模型可能把帳本寫到 hook 讀不到的地方，`facts` 也可能拿錯的 repo 判定哪些 finding 屬於本次變更。（接在 1.11.4，即 #11 的 code-audit-rigor 2.0.5 之後。）
+
 ## [1.11.4] - 2026-10-17
 
 ### Fixed
