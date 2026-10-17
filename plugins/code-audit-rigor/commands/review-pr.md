@@ -50,7 +50,7 @@ Phase 1 抓取並分類後，**在進入 Phase 3 修復前**，將所有評論�
   "comments": [
     {
       "endpoint": "pulls/comments",
-      "id": "c-101",
+      "id": "2201234567",
       "author": "reviewer-bot",
       "body": "評論原文",
       "classification": "bug",
@@ -87,7 +87,7 @@ Phase 1 抓取並分類後，**在進入 Phase 3 修復前**，將所有評論�
 }
 ```
 
-每個評論必須包含：`endpoint`（來源）、`id`、`author`、`body`（評論原文）、`classification`（`bug|security|style|test|question|other`）、`decision`（`fix|skip|block`）。選填欄位 `relatedFiles`。根據 decision：
+每個評論必須包含：`endpoint`（來源）、`id`（`pulls/comments` 的留言用 REST 回傳的數字 id 原樣記錄——Phase 4 靠它對應 review thread）、`author`、`body`（評論原文）、`classification`（`bug|security|style|test|question|other`）、`decision`（`fix|skip|block`）。選填欄位 `relatedFiles`。根據 decision：
 - `fix` → 必須附 `fix.evidence`（修復證據）；可附 `fix.testEvidence`
 - `skip` → 必須附 `skip.rationale`（含 stale 說明或跳過理由）
 - `block` → 必須附 `block.rationale`（含需人工確認的理由）
@@ -162,3 +162,16 @@ node ${CLAUDE_PLUGIN_ROOT}/validators/validate-review-pr-comments.cjs <root>/rev
 ### 測試結果
 Tests: N passed (M assertions)
 ```
+
+5. **回貼並 resolve inline thread**（2.1.0；PR 有 `pulls/comments` 時做。repo 若開了 branch protection「Require conversation resolution before merging」，未 resolve 的 thread 會擋 merge——誤報的出路就是這一步，不是把 CI 關掉）。單位是 **thread**，不是留言：一個 thread 裡的回覆（人的追問、reviewer 的補充）在 Phase 1 各自是一則評論、各自有 `decision`，而 `resolveReviewThread` 一次關掉整個 thread，關了之後後面那則 `block` 擋不住 merge。
+   - 先取每個 thread 的 id、`isResolved` 與它**所有**留言的 `databaseId`（與 REST `pulls/comments` 的 `id` 相同；Phase 1 寫進 JSON 的 `id` 必須就是這個數字，字串形式亦可）：
+     ```bash
+     gh api graphql -F owner={owner} -F repo={repo} -F pr=<PR號碼> -f query='query($owner:String!,$repo:String!,$pr:Int!,$after:String){repository(owner:$owner,name:$repo){pullRequest(number:$pr){reviewThreads(first:100,after:$after){pageInfo{hasNextPage endCursor}nodes{id isResolved comments(first:100){nodes{databaseId}}}}}}}'
+     ```
+     `hasNextPage` 為真就帶 `-F after=<endCursor>` 再取一頁；一個 thread 超過 100 則留言時對 `comments` 同樣分頁。
+   - 把 `review-pr-comments.json` 裡 `endpoint: pulls/comments` 的每則依 `databaseId` 歸到它的 thread，**按 thread 彙整**：thread 內所有已分類留言都是 `fix` 或 `skip` → 回覆後 resolve；任一則是 `block` → 回覆後**不 resolve**，留給人裁定；thread 已 `isResolved` 但含 `block` → 以 `unresolveReviewThread`（同一 mutation 形狀）重新打開並在回覆裡點名，不可沿用「已 resolved 就跳過」。
+   - 回覆一律送到 thread **頂層留言**的 `databaseId`（REST 的 `/replies` 只接受頂層留言 id，不接受回覆的 id），同一 thread 各則的 `fix.evidence`／`skip.rationale`／`block.rationale` 合併成一則：`gh api repos/{owner}/{repo}/pulls/<PR號碼>/comments/<頂層 databaseId>/replies -f body='…'`；resolve：
+     ```bash
+     gh api graphql -F id=<thread id> -f query='mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{isResolved}}}'
+     ```
+   - 只動 JSON 裡有留言的 thread，別人的對話不碰。順序是 push 在前、resolve 在後——`fix` 的 thread 在修復到遠端之前 resolve 等於謊報已修。

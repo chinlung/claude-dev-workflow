@@ -1,5 +1,5 @@
 {
-  "$comment": "Path-matched review rule packs, inspired by alibaba/open-code-review system_rules.json (Apache-2.0). Resolution: for each in-scope file, walk layers in priority order — (1) project <repo>/.reviewrules/manifest.json, (2) user ~/.claude/review-rules/manifest.json, (3) this built-in manifest. Within a layer, entries are evaluated top-to-bottom and the FIRST matching glob wins; once a layer matches, lower layers are not consulted for that file. Patterns support ** recursive match and {a,b} brace expansion. Doc paths are relative to the manifest's own directory.",
+  "$comment": "Path-matched review rule packs, inspired by alibaba/open-code-review system_rules.json (Apache-2.0). Resolution: for each in-scope file, walk layers in priority order — (1) project <repo>/.reviewrules/manifest.json, (2) user ~/.claude/review-rules/manifest.json, (3) this built-in manifest. Within a layer, entries are evaluated top-to-bottom and the FIRST matching glob wins; once a layer matches, lower layers are not consulted for that file. Patterns support ** recursive match and {a,b} brace expansion. Doc paths are relative to the manifest's own directory. `scripts/resolve-rules.cjs` performs this resolution mechanically (2.1.0). The `risk` list uses the same layering to decide a file's review tier: `deep` means the change touches a domain the user's review policy escalates beyond /review-branch (code-audit-rigor skill + an exploitability-criteria security scan). These are path heuristics — a project ships its own `risk` list in .reviewrules/manifest.json to override them, and a project entry wins even when it says standard.",
   "rules": [
     { "pattern": "**/package.json", "doc": "rule_docs/package_json.md" },
     { "pattern": "**/*.{ts,tsx,js,jsx,mjs,cjs,vue,svelte}", "doc": "rule_docs/ts_js_tsx_jsx.md" },
@@ -11,5 +11,18 @@
     { "pattern": "**/*.{yml,yaml,tf,tfvars}", "doc": "rule_docs/yaml_iac.md" },
     { "pattern": "**/Dockerfile*", "doc": "rule_docs/yaml_iac.md" },
     { "pattern": "**/*", "doc": "rule_docs/default.md" }
+  ],
+  "risk": [
+    { "pattern": "**/.github/workflows/**", "tier": "deep", "why": "CI workflow: runs with the repository's secrets" },
+    { "pattern": "**/{auth,authn,authz,oauth,sso,session,sessions,permissions,policies}/**", "tier": "deep", "why": "auth / authorization boundary" },
+    { "pattern": "**/*{auth,Auth,login,Login,password,Password,credential,Credential,token,Token,jwt,JWT}*", "tier": "deep", "why": "auth / authorization boundary" },
+    { "pattern": "**/*{crypt,Crypt,cipher,Cipher,hmac,HMAC,kms,KMS,secret,Secret}*", "tier": "deep", "why": "crypto primitive or secret handling" },
+    { "pattern": "**/*{payment,Payment,billing,Billing,invoice,Invoice,checkout,Checkout,refund,Refund,wallet,Wallet,ledger,Ledger}*", "tier": "deep", "why": "payment / money flow" },
+    { "pattern": "**/*.{tf,tfvars}", "tier": "deep", "why": "IaC" },
+    { "pattern": "**/Dockerfile*", "tier": "deep", "why": "IaC" },
+    { "pattern": "**/{deploy,deployment,deployments,k8s,kubernetes,helm,terraform,infra,infrastructure,ansible}/**", "tier": "deep", "why": "IaC / deploy glue" },
+    { "pattern": "**/*{parser,Parser,deserializ,Deserializ,unmarshal,Unmarshal,unserialize,Unserialize}*", "tier": "deep", "why": "untrusted-input parser" },
+    { "pattern": "**/*{prompt,Prompt,llm,LLM}*", "tier": "deep", "why": "LLM context assembly" },
+    { "pattern": "**/{release,releases,installer,installers}/**", "tier": "deep", "why": "release / installer" }
   ]
 }

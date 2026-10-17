@@ -219,7 +219,7 @@ For each in-scope file, resolve the applicable review rule pack. Resolution walk
 2. **User layer** — `~/.claude/review-rules/manifest.json` (personal preferences), if it exists
 3. **Built-in layer** — `rules/manifest.json` shipped with this plugin, located at `<plugin-root>/rules/` (two directories above this SKILL.md: `../../rules/manifest.json` relative to this file)
 
-Each manifest maps glob patterns to rule docs; within a layer, entries are evaluated top-to-bottom and the **first matching pattern wins** (patterns support `**` and `{a,b}` expansion). Read the matched rule docs — each contains a **Review focus** section (what to hunt for in this file type) and a **Do NOT report** suppression list (known false-positive classes for this file type).
+Each manifest maps glob patterns to rule docs; within a layer, entries are evaluated top-to-bottom and the **first matching pattern wins** (patterns support `**` and `{a,b}` expansion). Do the resolution with `node <plugin-root>/scripts/resolve-rules.cjs --root <repo> --files <list>` (2.1.0) rather than by matching globs in your head; its output also carries the risk tier from the manifests' `risk` lists (`deep` = the audit this skill exists for). Read the matched rule docs — each contains a **Review focus** section (what to hunt for in this file type) and a **Do NOT report** suppression list (known false-positive classes for this file type).
 
 When resolving rule packs or expanding an audit sweep to a new category, read `tools/sweep-patterns.md` for targeted grep patterns by category (auth, injection, secrets, deserialization, concurrency, IaC, LLM prompt injection) with false-positive cautions.
 

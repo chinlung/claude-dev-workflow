@@ -2,6 +2,27 @@
 
 All notable changes to the `code-audit-rigor` plugin will be documented in this file.
 
+## [2.1.0] - 2026-10-18
+
+### Added
+
+- **`/review-branch` remembers earlier rounds.** `scripts/review-branch-rounds.cjs plan` (before Phase 1) hashes every scoped file and reads the previous round's results on the same branch: files byte-identical to one already reviewed are skipped (`unchanged since r<N-1> (blob match)`), suggestions verified last round but still unfixed on an unchanged file are carried into the report without a new verification (`carried`), and every anchor dismissed as a false positive in any earlier round is listed so Phase 1 cannot propose it again (`dismissed`). `annotate` (after Phase 2) refuses to write a results file that re-posts such an anchor, and the validator rejects one that was written anyway. "Unchanged" is the plan's fact, not the reviewer's sentence: `annotate` stamps `scopedFiles[].unchangedSince` from its plan, the next `plan` reads only that flag, and a skip that claims `unchanged since …` for a file the plan did not report is refused too. `--full` forces a whole-scope round; the round number advances either way.
+
+  **Why:** a second round used to re-read the whole scope, regenerate the same suggestions, send each to a fresh verifier and sometimes re-post a finding already judged a false positive — which an agent author then "fixes", costing another commit and another round. Most of what a reviewer flags on round N+1 was already there on round 1.
+- **Every suggestion is tagged `introduced: true|false`** (required; `annotate` computes it from `git diff -U0 <merge-base>` over the committed branch diff and the working tree; untracked, added, deleted and binary files — including `.gitattributes -diff` files such as lockfiles — count as introduced). The report splits verified suggestions into *introduced by this change* and *pre-existing*, so a defect the author did not write is neither charged to them nor silently folded into the change. Each verification names its suggestion by index (`verifications[].suggestion`); that link is what makes the dismissed / carried bookkeeping possible.
+- **`class`** on a suggestion: one id per defect type, every instance listed together, so the author fixes the class rather than one line per round.
+- **Fifth review facet — guideline and documentation drift**: does the diff break a MUST rule in the project's `CLAUDE.md` / `AGENTS.md` / `CONTRIBUTING.md`, or make a line of those files or of the README untrue? Catching it before the commit is cheaper than the next prompt audit.
+- **Rule packs and the risk tier are resolved by a script.** `scripts/resolve-rules.cjs` walks the three manifest layers (project → user → built-in, first match wins) with a real glob matcher instead of the reviewer matching globs in its head, and reads the new `risk` list in the same manifests: the built-in one names the domains a review policy usually escalates (auth, crypto, payment, IaC, parsers, LLM context assembly, CI workflows, release / installers); a project overrides it per path, and an override to `standard` counts. The report's first line says `tier: deep` with the hits when any scoped file matches; `/review-branch` itself runs as before and does not replace the escalated review.
+- **`/review-pr` replies in the thread and resolves it.** Phase 4 maps each inline comment to its review thread (GraphQL `reviewThreads`), posts the recorded `fix.evidence` / `skip.rationale` as a reply and resolves `fix` and `skip` threads after the push; `block` threads get the rationale and stay open. Under GitHub's "Require conversation resolution before merging" this is how a false positive from an automated reviewer is cleared without turning the reviewer off.
+- Tests: `tests/review-branch-rounds.test.sh` (plan / annotate across three rounds in a fixture repository, the refusal, resolve-rules layering, overrides and glob edge cases) runs in CI and in the local hook; fixtures `review-branch-valid-round2.json` and `review-branch-invalid-reposted-dismissed.json`; a mutation per new field.
+
+### Changed
+
+- `review-branch-results.json`: `suggestions[].introduced` is required — a results file without it cannot be told from a run that never computed it, the same reason `scopedFiles[].source` became required in 2.0.1; new optional `round`, `scopeMode`, `scopedFiles[].blob`, `suggestions[].class`, `verifications[].suggestion`, `dismissed[]`, `carried[]`, `risk`. Schema and validator moved together; the schema ↔ validator consistency gate covers the two new enums.
+- Phase 1 drops suggestions that are only about style, diagnostics or cleanup with no observable consequence: when the author is an agent, every nit becomes a commit and another round.
+- A results file written by 2.0.x has no `verifications[].suggestion` link, so the first 2.1.0 round after it starts with empty `dismissed` / `carried` (its unchanged files are still skipped, because `blob` is compared only when the previous entry has one — a 2.0.x file has none, so that first round is a full review). Nothing is lost that the old file ever recorded.
+- `/review-branch` run from a session whose project directory is a different repository (the sandbox allows writes only there and under `$TMPDIR`): `plan` and `resolve-rules` take `--no-write`, `annotate` takes `--plan` / `--rules`, and the results file can live in `$TMPDIR`; the command says so.
+
 ## [2.0.5] - 2026-10-17
 
 ### Fixed

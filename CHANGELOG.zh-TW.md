@@ -4,6 +4,13 @@
 
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
+## [1.11.6] - 2026-10-18
+
+### Added
+
+- **code-audit-rigor 2.0.5 → 2.1.0：`/review-branch` 跨輪收斂，每條 finding 標明是否本次引入。** `scripts/review-branch-rounds.cjs plan` 跳過與上一輪位元組相同的檔、把已驗證未修的建議帶入下一輪而不重新驗證、列出歷輪被駁回的 anchor；`annotate` 依分支 diff 填 `introduced`，遇到重貼已駁回 anchor 的結果檔拒寫（validator 也拒收）。另新增：每型缺陷一個 `class`、第五個審查面向「守則與文件漂移」、`scripts/resolve-rules.cjs` 機械解析規則包與風險 tier（manifest 的 `risk` 區段；`tier: deep` 印在報告第一行）、`/review-pr` 在每個 inline thread 回貼並 resolve——這是開了「Require conversation resolution before merging」之後清掉誤報的路。源自 Claude Code 團隊對 review 收斂的描述（輪數上限、只審新 diff、不重貼 finding、Pre-existing 標記）。
+- **scope-ledger 1.0.4 → 1.1.0：`scope stats`。** Log 的結局改成五桶（`fixed / deferred / wrong / intentional / moot`，舊的 `adopted / noise` 仍讀得懂），`scripts/scope-stats.cjs` 跨專案按 review 工具加總並算 precision——決定第二意見或試點中的 reviewer 值不值得付成本的那個數字。
+
 ## [1.11.5] - 2026-10-17
 
 ### Fixed

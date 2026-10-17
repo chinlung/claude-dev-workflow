@@ -1,0 +1,47 @@
+{
+  "branch": "feature/rate-limiting",
+  "round": 2,
+  "scopeMode": "since-last",
+  "scopedFiles": [
+    { "file": "src/middleware/rate-limiter.ts", "status": "reviewed", "source": "working-tree", "blob": "3b18e512dba79e4c8300dd08aeb37f8e728b8dad" },
+    { "file": "src/middleware/auth.ts", "status": "skipped", "skipReason": "unchanged since r1 (blob match)", "source": "committed", "blob": "0f1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c", "unchangedSince": 1 },
+    { "file": ".github/workflows/deploy.yml", "status": "reviewed", "source": "untracked", "blob": "9a0b1c2d3e4f506172839aab5c6d7e8f90a1b2c3" }
+  ],
+  "suggestions": [
+    {
+      "file": "src/middleware/rate-limiter.ts",
+      "line": 48,
+      "quotedCode": "res.setHeader('Retry-After', String(windowMs));",
+      "description": "Retry-After must be seconds, not milliseconds.",
+      "severity": "MEDIUM",
+      "introduced": true,
+      "class": "unit-mismatch"
+    },
+    {
+      "file": "src/middleware/rate-limiter.ts",
+      "line": 12,
+      "quotedCode": "const store = new Map();",
+      "description": "Module-level store grows without bound (pre-existing).",
+      "severity": "LOW",
+      "introduced": false
+    }
+  ],
+  "verifications": [
+    { "id": "V-001", "verdict": "PASS", "suggestion": 0, "notes": "RFC 6585 §4: delta-seconds." },
+    { "id": "V-002", "verdict": "FAIL", "suggestion": 1, "notes": "Entries expire via setTimeout at line 30; bounded in practice." }
+  ],
+  "dismissed": [
+    { "file": "src/middleware/rate-limiter.ts", "quotedCode": "if (!req.ip) return next();", "round": 1 },
+    { "file": "src/middleware/rate-limiter.ts", "quotedCode": "const store = new Map();", "round": 2 }
+  ],
+  "carried": [
+    { "file": "src/middleware/auth.ts", "line": 7, "quotedCode": "const secret = process.env.JWT_SECRET;", "description": "No startup check that JWT_SECRET is set.", "severity": "HIGH", "round": 1 }
+  ],
+  "risk": {
+    "tier": "deep",
+    "hits": [
+      { "file": ".github/workflows/deploy.yml", "pattern": "**/.github/workflows/**", "why": "CI workflow: runs with the repository's secrets", "layer": "built-in" },
+      { "file": "src/middleware/auth.ts", "pattern": "**/*{auth,Auth,login,Login,password,Password,credential,Credential,token,Token,jwt,JWT}*", "why": "auth / authorization boundary", "layer": "built-in" }
+    ]
+  }
+}

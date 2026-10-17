@@ -498,10 +498,10 @@ SKIP 的唯一依據是上述契約面判定，沒有其他豁免類別（例如
 
 | 指令 | 功能 |
 |---|---|
-| `/review-branch [base-branch] [--focus <pathspec>]` | 兩輪分支審查：Phase 1 建議清單（注入 per-file-type 規則）→ Phase 2 逐建議子代理驗證（先做 quotedCode grep 錨定）→ Phase 3 報告（必附 coverage 核對表）。審查範圍＝已 commit 分支 diff ∪ 工作樹修改 ∪ 未追蹤檔（2.0.1） |
-| `/review-pr <PR號>` | 抓取 GitHub 全部 3 個評論 endpoint（`pulls/comments`、`pulls/reviews`、`issues/comments`），分類、修復安全性/邏輯問題並附驗證測試、commit 並回覆 |
+| `/review-branch [base-branch] [--focus <pathspec>]` | 兩輪分支審查：Phase 1 建議清單（注入 per-file-type 規則）→ Phase 2 逐建議子代理驗證（先做 quotedCode grep 錨定）→ Phase 3 報告（必附 coverage 核對表）。審查範圍＝已 commit 分支 diff ∪ 工作樹修改 ∪ 未追蹤檔（2.0.1）。跨輪記憶（2.1.0）：未變動的檔跳過、已驗證未修的帶入下一輪、已駁回的 anchor 不重貼、每條 finding 標本次引入／既有、風險 tier 印在第一行 |
+| `/review-pr <PR號>` | 抓取 GitHub 全部 3 個評論 endpoint（`pulls/comments`、`pulls/reviews`、`issues/comments`），分類、修復安全性/邏輯問題並附驗證測試、commit 並回覆，（2.1.0）並在每個 inline thread 回貼證據或理由後 resolve |
 
-兩者的規則解析鏈：專案 `.reviewrules/` → 使用者 `~/.claude/review-rules/` → plugin 內建 `${CLAUDE_PLUGIN_ROOT}/rules/`（機器無關）。
+兩者的規則解析鏈：專案 `.reviewrules/` → 使用者 `~/.claude/review-rules/` → plugin 內建 `${CLAUDE_PLUGIN_ROOT}/rules/`（機器無關）——2.1.0 起由 `scripts/resolve-rules.cjs` 機械解析，同時解析 manifest 的 `risk` 區段。
 
 ## Skill 觸發時機
 
@@ -655,7 +655,7 @@ Session 收尾回顧系統。fail-open 的 Stop hook 閘門先廉價 triage（ro
 
 # Scope Ledger 插件
 
-讓 review 驅動的工作不會無限擴張、原目標不會被忘記，同時不讓真 bug 與安全 finding 被跳過。每個 goal 一份帳本（`.claude/scope-ledger.local.md`：使用者原始請求逐字、`mode`、review 輪數、In scope / Deferred / Log——不綁分支，因為一個 goal 常橫跨 hotfix 與 PR 鏈）作為基線，六個 fail-open hook 讀它：主代理首次寫程式碼檔而沒有帳本時 deny 一次——不論走 Edit/Write 還是 Bash 的 `sed -i`／`perl -pi`／heredoc 重導向／`cp`／`mv`／`patch`——要求先 `/scope-ledger:scope init "<goal>"`；session 首則提示無帳本時給一行不阻擋的提醒；每次 review 入口 skill 或 review 型子代理都注入 triage 政策：`converge` 模式下 review 的產出是 input 不是工單——只採納屬本次變更、可利用的安全 finding（修在本次觸碰範圍）、同缺陷 sibling、專案 MUST 守則、boy-scout 小修，其餘附嚴重度理由去處延後，**延後是排程不是裁決**；`harvest` 模式（goal 本身是稽核或一批 finding）下 finding 就是工單、依嚴重度分批。`done` 把 Deferred 搬進每 repo 一份的 `.claude/scope-followups.local.md`，SessionStart、首則提示、`status` 都會報件數（HIGH 優先），HIGH 安全項沒有 issue 或下一個 goal 不准延後。被 git 追蹤的帳本（含經 committed symlink 或 submodule 進入者）視為 repo 控制的內容、所有 hook 一律忽略；Stop 時 In scope 有未勾項就 block 一次、只要求逐項回報狀態而非催工作；SessionStart 在 compaction 或 resume 後把 In scope 全段印回 context。設計前先量了作者自己的 session：全歷史 todo 工具零呼叫、一個四天的 session 跑了 23 次安全審查橫跨 17 個 PR。細節見 [`plugins/scope-ledger/README.md`](plugins/scope-ledger/README.md)。
+讓 review 驅動的工作不會無限擴張、原目標不會被忘記，同時不讓真 bug 與安全 finding 被跳過。每個 goal 一份帳本（`.claude/scope-ledger.local.md`：使用者原始請求逐字、`mode`、review 輪數、In scope / Deferred / Log——不綁分支，因為一個 goal 常橫跨 hotfix 與 PR 鏈）作為基線，六個 fail-open hook 讀它：主代理首次寫程式碼檔而沒有帳本時 deny 一次——不論走 Edit/Write 還是 Bash 的 `sed -i`／`perl -pi`／heredoc 重導向／`cp`／`mv`／`patch`——要求先 `/scope-ledger:scope init "<goal>"`；session 首則提示無帳本時給一行不阻擋的提醒；每次 review 入口 skill 或 review 型子代理都注入 triage 政策：`converge` 模式下 review 的產出是 input 不是工單——只採納屬本次變更、可利用的安全 finding（修在本次觸碰範圍）、同缺陷 sibling、專案 MUST 守則、boy-scout 小修，其餘附嚴重度理由去處延後，**延後是排程不是裁決**；`harvest` 模式（goal 本身是稽核或一批 finding）下 finding 就是工單、依嚴重度分批。`done` 把 Deferred 搬進每 repo 一份的 `.claude/scope-followups.local.md`，SessionStart、首則提示、`status` 都會報件數（HIGH 優先），HIGH 安全項沒有 issue 或下一個 goal 不准延後。被 git 追蹤的帳本（含經 committed symlink 或 submodule 進入者）視為 repo 控制的內容、所有 hook 一律忽略；Stop 時 In scope 有未勾項就 block 一次、只要求逐項回報狀態而非催工作；SessionStart 在 compaction 或 resume 後把 In scope 全段印回 context。設計前先量了作者自己的 session：全歷史 todo 工具零呼叫、一個四天的 session 跑了 23 次安全審查橫跨 17 個 PR。`scope stats`（1.1.0）把 Log 裡每個 review 工具的 finding 結局（fixed／deferred／wrong／intentional／moot）加總並算 precision，reviewer 的噪音用量的、不用猜。細節見 [`plugins/scope-ledger/README.md`](plugins/scope-ledger/README.md)。
 
 ---
 

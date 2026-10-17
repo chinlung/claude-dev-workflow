@@ -2,6 +2,17 @@
 
 All notable changes to the `scope-ledger` plugin will be documented in this file.
 
+## [1.1.0] - 2026-10-18
+
+### Added
+
+- **`scope stats`** (`scripts/scope-stats.cjs`): sums the Log's per-round outcomes per review tool across one or many projects (`--project <dir>`, repeatable; `--all` decodes the `~/.claude/projects/*` directory names against the file system) and prints rounds, findings, fixed / deferred / wrong / intentional / moot, precision = (fixed + deferred) / judged, and the open items per source in In scope, Deferred and follow-ups; `--json` for machines. A reviewer's noise is what people did with its findings, not what it says about itself — this is the number that decides whether a second opinion earns its cost or a piloted tool stays. The triage hook tags a source with the name the review was invoked by — qualified when the model called the Skill (`code-audit-rigor:review-branch`), short when the user typed the slash command — so a fixed alias table merges the known forms into one row (`claude-security:scan` → `claude-security`, `codex:review` → `codex`, …) while different plugins' same-named tools (`pr-review-toolkit:review-pr`, `engineering:code-review`) keep their qualified names; a generic "strip the prefix" would have merged those and split `claude-security`. Tested in `tests/scope-stats.test.sh` (both Log forms, English and Chinese field names, qualified and short sources, an unparseable line reported by number, `--all` with a hyphenated project path).
+
+### Changed
+
+- **Log line outcomes are five buckets**: `<n> findings → <f> fixed / <d> deferred / <w> wrong / <i> intentional / <m> moot` (was `adopted / deferred / noise`). `wrong` is the reviewer being mistaken, `intentional` is behaviour that was by design and the reviewer lacked the context, `moot` is true but changes nothing — three outcomes that were one bucket before, of which only the first is the reviewer's fault. The 1.0.x form is still read (adopted → fixed, noise → wrong). The hooks' grammar is unchanged: Log lines were never parsed by a hook.
+- `facts`: a `/review-branch` 2.1 results file already carries `introduced` on every suggestion (the same in-diff judgement, computed by its `annotate`); the skill says to use it as `in_diff` instead of re-running `facts` for those findings.
+
 ## [1.0.4] - 2026-10-17
 
 ### Fixed

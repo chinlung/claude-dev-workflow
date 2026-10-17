@@ -1,7 +1,7 @@
 ---
 name: scope
-description: 工作範圍帳本（<project>/.claude/scope-ledger.local.md，per goal、與分支無關）的維護指令：`init "<原始請求>"` 建帳本並判定 mode（converge／harvest）、`add "<請求>"` 把同一條工作線上的後續請求（commit、push、再審一輪）追加進現有帳本而不重開、`status` 看未完成項與 follow-ups（無參數時預設）、`facts <findings.json>` 跑 scope-facts 腳本替每條 finding 補機械事實（in_diff、hunk 距離、sibling、MUST 守則候選；輸出同時是 jev_decide 的 state）、`defer` 把項目移到 Deferred（嚴重度、理由、去處必填）、`done` 收帳並把 Deferred 搬進跨帳本的 follow-ups。Use when — the scope-gate hook denied an edit and asked for init; the first-prompt reminder said there is no ledger; a review / scan / audit just produced findings and the triage hook said to put them in the ledger first; the Stop hook listed open In-scope items; the user asks what is still unfinished, what was deferred, or to wrap up. 政策：review／scan 的產出是 input、不是工單——每條 finding 先 triage 進帳本再動手；延後是排程不是裁決，可利用的安全 finding、同缺陷 sibling、守則命中、boy-scout 直接採納，HIGH 安全項延後必須有 issue 或下一個 goal；goal 本身是找／修 finding（harvest）時 finding 就是工單。本 skill 不改 .gitignore、不評判 triage 內容、不取代 OpenSpec 的 tasks.md。
-argument-hint: "[init \"<goal>\" | add \"<請求>\" | status | facts <findings.json> | defer \"<item>\" --severity HIGH|MEDIUM|LOW --why <理由> --to <去處> | done]"
+description: 工作範圍帳本（<project>/.claude/scope-ledger.local.md，per goal、與分支無關）的維護指令：`init "<原始請求>"` 建帳本並判定 mode（converge／harvest）、`add "<請求>"` 把同一條工作線上的後續請求（commit、push、再審一輪）追加進現有帳本而不重開、`status` 看未完成項與 follow-ups（無參數時預設）、`facts <findings.json>` 跑 scope-facts 腳本替每條 finding 補機械事實（in_diff、hunk 距離、sibling、MUST 守則候選；輸出同時是 jev_decide 的 state）、`defer` 把項目移到 Deferred（嚴重度、理由、去處必填）、`stats` 把歷輪 Log 的 finding 結局按工具加總（fixed／deferred／wrong／intentional／moot、precision%，量各 review 工具的噪音）、`done` 收帳並把 Deferred 搬進跨帳本的 follow-ups。Use when — the scope-gate hook denied an edit and asked for init; the first-prompt reminder said there is no ledger; a review / scan / audit just produced findings and the triage hook said to put them in the ledger first; the Stop hook listed open In-scope items; the user asks what is still unfinished, what was deferred, or to wrap up. 政策：review／scan 的產出是 input、不是工單——每條 finding 先 triage 進帳本再動手；延後是排程不是裁決，可利用的安全 finding、同缺陷 sibling、守則命中、boy-scout 直接採納，HIGH 安全項延後必須有 issue 或下一個 goal；goal 本身是找／修 finding（harvest）時 finding 就是工單。本 skill 不改 .gitignore、不評判 triage 內容、不取代 OpenSpec 的 tasks.md。
+argument-hint: "[init \"<goal>\" | add \"<請求>\" | status | facts <findings.json> | stats [--all] | defer \"<item>\" --severity HIGH|MEDIUM|LOW --why <理由> --to <去處> | done]"
 ---
 
 # /scope-ledger:scope — 工作範圍帳本
@@ -28,7 +28,7 @@ review_rounds: 0
 ## Deferred
 - <項目> ← 來源: security-review@r2 ｜ 嚴重度: HIGH ｜ 理由: <四問之一> ｜ 去處: <issue #N｜next: <goal>｜follow-ups｜review-notes｜won't-fix>
 ## Log
-- <YYYY-MM-DD HH:MM> <工具> r<N>: <n> findings → <a> adopted / <d> deferred / <x> noise
+- <YYYY-MM-DD HH:MM> <工具> r<N>: <n> findings → <f> fixed / <d> deferred / <w> wrong / <i> intentional / <m> moot
 - <YYYY-MM-DD> PR #<n> opened on <branch>（或 merged）
 ```
 
@@ -130,11 +130,15 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/scope-facts.cjs" --repo "<被審 diff 所在
 
 goal 本身就是找／修 finding：**finding 就是工單**。全部進 In scope，依嚴重度 HIGH→MEDIUM→LOW 分批、每批一個 PR；LOW 或可利用性不確定的項目可進 Deferred（附嚴重度、去處）而不是丟棄；誤報一樣要附反證錨點記 Log。hook 每 5 輪會要求一次盤點（已完成／剩餘／Deferred／follow-ups），照做，並確認是否該收尾。
 
-每輪 review 結束在 Log 記一行：`- <日期時間> <工具> r<N>: <n> findings → <a> adopted / <d> deferred / <x> noise`。
+每輪 review 結束在 Log 記一行：`- <日期時間> <工具> r<N>: <n> findings → <f> fixed / <d> deferred / <w> wrong / <i> intentional / <m> moot`——五個桶是每條 finding 最後的結局：**fixed** 修了（採納、含待修）、**deferred** 真問題換了落點、**wrong** reviewer 誤判、**intentional** 行為是設計、reviewer 缺脈絡、**moot** 真但不影響任何決定。工具名寫你實際跑的那個（`review-branch`、`codex`、`code-review`、`security-review`、`claude-security`…；hook 來源 tag 裡 `code-audit-rigor:review-branch`、`claude-security:scan`、`codex:review` 這類已知寫法 `stats` 會歸併成同一個工具，`pr-review-toolkit:review-pr`、`engineering:code-review` 這類不同 plugin 的同名工具則維持原名、不與短名合併——最省事是 Log 的工具名照抄 hook 給的來源 tag 去掉 `@rN`）；1.0.x 的 `adopted／noise` 寫法 `stats` 仍讀得懂（adopted→fixed、noise→wrong）。
 
 ## `facts <findings.json>`
 
-跑 `scripts/scope-facts.cjs`（見「Triage 政策 › 第一步」），把輸出存到 `$TMPDIR/facts.json` 並印出 `root`、`summary` 與每條的 `in_diff`／`sibling.count`／`must_rules` 數；接著依 facts 分類、寫進帳本。沒有帳本時先 `init`。
+跑 `scripts/scope-facts.cjs`（見「Triage 政策 › 第一步」），把輸出存到 `$TMPDIR/facts.json` 並印出 `root`、`summary` 與每條的 `in_diff`／`sibling.count`／`must_rules` 數；接著依 facts 分類、寫進帳本。沒有帳本時先 `init`。`/review-branch` 2.1 的結果檔每條建議已帶 `introduced`（同一個「在不在本次 diff」判定，由它的 `annotate` 算），可直接當 `in_diff` 用、不必再跑一次；其他來源的 finding 仍跑 `facts`。
+
+## `stats [--all] [--project <dir>]…`
+
+跑 `node "${CLAUDE_PLUGIN_ROOT}/scripts/scope-stats.cjs" --project <project> [--all] [--json]`（`--all` 另掃 `~/.claude/projects/` 名下每個專案的帳本與 follow-ups）。它把 Log 的每輪結局按工具加總，印 rounds／findings／fixed／deferred／wrong／intentional／moot／precision%（＝(fixed＋deferred)／已判定）與各來源的未完成件數。用途是回答「哪個 review 工具的 finding 值得付驗證成本」「第二意見的獨有 finding 有幾條是真的」「試點中的工具去留」——先抓真 bug、再砍輪數，但砍哪一層要看這張表，不憑印象。Log 行格式不合的會列出行號；它不判定任何 finding。
 
 ## `defer "<item>" --severity HIGH|MEDIUM|LOW --why <理由> --to <去處>`
 
