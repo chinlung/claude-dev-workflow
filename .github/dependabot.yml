@@ -1,0 +1,21 @@
+# Dependabot for GitHub Actions — keeps SHA-pinned `uses:` lines current.
+#
+# Source: ~/.claude/templates/dependabot-github-actions.yml (copied in by /security-ci-setup next to
+# github-security-review.yml). Dependabot rewrites both the SHA and the trailing `# vX.Y.Z` comment.
+# If the repo already has .github/dependabot.yml, merge the `github-actions` entry below into its
+# `updates:` list instead of replacing the file.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns:
+          - '*'
+        update-types:
+          - minor
+          - patch
+    commit-message:
+      prefix: ci
