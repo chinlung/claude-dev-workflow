@@ -7,6 +7,8 @@
 # compaction or a resume. A repository-controlled ledger is not replayed: one fixed line says so.
 # Open follow-ups (the cross-ledger backlog) are announced by count, HIGH first, whether or not a
 # ledger exists — deferred work must be visible at the start of the next job, not only in memory.
+# It also drops the review hook's per-session "policy already sent in full" flag: the context that
+# starts here no longer holds that text, so the next review gets it in full again.
 # Fail-open: any unexpected condition exits 0 silently.
 set -uo pipefail
 quiet() { exit 0; }
@@ -21,6 +23,14 @@ proj="${CLAUDE_PROJECT_DIR:-$cwd}"
 [ -n "$proj" ] || quiet
 proj="${proj%/}"
 ledger=$(ledger_path "$proj")
+
+# The triage hook's flag (see scope-review-triage.sh). A planted symlink is left alone, as every
+# writer of these flags leaves it; a regular file is removed. Guarded so the ERR trap never cuts the
+# ledger replay below short.
+sid=$(printf '%s' "$input" | jq -r '.session_id // "unknown"')
+sid="${sid//[^a-zA-Z0-9._-]/_}"
+pflag="${TMPDIR:-/tmp}/claude-scope-triage-${sid}"
+if [ ! -L "$pflag" ] && [ -f "$pflag" ]; then rm -f "$pflag" 2>/dev/null || true; fi
 
 # Always ${var}: under `set -u`, bash reads a full-width character glued to a name (e.g. $ledger：)
 # as part of the variable name and aborts with "unbound variable".

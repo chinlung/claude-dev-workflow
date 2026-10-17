@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.11.3] - 2026-10-17
+
+### Changed
+
+- **scope-ledger 1.0.2 → 1.0.3: one ledger per line of work, and the triage policy injected in full once per session.** `init` on a fully ticked ledger now appends the next request (`add "<request>"`) instead of asking for `done` first — one measured session had opened six ledgers for one piece of work, three of them with the goal `commit`. `scope-review-triage.sh` sends the full policy once per session and mode and a one-line pointer after that (the round count, convergence warning, harvest check-in and `init` pointer still go out every time); SessionStart clears the flag so a compacted or resumed context gets the full text again. A Workflow review (`tree` recipe review, `claude-security:scan`) now counts as a round, and `scripts/scope-facts.cjs` computes the mechanical half of a finding's triage (inside the branch diff or not, siblings, MUST-rule candidates) — also the neutral state for a calibrated classifier. 143 new assertions (583 in the suite), 40 mutations killed.
+
 ## [1.11.2] - 2026-10-07
 
 ### Fixed

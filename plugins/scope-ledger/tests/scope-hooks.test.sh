@@ -1038,6 +1038,294 @@ check "HK10 review_rounds: 08 當十進位（ledger_rounds=8）" "$out" "r=8"
 check "HK10 review_rounds: 08 bump 成 9" "$out" "bump=9 rc=0"
 check_empty "HK10 沒有留下鎖" "$(printf '%s\n' "$out" | awk '/LOCK-LEFT-BEHIND/')"
 
+# ===== W：Workflow 工具納入 review 入口 =====
+# Workflow 工具跑的 review（例如 tree recipe=review、claude-security:scan）過去對本 hook 不可見：輪數不加、政策不注入，
+# review→fix→review 的收斂告警在這條路永遠不會觸發（一個 session 實測兩次 tree review 都沒計到）。
+wf_json() { printf '{"session_id":"%s","cwd":"%s","tool_name":"Workflow","tool_input":%s}' "$1" "$2" "$3"; }
+p=$WORK/w1; make_repo "$p"; t=$WORK/wt1; mkdir -p "$t"; write_ledger "$p" converge 0 '- [ ] A'
+L="$p/.claude/scope-ledger.local.md"
+out=$(run_hook scope-review-triage.sh "$(wf_json w1 "$p" '{"name":"tree","args":{"recipe":"review","scope":"x"}}')" "$t" "$p")
+check "W1 tree recipe=review（args 物件）→ 注入" "$out" '"additionalContext"'
+check "W1 標籤 tree@r1" "$out" 'tree@r1'
+check_eq "W1 計 1 輪" "$(ledger_rounds "$L")" "1"
+out=$(run_hook scope-review-triage.sh "$(wf_json w1 "$p" '{"name":"tree","args":"{\"recipe\":\"review\"}"}')" "$t" "$p")
+check "W1b args 為 JSON 字串 → 注入" "$out" '"additionalContext"'
+check_eq "W1b 計第 2 輪" "$(ledger_rounds "$L")" "2"
+out=$(run_hook scope-review-triage.sh "$(wf_json w1 "$p" '{"name":"tree"}')" "$t" "$p")
+check_eq "W1c recipe 省略＝tree 預設 review，計第 3 輪" "$(ledger_rounds "$L")" "3"
+check "W1c 第 3 輪出現收斂告警" "$out" '收斂告警'
+for r in fix migrate; do
+  check_empty "W2 tree recipe=$r → 靜默" "$(run_hook scope-review-triage.sh "$(wf_json w1 "$p" "{\"name\":\"tree\",\"args\":{\"recipe\":\"$r\"}}")" "$t" "$p")"
+done
+check_empty "W2b args 為 JSON 字串且 recipe=fix → 靜默（字串要真的被解析）" "$(run_hook scope-review-triage.sh "$(wf_json w1 "$p" '{"name":"tree","args":"{\"recipe\":\"fix\"}"}')" "$t" "$p")"
+check_empty "W2c recipe 是數字 → 靜默（不是預設 review）" "$(run_hook scope-review-triage.sh "$(wf_json w1 "$p" '{"name":"tree","args":{"recipe":5}}')" "$t" "$p")"
+check_empty "W2d recipe 是物件 → 靜默" "$(run_hook scope-review-triage.sh "$(wf_json w1 "$p" '{"name":"tree","args":{"recipe":{"x":"review"}}}')" "$t" "$p")"
+check_eq "W2 非 review recipe 不計輪，仍 3" "$(ledger_rounds "$L")" "3"
+out=$(run_hook scope-review-triage.sh "$(wf_json w1 "$p" '{"scriptPath":"/Users/x/.claude/workflows/tree.js","args":{"recipe":"review"}}')" "$t" "$p")
+check "W3 scriptPath 以 tree.js 結尾 → 視同 tree、注入" "$out" '"additionalContext"'
+check_eq "W3 計第 4 輪" "$(ledger_rounds "$L")" "4"
+out=$(run_hook scope-review-triage.sh "$(wf_json w1 "$p" '{"name":"tree","args":{"recipe":"review"},"resumeFromRunId":"wf_abc"}')" "$t" "$p")
+check "W4 resume → 仍注入" "$out" '"additionalContext"'
+check_eq "W4 resume 不計輪，仍 4" "$(ledger_rounds "$L")" "4"
+out=$(run_hook scope-review-triage.sh "$(wf_json w1 "$p" '{"name":"claude-security:scan","args":{"mode":"changes"}}')" "$t" "$p")
+check "W5 claude-security:scan → 注入" "$out" '"additionalContext"'
+check_eq "W5 計第 5 輪" "$(ledger_rounds "$L")" "5"
+check_empty "W5b 未知 workflow → 靜默" "$(run_hook scope-review-triage.sh "$(wf_json w1 "$p" '{"name":"deploy-all","args":{}}')" "$t" "$p")"
+check_empty "W5c inline script（無 name／scriptPath）→ 靜默" "$(run_hook scope-review-triage.sh "$(wf_json w1 "$p" '{"script":"export const meta = {}"}')" "$t" "$p")"
+check_empty "W5d scriptPath 不是 tree.js → 靜默" "$(run_hook scope-review-triage.sh "$(wf_json w1 "$p" '{"scriptPath":"/Users/x/.claude/workflows/other.js","args":{"recipe":"review"}}')" "$t" "$p")"
+check_eq "W5 rounds 仍 5" "$(ledger_rounds "$L")" "5"
+# args 不是物件（陣列、數字）：tree.js 讀 A.recipe 得 undefined、走預設 review，hook 要同樣視為 review
+out=$(run_hook scope-review-triage.sh "$(wf_json w1 "$p" '{"name":"tree","args":[{"recipe":"fix"}]}')" "$t" "$p")
+check "W5e args 為陣列 → tree 讀不到 recipe、走預設 review → 注入" "$out" '"additionalContext"'
+check_eq "W5e 計第 6 輪" "$(ledger_rounds "$L")" "6"
+p=$WORK/w6; make_repo "$p"; t=$WORK/wt6; mkdir -p "$t"
+out=$(run_hook scope-review-triage.sh "$(wf_json w6 "$p" '{"name":"tree","args":{"recipe":"review"}}')" "$t" "$p")
+check "W6 無帳本 → 注入並指向 init" "$out" 'scope init'
+
+# ===== F：scripts/scope-facts.cjs——finding 的機械 triage 事實 =====
+# converge 四分類最關鍵的判準「屬本次變更引入」是機械事實：finding 的 file:line 在不在分支 diff 的 hunk 裡。
+# 這支腳本替每條 finding 補上 in_diff／hunk 距離／patch 行數／sibling 候選／MUST 守則候選；輸出同時是帳本預填與
+# jev_decide 的 state（寫 state 的成本是 Jev 被跳過的真正原因）。
+FACTS="$SCRIPT_DIR/../scripts/scope-facts.cjs"
+facts() { node "$FACTS" "$@" 2>"$WORK/facts.err" || true; }   # facts <args…>；stdin 由呼叫端提供；exit code 另測
+p=$WORK/f1; mkdir -p "$p/src" "$p/.claude"; git -C "$p" init -q; git -C "$p" config core.fsmonitor false
+{ for i in $(seq 1 20); do echo "line $i of a;"; done; } > "$p/src/a.php"
+printf 'line 10 of a;\nother;\n' > "$p/src/b.php"
+printf -- '- MUST: every new POST route takes a Form Request\n- 所有 controller 一律用 Form Request 驗證輸入\n- unrelated note\n' > "$p/AGENTS.md"
+git -C "$p" add -A; git -C "$p" -c user.email=t@t.t -c user.name=t -c commit.gpgsign=false commit -q -m base
+BASE=$(git -C "$p" rev-parse HEAD)
+# 工作樹變更：a.php 第 5 行改掉、第 6 行後插一行；新檔 src/new.php 未追蹤
+perl -pi -e 's/^line 5 of a;$/line 5 CHANGED;/; s/^line 6 of a;$/line 6 of a;\ninserted;/' "$p/src/a.php"
+printf 'new 1;\nnew 2;\nnew 3;\n' > "$p/src/new.php"
+FIND='[
+ {"id":"f1","path":"src/a.php","line":5,"claim":"changed line is wrong","evidence":"`line 10 of a;` appears elsewhere"},
+ {"id":"f2","path":"src/a.php","line":15,"claim":"Form Request missing on the new POST route","evidence":"no validation"},
+ {"id":"f3","path":"src/new.php","line":3,"claim":"new file issue"},
+ {"id":"f4","path":"src/b.php","line":1,"claim":"pre-existing thing"},
+ {"id":"f5","path":"'"$p"'/src/a.php","line":7,"claim":"absolute path, inserted line"}
+]'
+out=$(printf '%s' "$FIND" | facts --repo "$p")
+check_eq "F0 exit 0 且輸出是 JSON" "$(printf '%s' "$out" | jq -r 'type')" "object"
+check_eq "F1 f1 在 hunk 內：in_diff" "$(printf '%s' "$out" | jq -r '.findings[0].facts.in_diff')" "true"
+check_eq "F1 f1 file_in_diff" "$(printf '%s' "$out" | jq -r '.findings[0].facts.file_in_diff')" "true"
+check_eq "F1 f1 hunk 距離 0" "$(printf '%s' "$out" | jq -r '.findings[0].facts.nearest_hunk_distance')" "0"
+check_eq "F2 f2 同檔但在 hunk 外：file_in_diff" "$(printf '%s' "$out" | jq -r '.findings[1].facts.file_in_diff')" "true"
+check_eq "F2 f2 in_diff false" "$(printf '%s' "$out" | jq -r '.findings[1].facts.in_diff')" "false"
+check_eq "F2 f2 hunk 距離 8（15 → 最近 hunk 結束於 7）" "$(printf '%s' "$out" | jq -r '.findings[1].facts.nearest_hunk_distance')" "8"
+check_eq "F3 未追蹤新檔：in_diff true" "$(printf '%s' "$out" | jq -r '.findings[2].facts.in_diff')" "true"
+check_eq "F3 未追蹤新檔：untracked true" "$(printf '%s' "$out" | jq -r '.findings[2].facts.untracked')" "true"
+check_eq "F4 未改的檔：file_in_diff false" "$(printf '%s' "$out" | jq -r '.findings[3].facts.file_in_diff')" "false"
+check_eq "F4 未改的檔：in_diff false" "$(printf '%s' "$out" | jq -r '.findings[3].facts.in_diff')" "false"
+check_eq "F5 絕對路徑正規化為 repo 相對" "$(printf '%s' "$out" | jq -r '.findings[4].path')" "src/a.php"
+check_eq "F5 插入行在 hunk 內" "$(printf '%s' "$out" | jq -r '.findings[4].facts.in_diff')" "true"
+check_eq "F6 patch 行數：a.php 新增 2 行" "$(printf '%s' "$out" | jq -r '.findings[0].facts.patch_lines.added')" "2"
+check_eq "F6 patch 行數：a.php 刪除 1 行" "$(printf '%s' "$out" | jq -r '.findings[0].facts.patch_lines.deleted')" "1"
+check_eq "F7 sibling key 取自 evidence 反引號" "$(printf '%s' "$out" | jq -r '.findings[0].facts.sibling.key')" "line 10 of a;"
+check_eq "F7 sibling 命中 2 處（a.php:10、b.php:1）" "$(printf '%s' "$out" | jq -r '.findings[0].facts.sibling.count')" "2"
+check_eq "F7b 無 evidence 時 key 取原始碼行，排除自己" "$(printf '%s' "$out" | jq -r '.findings[3].facts.sibling | "\(.key)|\(.count)"')" "line 10 of a;|1"
+check_eq "F8 MUST 守則候選：Form Request 命中 2 行" "$(printf '%s' "$out" | jq -r '.findings[1].facts.must_rules | length')" "2"
+check "F8 候選帶 file:line" "$(printf '%s' "$out" | jq -r '.findings[1].facts.must_rules[0].file')" 'AGENTS.md'
+check_eq "F8b 無關 claim 無守則候選" "$(printf '%s' "$out" | jq -r '.findings[3].facts.must_rules | length')" "0"
+check_eq "F9 summary.total" "$(printf '%s' "$out" | jq -r '.summary.total')" "5"
+check_eq "F9 summary.in_diff" "$(printf '%s' "$out" | jq -r '.summary.in_diff')" "3"
+check_eq "F9 summary.file_in_diff_only（f2）" "$(printf '%s' "$out" | jq -r '.summary.file_in_diff_only')" "1"
+check_eq "F9 summary.outside_diff（f4）" "$(printf '%s' "$out" | jq -r '.summary.outside_diff')" "1"
+check_eq "F9 base 記錄為 HEAD（無 origin）" "$(printf '%s' "$out" | jq -r '.base')" "$BASE"
+# F10 base 處理：變更 commit 後，預設 base（無 origin）= HEAD → 不在 diff；--base <初始 commit> → 在 diff
+git -C "$p" add src/a.php src/new.php; git -C "$p" -c user.email=t@t.t -c user.name=t -c commit.gpgsign=false commit -q -m change
+out=$(printf '%s' "$FIND" | facts --repo "$p")
+check_eq "F10 commit 後預設 base=HEAD → f1 不在 diff" "$(printf '%s' "$out" | jq -r '.findings[0].facts.in_diff')" "false"
+out=$(printf '%s' "$FIND" | facts --repo "$p" --base "$BASE")
+check_eq "F10 --base 初始 commit → f1 在 diff" "$(printf '%s' "$out" | jq -r '.findings[0].facts.in_diff')" "true"
+check_eq "F10 新檔 commit 後仍 in_diff（整檔新增）" "$(printf '%s' "$out" | jq -r '.findings[2].facts.in_diff')" "true"
+# F10b 有 origin/HEAD 時預設 base = merge-base(HEAD, origin/HEAD)
+git -C "$p" update-ref refs/remotes/origin/main "$BASE"; git -C "$p" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+out=$(printf '%s' "$FIND" | facts --repo "$p")
+check_eq "F10b origin/HEAD 存在 → 預設 base 為 merge-base" "$(printf '%s' "$out" | jq -r '.base')" "$BASE"
+check_eq "F10b → f1 在 diff" "$(printf '%s' "$out" | jq -r '.findings[0].facts.in_diff')" "true"
+# F11 輸入形狀：{findings:[…]} 物件、--findings 檔案；壞 JSON → exit 2 且 stderr 有話；非 git 目錄 → exit 2
+printf '{"findings":%s}' "$FIND" > "$WORK/f.json"
+check_eq "F11 --findings 檔案＋物件形狀" "$(facts --repo "$p" --base "$BASE" --findings "$WORK/f.json" | jq -r '.summary.total')" "5"
+rc=0; printf 'not json' | node "$FACTS" --repo "$p" > /dev/null 2>"$WORK/facts.err" || rc=$?
+check_eq "F11b 壞 JSON → exit 2" "$rc" "2"
+check "F11b stderr 說明原因" "$(cat "$WORK/facts.err")" 'JSON'
+mkdir -p "$WORK/notgit"; rc=0; printf '[]' | node "$FACTS" --repo "$WORK/notgit" > /dev/null 2>"$WORK/facts.err" || rc=$?
+check_eq "F11c 非 git 目錄 → exit 2" "$rc" "2"
+# F12 沒有 line 的 finding：in_diff 等於 file_in_diff；路徑不存在的 finding 不崩潰
+out=$(printf '[{"path":"src/a.php","claim":"no line"},{"path":"src/ghost.php","line":3,"claim":"ghost"}]' | facts --repo "$p" --base "$BASE")
+check_eq "F12 無 line → in_diff 跟 file_in_diff" "$(printf '%s' "$out" | jq -r '.findings[0].facts.in_diff')" "true"
+check_eq "F12 不存在的檔 → file_in_diff false、不崩潰" "$(printf '%s' "$out" | jq -r '.findings[1].facts.file_in_diff')" "false"
+# F13 跳出 repo 的路徑（../、他處絕對路徑）不讀檔：finding 來自 review 工具，構造的 path 不能讓腳本把任意檔的一行回傳成 sibling key
+printf 'SECRET-LINE-OUTSIDE-REPO value;\n' > "$WORK/outside.txt"
+out=$(printf '[{"path":"../outside.txt","line":1,"claim":"escape"},{"path":"%s","line":1,"claim":"abs escape"}]' "$WORK/outside.txt" | facts --repo "$p" --base "$BASE")
+check_eq "F13 ../ 路徑標 outside_repo" "$(printf '%s' "$out" | jq -r '.findings[0].facts.outside_repo')" "true"
+check_eq "F13 ../ 路徑不讀檔：sibling key 為 null" "$(printf '%s' "$out" | jq -r '.findings[0].facts.sibling.key')" "null"
+check_eq "F13 他處絕對路徑標 outside_repo" "$(printf '%s' "$out" | jq -r '.findings[1].facts.outside_repo')" "true"
+check_empty "F13 輸出不含外部檔內容" "$(printf '%s' "$out" | grep -o 'SECRET-LINE-OUTSIDE-REPO' || true)"
+check_eq "F13 repo 內路徑 outside_repo false" "$(printf '%s' "$FIND" | facts --repo "$p" --base "$BASE" | jq -r '.findings[0].facts.outside_repo')" "false"
+# F13b repo 內的 symlink 指向外面（別人的 PR checkout 可能帶一個）→ 同樣不讀；守則檔是 symlink 也不讀
+ln -s "$WORK/outside.txt" "$p/src/link.txt"; mkdir -p "$WORK/outdir"; printf -- '- MUST never leak this\n' > "$WORK/outdir/AGENTS.md"; ln -s "$WORK/outdir" "$p/src/dirlink"; ln -s "$WORK/outdir/AGENTS.md" "$p/CONTRIBUTING.md"
+out=$(printf '[{"path":"src/link.txt","line":1,"claim":"file link"},{"path":"src/dirlink/AGENTS.md","line":1,"claim":"never leak"}]' | facts --repo "$p" --base "$BASE")
+check_eq "F13b 檔案 symlink 出 repo → outside_repo" "$(printf '%s' "$out" | jq -r '.findings[0].facts.outside_repo')" "true"
+check_eq "F13b 檔案 symlink → 不讀、key null" "$(printf '%s' "$out" | jq -r '.findings[0].facts.sibling.key')" "null"
+check_eq "F13b 目錄 symlink 出 repo → outside_repo" "$(printf '%s' "$out" | jq -r '.findings[1].facts.outside_repo')" "true"
+check_empty "F13b 輸出不含外部檔內容" "$(printf '%s' "$out" | grep -o 'SECRET-LINE-OUTSIDE-REPO' || true)"
+check_empty "F13b 守則檔為 symlink 出 repo → 不讀（guideline_files 不含 CONTRIBUTING.md）" "$(printf '%s' "$out" | jq -r '.guideline_files[]' | grep -x 'CONTRIBUTING.md' || true)"
+check_empty "F13b 外部守則行不出現在 must_rules" "$(printf '%s' "$out" | grep -o 'never leak this' || true)"
+rm -f "$p/src/link.txt" "$p/src/dirlink" "$p/CONTRIBUTING.md"
+# F14 非 ASCII 檔名：git 預設 core.quotePath=true 會把路徑印成 "\346\226\260…"，finding 的 path 永遠對不上
+printf 'orig;\n' > "$p/src/名稱.php"; git -C "$p" add "src/名稱.php"; git -C "$p" -c user.email=t@t.t -c user.name=t -c commit.gpgsign=false commit -q -m cjk
+BASE2=$(git -C "$p" rev-parse HEAD); printf 'changed;\n' > "$p/src/名稱.php"; printf 'cjk 1;\n' > "$p/src/中文.php"
+out=$(printf '[{"path":"src/中文.php","line":1,"claim":"u"},{"path":"src/名稱.php","line":1,"claim":"m"}]' | facts --repo "$p" --base "$BASE2")
+check_eq "F14 未追蹤的中文檔名：untracked true" "$(printf '%s' "$out" | jq -r '.findings[0].facts.untracked')" "true"
+check_eq "F14 未追蹤的中文檔名：in_diff true" "$(printf '%s' "$out" | jq -r '.findings[0].facts.in_diff')" "true"
+check_eq "F14 修改過的中文檔名：file_in_diff true" "$(printf '%s' "$out" | jq -r '.findings[1].facts.file_in_diff')" "true"
+check_eq "F14 修改過的中文檔名：in_diff true" "$(printf '%s' "$out" | jq -r '.findings[1].facts.in_diff')" "true"
+# F15 檔名含 ":"：git grep 預設以 ":" 分欄，sibling 會把路徑切錯、指到不存在的檔；-z 分隔才對
+printf 'line 10 of a;\n' > "$p/src/c:1:x.txt"; git -C "$p" add "src/c:1:x.txt"; git -C "$p" -c user.email=t@t.t -c user.name=t -c commit.gpgsign=false commit -q -m colon
+out=$(printf '%s' "$FIND" | facts --repo "$p" --base "$BASE")
+check_eq "F15 含冒號檔名的 sibling 路徑完整" "$(printf '%s' "$out" | jq -r '.findings[0].facts.sibling.matches[] | select(.path == "src/c:1:x.txt") | .line')" "1"
+check_eq "F15 不出現被切壞的路徑 src/c" "$(printf '%s' "$out" | jq -r '[.findings[0].facts.sibling.matches[] | select(.path == "src/c")] | length')" "0"
+# F16 檔名含雙引號／tab：git 會 C-quote（即使 quotePath=false），diff 標頭要解跳脫、ls-files 要 -z
+printf 'orig;\n' > "$p/src/q\"uo.txt"; git -C "$p" add "src/q\"uo.txt"; git -C "$p" -c user.email=t@t.t -c user.name=t -c commit.gpgsign=false commit -q -m quote
+BASE3=$(git -C "$p" rev-parse HEAD); printf 'changed;\n' > "$p/src/q\"uo.txt"; printf 'x;\n' > "$p/src/tab	f.txt"
+out=$(printf '[{"path":"src/q\\"uo.txt","line":1,"claim":"quote"},{"path":"src/tab\\tf.txt","line":1,"claim":"tab"}]' | facts --repo "$p" --base "$BASE3")
+check_eq "F16 含雙引號的檔名：file_in_diff true" "$(printf '%s' "$out" | jq -r '.findings[0].facts.file_in_diff')" "true"
+check_eq "F16 含雙引號的檔名：in_diff true" "$(printf '%s' "$out" | jq -r '.findings[0].facts.in_diff')" "true"
+check_eq "F16 含 tab 的未追蹤檔名：untracked true" "$(printf '%s' "$out" | jq -r '.findings[1].facts.untracked')" "true"
+# F17 只在 +++ 行登記檔案會漏掉四種變更：整檔刪除、二進位、只改 mode、新增空檔——改以 name-status／numstat 為檔案清單
+printf 'to be deleted\nline 2\nline 3\n' > "$p/src/del.txt"; printf '\000\001\002' > "$p/src/bin.dat"; printf '#!/bin/sh\necho hi\n' > "$p/src/mode.sh"
+git -C "$p" add src/del.txt src/bin.dat src/mode.sh; git -C "$p" -c user.email=t@t.t -c user.name=t -c commit.gpgsign=false commit -q -m set1
+BASE4=$(git -C "$p" rev-parse HEAD)
+rm "$p/src/del.txt"; printf '\000\001\003\004' > "$p/src/bin.dat"; chmod +x "$p/src/mode.sh"; : > "$p/src/empty.txt"; git -C "$p" add src/empty.txt
+out=$(printf '[{"path":"src/del.txt","line":3,"claim":"d"},{"path":"src/bin.dat","line":1,"claim":"b"},{"path":"src/mode.sh","line":1,"claim":"m"},{"path":"src/mode.sh","claim":"m2"},{"path":"src/empty.txt","claim":"e"}]' | facts --repo "$p" --base "$BASE4")
+check_eq "F17 整檔刪除：change_kind deleted、in_diff true" "$(printf '%s' "$out" | jq -r '.findings[0].facts | "\(.change_kind)|\(.file_in_diff)|\(.in_diff)"')" "deleted|true|true"
+check_eq "F17 二進位：change_kind binary、in_diff true、patch 行數 null" "$(printf '%s' "$out" | jq -r '.findings[1].facts | "\(.change_kind)|\(.in_diff)|\(.patch_lines.added)"')" "binary|true|null"
+check_eq "F17 只改 mode＋有行號：file_in_diff true、in_diff false" "$(printf '%s' "$out" | jq -r '.findings[2].facts | "\(.change_kind)|\(.file_in_diff)|\(.in_diff)"')" "mode|true|false"
+check_eq "F17 只改 mode＋無行號：in_diff true" "$(printf '%s' "$out" | jq -r '.findings[3].facts.in_diff')" "true"
+check_eq "F17 新增空檔（已 stage）：change_kind added、in_diff true" "$(printf '%s' "$out" | jq -r '.findings[4].facts | "\(.change_kind)|\(.in_diff)"')" "added|true"
+git -C "$p" -c user.email=t@t.t -c user.name=t -c commit.gpgsign=false commit -q -am set2 2>/dev/null || git -C "$p" -c user.email=t@t.t -c user.name=t -c commit.gpgsign=false commit -q -m set2
+# F18 使用者設了 diff.mnemonicPrefix（+++ 變成 w/…）→ 仍要對得上 hunk
+git -C "$p" config diff.mnemonicPrefix true
+out=$(printf '%s' "$FIND" | facts --repo "$p" --base "$BASE")
+check_eq "F18 mnemonicPrefix 下 f1 仍在 hunk 內" "$(printf '%s' "$out" | jq -r '.findings[0].facts.in_diff')" "true"
+git -C "$p" config --unset diff.mnemonicPrefix
+# F19 行號是數字字串 → 視同數字；其他型別 → line_invalid、不算在 diff 內
+out=$(printf '[{"path":"src/a.php","line":"5","claim":"s"},{"path":"src/a.php","line":"abc","claim":"x"},{"path":"src/a.php","line":0,"claim":"zero = no line"}]' | facts --repo "$p" --base "$BASE")
+check_eq "F19 字串 \"5\" → 當第 5 行、in_diff true" "$(printf '%s' "$out" | jq -r '.findings[0].facts | "\(.line_invalid)|\(.in_diff)"')" "false|true"
+check_eq "F19 \"abc\" → line_invalid、in_diff false" "$(printf '%s' "$out" | jq -r '.findings[1].facts | "\(.line_invalid)|\(.in_diff)"')" "true|false"
+check_eq "F19 line 0 視同無行號（tree discover 的 changed）" "$(printf '%s' "$out" | jq -r '.findings[2].facts | "\(.line_invalid)|\(.in_diff)"')" "false|true"
+check_eq "F19 summary.line_invalid" "$(printf '%s' "$out" | jq -r '.summary.line_invalid')" "1"
+# F20 沒有 origin/HEAD 時退回 HEAD 要說出來：base_fallback 欄位＋stderr
+git -C "$p" symbolic-ref --delete refs/remotes/origin/HEAD
+out=$(printf '%s' "$FIND" | facts --repo "$p")
+check_eq "F20 無 origin → base_fallback HEAD" "$(printf '%s' "$out" | jq -r '.base_fallback')" "HEAD"
+check "F20 stderr 警告" "$(cat "$WORK/facts.err")" 'origin/HEAD'
+git -C "$p" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+out=$(printf '%s' "$FIND" | facts --repo "$p")
+check_eq "F20 有 origin → base_fallback null" "$(printf '%s' "$out" | jq -r '.base_fallback')" "null"
+# F21 沒有行號的 finding：同檔的命中全部不算 sibling（它自己就在那個檔裡）
+out=$(printf '[{"path":"src/b.php","claim":"no line","evidence":"`line 10 of a;`"}]' | facts --repo "$p" --base "$BASE")
+check_eq "F21 無行號 → 排除同檔，只剩 a.php 與 c:1:x.txt" "$(printf '%s' "$out" | jq -r '[.findings[0].facts.sibling.matches[].path] | sort | join(",")')" "src/a.php,src/c:1:x.txt"
+# F22 空輸入 → exit 2 且訊息說「no input」，不是「not valid JSON」
+rc=0; node "$FACTS" --repo "$p" < /dev/null > /dev/null 2>"$WORK/facts.err" || rc=$?
+check_eq "F22 空 stdin → exit 2" "$rc" "2"
+check "F22 訊息說 no input" "$(cat "$WORK/facts.err")" 'no input'
+# F23 檔名含空白：git 在 `+++ b/a b.c` 之後補一個分隔 tab；把它當檔名的一部分，hunk 就掛到對不上 name-status 的 key，變更被判成 mode-only（codex r2）
+p=$WORK/f23; mkdir -p "$p/src"; git -C "$p" init -q; git -C "$p" config core.fsmonitor false
+{ for i in $(seq 1 10); do echo "a$i"; done; } > "$p/src/a b.c"
+git -C "$p" add -A; git -C "$p" -c user.email=t@t.t -c user.name=t -c commit.gpgsign=false commit -q -m base
+BASE5=$(git -C "$p" rev-parse HEAD)
+perl -pi -e 's/^a5$/a5 CHANGED/' "$p/src/a b.c"
+out=$(printf '[{"path":"src/a b.c","line":5,"claim":"s"}]' | facts --repo "$p" --base "$BASE5")
+check_eq "F23 含空白的檔名：change_kind modified、in_diff true" "$(printf '%s' "$out" | jq -r '.findings[0].facts | "\(.change_kind)|\(.in_diff)"')" "modified|true"
+# F24 新增行以「++ 」開頭時 patch 內容是「+++ counter;」，只有標頭區的 +++ 才是檔名，否則同檔後續 hunk 全歸到虛構檔案（codex r2）
+{ for i in $(seq 1 10); do echo "b$i"; done; } > "$p/src/plus.c"; git -C "$p" add src/plus.c; git -C "$p" -c user.email=t@t.t -c user.name=t -c commit.gpgsign=false commit -q -m plus
+BASE6=$(git -C "$p" rev-parse HEAD)
+perl -pi -e 's/^b1$/b1\n++ counter;/; s/^b9$/b9 CHANGED/' "$p/src/plus.c"
+out=$(printf '[{"path":"src/plus.c","line":10,"claim":"second hunk"}]' | facts --repo "$p" --base "$BASE6")
+check_eq "F24 「++ 」開頭的新增行不是檔案標頭：第二個 hunk 的行 in_diff true" "$(printf '%s' "$out" | jq -r '.findings[0].facts.in_diff')" "true"
+check_eq "F24 plus.c 登記兩個 hunk" "$(printf '%s' "$out" | jq -r '.findings[0].facts.hunks | length')" "2"
+
+# ===== PO：triage 政策每 session 只完整注入一次，之後一行指回；SessionStart 重置 =====
+# 同一 session 內 review 入口／伴隨 pass／review 型子代理會反覆觸發（一個 session 25 次實測），完整政策
+# 每次約 450 字全是重複；狀態相關的句子（輪數、收斂告警、盤點、init 指引、follow-ups）每次都要在。
+p=$WORK/p5; make_repo "$p"; t=$WORK/pt5; mkdir -p "$t"; write_ledger "$p" converge 0 '- [ ] A'
+out1=$(run_hook scope-review-triage.sh "$(skill_json p5 "$p" review-branch)" "$t" "$p")
+check "POa 第一次：完整 converge 政策（boy-scout）" "$out1" 'boy-scout'
+check "POa 第一次：完整 converge 政策（HIGH 去處長句）" "$out1" 'HIGH 安全項必須有 issue 或下一個 goal'
+check_flag "POa 旗標寫入" "$t/claude-scope-triage-p5" exists
+check_eq "POa 旗標記錄 mode" "$(cat "$t/claude-scope-triage-p5")" "converge"
+out2=$(run_hook scope-review-triage.sh "$(skill_json p5 "$p" security-review)" "$t" "$p")
+check "POb 第二次：仍注入" "$out2" '"additionalContext"'
+check "POb 第二次：頭句仍在" "$out2" '不是工單'
+check "POb 第二次：一行指回" "$out2" '同本 session 首次注入'
+check "POb 第二次：仍報輪數" "$out2" '第 2 輪'
+check_empty "POb 第二次：不再帶完整政策" "$(printf '%s' "$out2" | grep -o 'boy-scout' || true)"
+check_empty "POb 第二次：不帶 HIGH 去處長句" "$(printf '%s' "$out2" | grep -o 'HIGH 安全項必須有 issue' || true)"
+# 第二個觸發輸入：review 型 Agent 的注入也走短版
+out3=$(run_hook scope-review-triage.sh "$(agent_json p5 "$p" pr-review-toolkit:code-reviewer x)" "$t" "$p")
+check "POc Agent：一行指回" "$out3" '同本 session 首次注入'
+check_empty "POc Agent：不帶完整政策" "$(printf '%s' "$out3" | grep -o 'boy-scout' || true)"
+# 短版仍帶收斂告警（第 3、4 輪兩例）
+out=$(run_hook scope-review-triage.sh "$(skill_json p5 "$p" review-pr)" "$t" "$p")
+check "POd 短版第 3 輪仍有收斂告警" "$out" '收斂告警'
+check_empty "POd 短版第 3 輪不帶完整政策" "$(printf '%s' "$out" | grep -o 'boy-scout' || true)"
+out=$(run_hook scope-review-triage.sh "$(skill_json p5 "$p" code-review)" "$t" "$p")
+check "POd 短版第 4 輪仍有收斂告警" "$out" '收斂告警'
+# 另一個 session id → 再次完整
+out=$(run_hook scope-review-triage.sh "$(skill_json p5x "$p" review-branch)" "$t" "$p")
+check "POe 不同 session → 完整政策" "$out" 'boy-scout'
+# mode 改變 → 再次完整（harvest 全文）並改記旗標；之後 harvest 短版，盤點提示仍在
+write_ledger "$p" harvest 3 '- [ ] A'
+out=$(run_hook scope-review-triage.sh "$(skill_json p5 "$p" review-branch)" "$t" "$p")
+check "POf mode 換成 harvest → 完整 harvest 政策" "$out" '每批一個 PR'
+check_eq "POf 旗標改記 harvest" "$(cat "$t/claude-scope-triage-p5")" "harvest"
+out=$(run_hook scope-review-triage.sh "$(skill_json p5 "$p" review-branch)" "$t" "$p")
+check "POg harvest 第二次：一行指回" "$out" '同本 session 首次注入'
+check_empty "POg harvest 第二次：不帶完整政策" "$(printf '%s' "$out" | grep -o '每批一個 PR' || true)"
+check "POg harvest 短版仍帶第 5 輪盤點" "$out" '盤點'
+# 無帳本：第一次完整＋指向 init；第二次短版仍指向 init
+p=$WORK/p5n; make_repo "$p"; t=$WORK/pt5n; mkdir -p "$t"
+out=$(run_hook scope-review-triage.sh "$(skill_json p5n "$p" review-branch)" "$t" "$p")
+check "POh 無帳本第一次：完整" "$out" 'boy-scout'
+check "POh 無帳本第一次：指向 init" "$out" 'scope init'
+out=$(run_hook scope-review-triage.sh "$(skill_json p5n "$p" review-branch)" "$t" "$p")
+check "POi 無帳本第二次：短版" "$out" '同本 session 首次注入'
+check "POi 無帳本第二次：仍指向 init" "$out" 'scope init'
+check_empty "POi 無帳本第二次：不帶完整政策" "$(printf '%s' "$out" | grep -o 'boy-scout' || true)"
+# 旗標路徑被預先放成 symlink（共用 /tmp）→ 不寫穿、每次都完整注入
+p=$WORK/p5s; make_repo "$p"; t=$WORK/pt5s; mkdir -p "$t"; write_ledger "$p" converge 0 '- [ ] A'
+ln -s "$t/target" "$t/claude-scope-triage-p5s"
+out=$(run_hook scope-review-triage.sh "$(skill_json p5s "$p" review-branch)" "$t" "$p")
+check "POj symlink 旗標 → 仍完整注入" "$out" 'boy-scout'
+check_flag "POj symlink 目標未被寫出" "$t/target" absent
+out=$(run_hook scope-review-triage.sh "$(skill_json p5s "$p" review-branch)" "$t" "$p")
+check "POj symlink 旗標 → 第二次仍完整" "$out" 'boy-scout'
+# SessionStart（compact／resume）清旗標 → 下一次再完整；帳本照常印出
+p=$WORK/p5r; make_repo "$p"; t=$WORK/pt5r; mkdir -p "$t"; write_ledger "$p" converge 0 '- [ ] A'
+run_hook scope-review-triage.sh "$(skill_json p5r "$p" review-branch)" "$t" "$p" >/dev/null
+check_flag "POk 旗標存在" "$t/claude-scope-triage-p5r" exists
+for src in compact resume; do
+  sout=$(printf '{"session_id":"p5r","cwd":"%s","hook_event_name":"SessionStart","source":"%s"}' "$p" "$src" | TMPDIR="$t" CLAUDE_PROJECT_DIR="$p" bash "$HOOKS/scope-session-start.sh" 2>/dev/null || true)
+  check "POk SessionStart($src) 仍印帳本" "$sout" '工作範圍帳本'
+  check_flag "POk SessionStart($src) 清掉旗標" "$t/claude-scope-triage-p5r" absent
+  out=$(run_hook scope-review-triage.sh "$(skill_json p5r "$p" review-branch)" "$t" "$p")
+  check "POk $src 後再次完整" "$out" 'boy-scout'
+done
+# 輸出失敗（stdout 已關閉、jq 寫不出去）→ 旗標不寫：旗標存在必須等於完整政策真的送出過；下一次照常完整
+p=$WORK/p5o; make_repo "$p"; t=$WORK/pt5o; mkdir -p "$t"; write_ledger "$p" converge 0 '- [ ] A'
+printf '%s' "$(skill_json p5o "$p" review-branch)" | TMPDIR="$t" CLAUDE_PROJECT_DIR="$p" bash "$HOOKS/scope-review-triage.sh" >&- 2>/dev/null || true
+check_flag "POm 輸出失敗 → 旗標不寫" "$t/claude-scope-triage-p5o" absent
+out=$(run_hook scope-review-triage.sh "$(skill_json p5o "$p" review-branch)" "$t" "$p")
+check "POm 輸出失敗後的下一次仍完整注入" "$out" 'boy-scout'
+check_flag "POm 成功輸出後旗標才寫入" "$t/claude-scope-triage-p5o" exists
+# SessionStart 不碰被放成 symlink 的旗標（連結與目標都留著）
+ln -s "$t/keep" "$t/claude-scope-triage-p5y"; : > "$t/keep"
+printf '{"session_id":"p5y","cwd":"%s","hook_event_name":"SessionStart","source":"startup"}' "$p" | TMPDIR="$t" CLAUDE_PROJECT_DIR="$p" bash "$HOOKS/scope-session-start.sh" >/dev/null 2>&1 || true
+check_flag "POl SessionStart 不碰 symlink 旗標（連結仍在）" "$t/claude-scope-triage-p5y" exists
+check_flag "POl SessionStart 不碰 symlink 目標" "$t/keep" exists
+
 # ---- summary ----
 echo "----"
 echo "PASS=$PASS FAIL=$FAIL"

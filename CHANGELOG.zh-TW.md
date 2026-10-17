@@ -4,6 +4,12 @@
 
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
+## [1.11.3] - 2026-10-17
+
+### Changed
+
+- **scope-ledger 1.0.2 → 1.0.3：一條工作線一本帳本；triage 政策每 session 只完整注入一次。** `init` 遇到 In scope 全勾的帳本，改為把這句請求追加進去（即 `add "<請求>"`），不再要求先 `done`——曾有一個 session 為同一件工作開了 6 本帳本，其中 3 本的 goal 就是一個字 `commit`。`scope-review-triage.sh` 每 session、每種 mode 只送一次完整政策，之後只送一行指回（輪數、收斂告警、harvest 盤點、`init` 指引照樣每次都送）；SessionStart 清掉旗標，compaction／resume 後的新 context 會再拿到完整文字。Workflow 工具跑的 review（`tree` recipe=review、`claude-security:scan`）現在也計一輪；新增 `scripts/scope-facts.cjs` 替每條 finding 算出機械 triage 事實（在不在分支 diff、sibling、MUST 守則候選），同時是校準分類器的 state。新增 143 條斷言（套件共 583 條），40 個突變全部轉紅。
+
 ## [1.11.2] - 2026-10-07
 
 ### Fixed
