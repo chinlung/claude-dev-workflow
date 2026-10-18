@@ -30,8 +30,12 @@
  *     different doc does not help the branch either, since the mapping is the base's. A project doc
  *     must also be a regular file inside the repository (no symlink on its path, at most
  *     DOC_MAX_BYTES): the reviewer opens whatever `doc` names, so a path outside the repo, or a base
- *     doc the branch replaced by a link to some local file, is dropped with a warning and the next
- *     layer's rule applies. The same holds without --base, where the manifest itself names the doc.
+ *     doc the branch replaced by a link to some local file, is never handed out. The file keeps the
+ *     base's project rule with `doc: null`, `docChanged: true` and `docRel` (the doc's repo-relative
+ *     path, which the reviewer reads from the base) — falling through to the next layer would let a
+ *     branch move its files to a looser rule by swapping the doc for a link. Every project-layer
+ *     file carries `docRel` under --base. Without --base, where the manifest itself names the doc,
+ *     an unusable doc is dropped with a warning and the next layer's rule applies.
  *   - without --base, the work tree's manifest is used (2.1.0 behaviour) but bounded: a regular
  *     file of at most PROJECT_LIMITS.bytes; at most PROJECT_LIMITS.entries entries; patterns of at
  *     most PROJECT_LIMITS.patternLength characters expanding to at most PROJECT_LIMITS.alternatives
@@ -56,7 +60,7 @@
  *
  *   node resolve-rules.cjs --root <repo> --files <list|-> [--base <rev>] [--plugin-root <dir>] [--user-manifest <path>] [--no-write]
  *
- * Output (stdout): {root, layers, files: [{file, doc, docChanged, layer, risk}], docs: [...],
+ * Output (stdout): {root, layers, files: [{file, doc, docRel, docChanged, layer, risk}], docs: [...],
  * docsChanged: [...], risk: {tier, hits}, projectRisk: {source, base, changed}, warnings: [...]};
  * also written to <gitdir>/review-branch-rules.json (review-branch-rounds.cjs annotate embeds `risk`
  * from it) unless --no-write. Warnings are echoed to stderr. Exit 2 on usage / IO errors and on a
@@ -469,17 +473,28 @@ function main() {
   for (const file of files) {
     let doc = null;
     let docChanged = null;
+    let docRel = null;
     let layer = null;
     for (const l of layers) {
       const r = l.rules.find((x) => x.matcher.test(file));
       if (!r) continue;
       if (l.layer === 'project' && !docUsable(root, r.docPath)) {
         // The project layer's doc is the branch's to influence (the manifest without --base, the file
-        // itself with --base). Not handing it to the reviewer is the point; the next layer applies.
+        // itself with --base), so it is never handed to the reviewer. With --base the mapping is the
+        // maintainers': the file keeps their rule and the reviewer reads the doc from the base — falling
+        // through instead would let a branch move its files to a looser layer just by swapping the doc
+        // for a link. Without --base the manifest is the branch's own, and the next layer applies.
+        const rel = path.relative(root, r.docPath).split(path.sep).join('/');
         if (!droppedDocs.has(r.docPath)) {
           droppedDocs.add(r.docPath);
-          warn(`project layer: rule doc ${excerpt(r.doc, 120)} is not a regular file inside the repository (outside it, behind a symlink, a special file or over ${DOC_MAX_BYTES} bytes) — ignored, the next layer's rule applies`);
-          if (base) docsChanged.add(path.relative(root, r.docPath).split(path.sep).join('/'));
+          warn(`project layer: rule doc ${excerpt(r.doc, 120)} is not a regular file inside the repository (outside it, behind a symlink, a special file or over ${DOC_MAX_BYTES} bytes) — ${base ? "not handed to the reviewer; the file keeps the base's project rule and its doc is read from the base (docRel)" : "ignored, the next layer's rule applies"}`);
+        }
+        if (base) {
+          layer = 'project';
+          docChanged = true;
+          docRel = rel;
+          docsChanged.add(rel);
+          break;
         }
         continue;
       }
@@ -488,8 +503,9 @@ function main() {
     if (doc) {
       docs.add(doc);
       if (layer === 'project' && base) {
+        docRel = path.relative(root, doc).split(path.sep).join('/');
         docChanged = docChangedSince(root, base, doc, docCache);
-        if (docChanged) docsChanged.add(path.relative(root, doc).split(path.sep).join('/'));
+        if (docChanged) docsChanged.add(docRel);
       }
     }
     let risk = { tier: 'standard', pattern: null, why: null, layer: null };
@@ -499,7 +515,7 @@ function main() {
     }
     if (exhaustedAt === null && budget.exhausted) exhaustedAt = file;
     if (risk.tier === 'deep') hits.push({ file, pattern: risk.pattern, why: risk.why, layer: risk.layer });
-    out.push({ file, doc, docChanged, layer, risk });
+    out.push({ file, doc, docRel, docChanged, layer, risk });
   }
   if (budget.exhausted) {
     // Only the work tree's manifest (no --base) is budgeted. Its risk list could not be fully

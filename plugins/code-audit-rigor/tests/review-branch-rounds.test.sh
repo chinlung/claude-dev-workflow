@@ -425,6 +425,7 @@ BASE4=$(G rev-parse HEAD)
 printf 'src/x.ts\nsrc/y.md\n' > "$WORK/fdocs.txt"
 node "$RULES" --root "$REPO" --files "$WORK/fdocs.txt" --user-manifest "$WORK/no-such-manifest.json" --base "$BASE4" --no-write > "$WORK/rules-d1.json"
 check_eq "doc unchanged since base: docChanged false" "$(jget "$WORK/rules-d1.json" files.0.docChanged)" false
+check_eq "project doc with --base: docRel is its repo-relative path" "$(jget "$WORK/rules-d1.json" files.0.docRel)" .reviewrules/ts.md
 check_eq "doc unchanged: docsChanged empty" "$(jget "$WORK/rules-d1.json" docsChanged)" "[]"
 check_eq "built-in doc: docChanged not applicable" "$(jget "$WORK/rules-d1.json" files.1.docChanged)" null
 printf '# ts rules\n## Do NOT report\n- command injection\n' > "$REPO/.reviewrules/ts.md"
@@ -456,7 +457,8 @@ G add .reviewrules/manifest.json
 G commit -q -m "manifest with a doc outside the repo"
 BASE5=$(G rev-parse HEAD)
 node "$RULES" --root "$REPO" --files "$WORK/fdocs.txt" --user-manifest "$WORK/no-such-manifest.json" --base "$BASE5" --no-write > "$WORK/rules-d5.json"
-check_eq "doc outside the repo: not handed to the reviewer (the built-in rule applies)" "$(jget "$WORK/rules-d5.json" files.1.layer)" built-in
+check_eq "doc outside the repo, with --base: not handed to the reviewer" "$(jget "$WORK/rules-d5.json" files.1.doc)" null
+check_eq "doc outside the repo, with --base: the file keeps the base's project rule (no fall-through)" "$(jget "$WORK/rules-d5.json" files.1.layer)" project
 check "doc outside the repo: still reported as changed" "$(jget "$WORK/rules-d5.json" docsChanged)" 'outside\.md'
 check "doc outside the repo: warned" "$(jget "$WORK/rules-d5.json" warnings)" 'not a regular file inside the repository'
 rm -f "$REPO/.reviewrules/ts.md"
@@ -465,7 +467,8 @@ T0=$SECONDS
 check_eq "doc is a symlink to a device: exit 0" "$(rc node "$RULES" --root "$REPO" --files "$WORK/fdocs.txt" --user-manifest "$WORK/no-such-manifest.json" --base "$BASE5" --no-write)" 0
 check_eq "doc is a symlink to a device: finishes within 2s" "$([ $((SECONDS - T0)) -le 2 ] && echo fast || echo slow)" fast
 node "$RULES" --root "$REPO" --files "$WORK/fdocs.txt" --user-manifest "$WORK/no-such-manifest.json" --base "$BASE5" --no-write > "$WORK/rules-d6.json"
-check_eq "doc is a symlink to a device: not handed to the reviewer" "$(jget "$WORK/rules-d6.json" files.0.layer)" built-in
+check_eq "doc is a symlink to a device: not handed to the reviewer" "$(jget "$WORK/rules-d6.json" files.0.doc)" null
+check_eq "doc is a symlink to a device: the file keeps the base's rule, docRel names the doc to read from the base" "$(jget "$WORK/rules-d6.json" files.0.layer) $(jget "$WORK/rules-d6.json" files.0.docRel) $(jget "$WORK/rules-d6.json" files.0.docChanged)" "project .reviewrules/ts.md true"
 check "doc is a symlink to a device: still reported as changed" "$(jget "$WORK/rules-d6.json" docsChanged)" 'reviewrules/ts\.md'
 rm -f "$REPO/.reviewrules/ts.md"
 G checkout -q -- .reviewrules/ts.md
@@ -520,7 +523,8 @@ BASE7=$(G rev-parse HEAD)
 rm -f "$REPO/.reviewrules/based.md"
 ln -s "$WORK/outside-secret.md" "$REPO/.reviewrules/based.md"
 node "$RULES" --root "$REPO" --files "$WORK/fesc.txt" --user-manifest "$WORK/no-such-manifest.json" --base "$BASE7" --no-write > "$WORK/rules-e2.json" 2>/dev/null
-check_eq "with --base, a base doc swapped for a symlink: not used" "$(jget "$WORK/rules-e2.json" files.2.layer)" built-in
+check_eq "with --base, a base doc swapped for a symlink: not handed to the reviewer" "$(jget "$WORK/rules-e2.json" files.2.doc)" null
+check_eq "with --base, a base doc swapped for a symlink: no fall-through to a looser layer" "$(jget "$WORK/rules-e2.json" files.2.layer) $(jget "$WORK/rules-e2.json" files.2.docRel)" "project .reviewrules/based.md"
 check "with --base, the swapped doc is still reported as changed" "$(jget "$WORK/rules-e2.json" docsChanged)" 'reviewrules/based\.md'
 check_eq "with --base, the swap is warned about once" "$(jget "$WORK/rules-e2.json" warnings.length)" 1
 rm -f "$REPO/.reviewrules/based.md" "$REPO/.reviewrules/linked.md" "$REPO/.reviewrules/sub"
