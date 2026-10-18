@@ -27,7 +27,11 @@
  *     edited it. Rule docs are files the reviewer reads, so they are taken from the work tree, and
  *     each one is compared with the base by blob id (`docChanged`, `docsChanged`): a doc the branch
  *     added or edited is where a planted "Do NOT report" entry would live. Remapping a file to a
- *     different doc does not help the branch either, since the mapping is the base's.
+ *     different doc does not help the branch either, since the mapping is the base's. A project doc
+ *     must also be a regular file inside the repository (no symlink on its path, at most
+ *     DOC_MAX_BYTES): the reviewer opens whatever `doc` names, so a path outside the repo, or a base
+ *     doc the branch replaced by a link to some local file, is dropped with a warning and the next
+ *     layer's rule applies. The same holds without --base, where the manifest itself names the doc.
  *   - without --base, the work tree's manifest is used (2.1.0 behaviour) but bounded: a regular
  *     file of at most PROJECT_LIMITS.bytes; at most PROJECT_LIMITS.entries entries; patterns of at
  *     most PROJECT_LIMITS.patternLength characters expanding to at most PROJECT_LIMITS.alternatives
@@ -375,6 +379,19 @@ function readBaseText(root, base, report) {
   try { return git(root, ['show', spec]); } catch (e) { report(`${base.slice(0, 12)}:${PROJECT_MANIFEST} could not be read — ignored`); return null; }
 }
 
+// May the reviewer be pointed at this project rule doc? It must lie inside the repository (lexically,
+// so `/abs/path` and `../x` fail whether or not the target exists) and, when it exists, be a regular
+// file within DOC_MAX_BYTES with no symlink anywhere on its path (the real path equals the lexical one).
+// A doc that does not exist is harmless — there is nothing to read — and stays as it was in 2.1.0.
+function docUsable(root, docPath) {
+  const rel = path.relative(root, docPath);
+  if (!rel || rel === '..' || rel.startsWith('..' + path.sep) || path.isAbsolute(rel)) return false;
+  let st;
+  try { st = fs.lstatSync(docPath); } catch (e) { return !!e && e.code === 'ENOENT'; }
+  if (!st.isFile() || st.size > DOC_MAX_BYTES) return false;
+  try { return fs.realpathSync(docPath) === path.resolve(fs.realpathSync(root), rel); } catch (e) { return false; }
+}
+
 // Did the branch add or change this project rule doc? The work tree copy must be a regular file
 // inside the repo (no symlink anywhere on its path — `git hash-object` follows symlinks, and one to
 // /dev/zero never ends) and within DOC_MAX_BYTES; then its blob id is compared with the base's.
@@ -446,6 +463,7 @@ function main() {
   const docs = new Set();
   const docsChanged = new Set();
   const docCache = new Map();
+  const droppedDocs = new Set();
   const hits = [];
   let exhaustedAt = null;
   for (const file of files) {
@@ -454,7 +472,18 @@ function main() {
     let layer = null;
     for (const l of layers) {
       const r = l.rules.find((x) => x.matcher.test(file));
-      if (r) { doc = r.docPath; layer = l.layer; break; }
+      if (!r) continue;
+      if (l.layer === 'project' && !docUsable(root, r.docPath)) {
+        // The project layer's doc is the branch's to influence (the manifest without --base, the file
+        // itself with --base). Not handing it to the reviewer is the point; the next layer applies.
+        if (!droppedDocs.has(r.docPath)) {
+          droppedDocs.add(r.docPath);
+          warn(`project layer: rule doc ${excerpt(r.doc, 120)} is not a regular file inside the repository (outside it, behind a symlink, a special file or over ${DOC_MAX_BYTES} bytes) — ignored, the next layer's rule applies`);
+          if (base) docsChanged.add(path.relative(root, r.docPath).split(path.sep).join('/'));
+        }
+        continue;
+      }
+      doc = r.docPath; layer = l.layer; break;
     }
     if (doc) {
       docs.add(doc);

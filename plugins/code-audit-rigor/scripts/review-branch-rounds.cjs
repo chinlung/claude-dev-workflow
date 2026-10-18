@@ -11,7 +11,7 @@
  * two halves of convergence mechanical, so neither depends on the reviewer remembering:
  *
  *   plan      before Phase 1. Reads the previous round's state (same branch), hashes every scoped
- *             file, and reports: `unchanged` (byte-identical to a file the previous round reviewed
+ *             file, and reports: `unchanged` (identical in content and mode to a file the previous round reviewed
  *             → skip it), `carried` (verified-but-unfixed suggestions on unchanged files → report,
  *             do not re-verify), `dismissed` (anchors judged false positives in earlier rounds →
  *             must not be proposed again), the round number and the scope mode. Written to
@@ -152,8 +152,13 @@ function readList(spec) {
   return out;
 }
 
-// Content hash of the file's bytes as they are on disk, so an unchanged file produces the same value
-// on every round, tracked or not. `--no-filters`: the branch owns `.gitattributes`, and a clean
+// Identity of the file as it is on disk, so an unchanged file produces the same value on every round,
+// tracked or not. It is the content hash plus the kind git records in the tree entry's mode: git stores
+// a regular file and a symlink whose target text equals the file's bytes as ONE blob and tells them apart
+// only by mode (100644 / 120000 / 100755). `<hash>` is a regular file, `<hash>+x` an executable one,
+// `link:<hash>` a symlink. The hash alone would let a branch turn a file into a link, or make it
+// executable, between two rounds and have it skipped as unchanged with its dismissals still in force.
+// `--no-filters`: the branch owns `.gitattributes`, and a clean
 // filter such as `ident` would hash `$Id: <anything> $` as `$Id$` — an edited file would look
 // unchanged and be skipped. A symlink hashes as its raw link target (`hash-object <path>` would
 // follow it, and a link to /dev/zero never ends). A missing or special file is a deletion under
@@ -163,10 +168,10 @@ function blobOf(root, rel) {
   let st;
   try { st = fs.lstatSync(abs); } catch (e) { return 'deleted'; }
   if (st.isSymbolicLink()) {
-    try { return git(root, ['hash-object', '--no-filters', '--stdin'], { input: fs.readlinkSync(abs, { encoding: 'buffer' }) }).trim(); } catch (e) { return 'deleted'; }
+    try { return 'link:' + git(root, ['hash-object', '--no-filters', '--stdin'], { input: fs.readlinkSync(abs, { encoding: 'buffer' }) }).trim(); } catch (e) { return 'deleted'; }
   }
   if (!st.isFile()) return 'deleted';
-  try { return git(root, ['hash-object', '--no-filters', '--', rel]).trim(); } catch (e) { return 'deleted'; }
+  try { return git(root, ['hash-object', '--no-filters', '--', rel]).trim() + ((st.mode & 0o100) ? '+x' : ''); } catch (e) { return 'deleted'; }
 }
 
 const anchorKey = (s) => `${s.file}\u0000${s.quotedCode}`;

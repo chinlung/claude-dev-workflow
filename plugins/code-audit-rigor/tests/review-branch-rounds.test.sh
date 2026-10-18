@@ -456,14 +456,17 @@ G add .reviewrules/manifest.json
 G commit -q -m "manifest with a doc outside the repo"
 BASE5=$(G rev-parse HEAD)
 node "$RULES" --root "$REPO" --files "$WORK/fdocs.txt" --user-manifest "$WORK/no-such-manifest.json" --base "$BASE5" --no-write > "$WORK/rules-d5.json"
-check_eq "doc outside the repo: counts as changed" "$(jget "$WORK/rules-d5.json" files.1.docChanged)" true
+check_eq "doc outside the repo: not handed to the reviewer (the built-in rule applies)" "$(jget "$WORK/rules-d5.json" files.1.layer)" built-in
+check "doc outside the repo: still reported as changed" "$(jget "$WORK/rules-d5.json" docsChanged)" 'outside\.md'
+check "doc outside the repo: warned" "$(jget "$WORK/rules-d5.json" warnings)" 'not a regular file inside the repository'
 rm -f "$REPO/.reviewrules/ts.md"
 ln -s /dev/zero "$REPO/.reviewrules/ts.md"
 T0=$SECONDS
 check_eq "doc is a symlink to a device: exit 0" "$(rc node "$RULES" --root "$REPO" --files "$WORK/fdocs.txt" --user-manifest "$WORK/no-such-manifest.json" --base "$BASE5" --no-write)" 0
 check_eq "doc is a symlink to a device: finishes within 2s" "$([ $((SECONDS - T0)) -le 2 ] && echo fast || echo slow)" fast
 node "$RULES" --root "$REPO" --files "$WORK/fdocs.txt" --user-manifest "$WORK/no-such-manifest.json" --base "$BASE5" --no-write > "$WORK/rules-d6.json"
-check_eq "doc is a symlink to a device: counts as changed" "$(jget "$WORK/rules-d6.json" files.0.docChanged)" true
+check_eq "doc is a symlink to a device: not handed to the reviewer" "$(jget "$WORK/rules-d6.json" files.0.layer)" built-in
+check "doc is a symlink to a device: still reported as changed" "$(jget "$WORK/rules-d6.json" docsChanged)" 'reviewrules/ts\.md'
 rm -f "$REPO/.reviewrules/ts.md"
 G checkout -q -- .reviewrules/ts.md
 # An `ident` clean filter from the branch's .gitattributes must not make a planted line hash like the base's.
@@ -482,6 +485,46 @@ G commit -q -m "drop the attributes"
 node "$RULES" --root "$REPO" --files "$WORK/fdocs.txt" --user-manifest "$WORK/no-such-manifest.json" --no-write > "$WORK/rules-d4.json"
 check_eq "without --base: docChanged is not computed" "$(jget "$WORK/rules-d4.json" files.0.docChanged)" null
 G checkout -q -- .reviewrules/manifest.json .reviewrules/ts.md
+
+echo "== resolve-rules: a rule doc must be a regular file inside the repository"
+# The reviewer opens whatever a rule's doc names. Without --base the work tree manifest names it; with --base
+# the mapping is the base's but the file is the work tree's, and a branch can swap it for a symlink. Either
+# way an arbitrary local file would be put in front of the reviewer, so such a doc is dropped with a warning
+# and the next layer's rule applies. A doc that is an ordinary file inside the repository is untouched.
+printf 'SECRET\n' > "$WORK/outside-secret.md"
+mkdir -p "$WORK/elsewhere"
+printf 'x\n' > "$WORK/elsewhere/doc.md"
+ln -s "$WORK/outside-secret.md" "$REPO/.reviewrules/linked.md"
+ln -s "$WORK/elsewhere" "$REPO/.reviewrules/sub"
+node -e 'require("fs").writeFileSync(process.argv[1], JSON.stringify({rules:[
+  {pattern:"**/*.ts",doc:process.argv[2]},
+  {pattern:"**/*.md",doc:"../../outside-secret.md"},
+  {pattern:"**/*.go",doc:"linked.md"},
+  {pattern:"**/*.py",doc:"sub/doc.md"},
+  {pattern:"**/*.sql",doc:"ts.md"}]}))' "$REPO/.reviewrules/manifest.json" "$WORK/outside-secret.md"
+printf 'src/x.ts\nsrc/y.md\nsrc/z.go\nsrc/w.py\nsrc/v.sql\n' > "$WORK/fesc.txt"
+node "$RULES" --root "$REPO" --files "$WORK/fesc.txt" --user-manifest "$WORK/no-such-manifest.json" --no-write > "$WORK/rules-e1.json" 2>/dev/null
+check_eq "absolute doc path: not used (the built-in rule applies)" "$(jget "$WORK/rules-e1.json" files.0.layer)" built-in
+check_eq "../ doc path: not used" "$(jget "$WORK/rules-e1.json" files.1.layer)" built-in
+check_eq "doc that is a symlink to a file outside: not used" "$(jget "$WORK/rules-e1.json" files.2.layer)" built-in
+check_eq "doc behind a symlinked directory: not used" "$(jget "$WORK/rules-e1.json" files.3.layer)" built-in
+check_eq "ordinary in-repo doc: still used" "$(jget "$WORK/rules-e1.json" files.4.layer)" project
+check_eq "one warning per dropped doc" "$(jget "$WORK/rules-e1.json" warnings.length)" 4
+check "the warning says why" "$(jget "$WORK/rules-e1.json" warnings)" 'not a regular file inside the repository'
+check_eq "no outside file is listed in docs[]" "$(node -e 'const d=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).docs; console.log(d.some(p=>/outside-secret|linked\.md|elsewhere|sub\/doc/.test(p))?"leaked":"clean")' "$WORK/rules-e1.json")" clean
+printf '{"rules":[{"pattern":"**/*.go","doc":"based.md"}]}\n' > "$REPO/.reviewrules/manifest.json"
+printf '# based\n' > "$REPO/.reviewrules/based.md"
+G add .reviewrules/manifest.json .reviewrules/based.md
+G commit -q -m "manifest with a base doc"
+BASE7=$(G rev-parse HEAD)
+rm -f "$REPO/.reviewrules/based.md"
+ln -s "$WORK/outside-secret.md" "$REPO/.reviewrules/based.md"
+node "$RULES" --root "$REPO" --files "$WORK/fesc.txt" --user-manifest "$WORK/no-such-manifest.json" --base "$BASE7" --no-write > "$WORK/rules-e2.json" 2>/dev/null
+check_eq "with --base, a base doc swapped for a symlink: not used" "$(jget "$WORK/rules-e2.json" files.2.layer)" built-in
+check "with --base, the swapped doc is still reported as changed" "$(jget "$WORK/rules-e2.json" docsChanged)" 'reviewrules/based\.md'
+check_eq "with --base, the swap is warned about once" "$(jget "$WORK/rules-e2.json" warnings.length)" 1
+rm -f "$REPO/.reviewrules/based.md" "$REPO/.reviewrules/linked.md" "$REPO/.reviewrules/sub"
+G checkout -q -- .reviewrules/based.md .reviewrules/manifest.json
 
 echo "== plan: the previous round lives in the git dir, never in the work tree"
 # A branch can ship a results file under this name — or under any name a case-folding file system maps to
@@ -545,8 +588,8 @@ printf 'src/zero\n' > "$WORK/fzero.txt"
 T0=$SECONDS
 node "$ROUNDS" plan --root "$REPO" --base "$BASE" --files "$WORK/fzero.txt" --no-write > "$WORK/plan-z1.json" 2>/dev/null
 check_eq "scoped symlink to a device: finishes within 5s" "$([ $((SECONDS - T0)) -le 5 ] && echo fast || echo slow)" fast
-check "scoped symlink: hashed as the link text (a blob id)" "$(jget "$WORK/plan-z1.json" files.0.blob)" '^[0-9a-f]\{40\}$'
-check_eq "scoped symlink: the same blob as git gives the link text" "$(jget "$WORK/plan-z1.json" files.0.blob)" "$(printf '/dev/zero' | G hash-object --stdin)"
+check "scoped symlink: hashed as the link text and marked as a link" "$(jget "$WORK/plan-z1.json" files.0.blob)" '^link:[0-9a-f]\{40\}$'
+check_eq "scoped symlink: the hash is the one git gives the link text" "$(jget "$WORK/plan-z1.json" files.0.blob)" "link:$(printf '/dev/zero' | G hash-object --stdin)"
 rm -f "$REPO/src/zero"
 printf 'x\n' > "$REPO/src/sé.ts"
 printf '"src/s\\303\\251.ts"\n' > "$WORK/fq.txt"
@@ -574,7 +617,7 @@ rm -f "$REPO/.gitattributes" "$REPO/src/i.js"
 node -e 'require("fs").symlinkSync(Buffer.from([0x61,0xff,0x62]), process.argv[1])' "$REPO/src/badlink"
 printf 'src/badlink\n' > "$WORK/fbad.txt"
 node "$ROUNDS" plan --root "$REPO" --base "$BASE" --files "$WORK/fbad.txt" --no-write > "$WORK/plan-b1.json" 2>/dev/null
-check_eq "symlink with a non-UTF-8 target: hashed like git" "$(jget "$WORK/plan-b1.json" files.0.blob)" "$(printf 'a\377b' | G hash-object --stdin)"
+check_eq "symlink with a non-UTF-8 target: hashed like git" "$(jget "$WORK/plan-b1.json" files.0.blob)" "link:$(printf 'a\377b' | G hash-object --stdin)"
 rm -f "$REPO/src/badlink"
 
 echo "== annotate: a dismissal binds only while the file keeps the content it was judged on"
@@ -617,6 +660,51 @@ check_eq "dismissed twice: re-post on the content it was last dismissed on is re
 G checkout -q -- src/a.ts
 node "$ROUNDS" plan --root "$REPO" --base "$BASE" --files "$WORK/files.txt" > "$WORK/plan-d3.json" 2>/dev/null
 check_eq "dismissed twice: changed back to the first content, the first dismissal binds again" "$(rc node "$ROUNDS" annotate "$R" --root "$REPO" --base "$BASE")" 1
+
+echo "== plan: a file's identity covers its type and executable bit, not only its bytes"
+# git stores a regular file and a symlink whose target text equals the file's bytes as one blob and tells
+# them apart by mode (100644 / 120000); the executable bit is mode 100755. An identity made of the content
+# hash alone lets a branch turn a file into a link (or make it executable) between two rounds and have it
+# skipped as unchanged, with any dismissal bound to that hash still in force.
+mkstate() {   # mkstate <out> <file> <blob> [<dismissed quotedCode>] — the git-dir state with one reviewed file
+  node -e 'const fs=require("fs"); const [src,out,file,blob,anchor]=process.argv.slice(1); const j=JSON.parse(fs.readFileSync(src,"utf8")); j.scopedFiles=[{file,status:"reviewed",source:"committed",blob}]; j.suggestions=[]; j.verifications=[]; j.carried=[]; j.dismissed=anchor?[{file,quotedCode:anchor,round:1,blob}]:[]; fs.writeFileSync(out, JSON.stringify(j))' "$REPO/.git/review-branch-last.json" "$@"
+}
+printf '../../private/secret' > "$REPO/src/cfg"
+printf 'src/cfg\n' > "$WORK/fcfg.txt"
+node "$ROUNDS" plan --root "$REPO" --base "$BASE" --files "$WORK/fcfg.txt" --no-write > "$WORK/plan-m1.json" 2>/dev/null
+B1=$(jget "$WORK/plan-m1.json" files.0.blob)
+check "regular file: the identity is the plain hash" "$B1" '^[0-9a-f]\{40\}$'
+mkstate "$WORK/state-cfg.json" src/cfg "$B1" '../../private/secret'
+node "$ROUNDS" plan --root "$REPO" --base "$BASE" --files "$WORK/fcfg.txt" --previous "$WORK/state-cfg.json" --no-write > "$WORK/plan-m2.json" 2>/dev/null
+check_eq "control: the same regular file is unchanged" "$(jget "$WORK/plan-m2.json" unchanged)" '["src/cfg"]'
+cat > "$R" <<'EOF'
+{ "branch": "feature/x",
+  "scopedFiles": [ {"file":"src/cfg","status":"reviewed","source":"committed"} ],
+  "suggestions": [ {"file":"src/cfg","line":1,"quotedCode":"../../private/secret","description":"re-posted","severity":"LOW"} ],
+  "verifications": [ {"id":"V-001","verdict":"PASS","suggestion":0} ] }
+EOF
+node "$ROUNDS" plan --root "$REPO" --base "$BASE" --files "$WORK/fcfg.txt" --previous "$WORK/state-cfg.json" > /dev/null 2>&1
+check_eq "control: the dismissal still binds the same regular file" "$(rc node "$ROUNDS" annotate "$R" --root "$REPO" --base "$BASE")" 1
+rm -f "$REPO/src/cfg"
+ln -s ../../private/secret "$REPO/src/cfg"
+node "$ROUNDS" plan --root "$REPO" --base "$BASE" --files "$WORK/fcfg.txt" --previous "$WORK/state-cfg.json" --no-write > "$WORK/plan-m3.json" 2>/dev/null
+LB=$(jget "$WORK/plan-m3.json" files.0.blob)
+check "regular file replaced by a symlink with the same text: the identity is marked as a link" "$LB" '^link:[0-9a-f]\{40\}$'
+check_eq "...the hash underneath is the regular file's (the collision the marker exists for)" "${LB#link:}" "$B1"
+check_eq "...so the file is not unchanged" "$(jget "$WORK/plan-m3.json" unchanged)" "[]"
+node "$ROUNDS" plan --root "$REPO" --base "$BASE" --files "$WORK/fcfg.txt" --previous "$WORK/state-cfg.json" > /dev/null 2>&1
+check_eq "...and the dismissal no longer binds it" "$(rc node "$ROUNDS" annotate "$R" --root "$REPO" --base "$BASE")" 0
+rm -f "$REPO/src/cfg"
+printf '#!/bin/sh\necho hi\n' > "$REPO/src/run.sh"
+printf 'src/run.sh\n' > "$WORK/frun.txt"
+node "$ROUNDS" plan --root "$REPO" --base "$BASE" --files "$WORK/frun.txt" --no-write > "$WORK/plan-x1.json" 2>/dev/null
+B2=$(jget "$WORK/plan-x1.json" files.0.blob)
+mkstate "$WORK/state-run.json" src/run.sh "$B2"
+chmod +x "$REPO/src/run.sh"
+node "$ROUNDS" plan --root "$REPO" --base "$BASE" --files "$WORK/frun.txt" --previous "$WORK/state-run.json" --no-write > "$WORK/plan-x2.json" 2>/dev/null
+check_eq "executable bit set between rounds: the identity says so" "$(jget "$WORK/plan-x2.json" files.0.blob)" "${B2}+x"
+check_eq "executable bit set between rounds: the file is not unchanged" "$(jget "$WORK/plan-x2.json" unchanged)" "[]"
+rm -f "$REPO/src/run.sh"
 
 echo
 echo "Results: $PASS passed, $FAIL failed"

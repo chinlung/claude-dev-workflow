@@ -20,7 +20,7 @@
           "status": { "type": "string", "enum": ["reviewed", "skipped"] },
           "skipReason": { "type": "string", "minLength": 1 },
           "source": { "type": "string", "enum": ["committed", "working-tree", "untracked"] },
-          "blob": { "type": "string", "minLength": 1 },
+          "blob": { "type": "string", "minLength": 1, "description": "The file's identity on disk: the content hash, suffixed +x when executable, prefixed link: for a symlink (hash of the link target). A file that changes type or mode between rounds gets a different value even when its bytes do not change." },
           "unchangedSince": { "type": "integer", "minimum": 1 }
         },
         "if": { "properties": { "status": { "const": "skipped" } }, "required": ["status"] },
@@ -65,7 +65,7 @@
           "file": { "type": "string", "minLength": 1 },
           "quotedCode": { "type": "string", "minLength": 1 },
           "round": { "type": "integer", "minimum": 1 },
-          "blob": { "type": "string", "minLength": 1, "description": "The file's content hash when the anchor was dismissed (2.1.1). The dismissal binds only while scopedFiles[].blob for that file still equals it." }
+          "blob": { "type": "string", "minLength": 1, "description": "The file's identity (scopedFiles[].blob: content hash, +x when executable, link: prefix for a symlink) when the anchor was dismissed (2.1.1). The dismissal binds only while scopedFiles[].blob for that file still equals it." }
         }
       }
     },
