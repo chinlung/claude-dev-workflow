@@ -501,7 +501,7 @@ ln -s "$WORK/outside-secret.md" "$REPO/.reviewrules/linked.md"
 ln -s "$WORK/elsewhere" "$REPO/.reviewrules/sub"
 node -e 'require("fs").writeFileSync(process.argv[1], JSON.stringify({rules:[
   {pattern:"**/*.ts",doc:process.argv[2]},
-  {pattern:"**/*.md",doc:"../../outside-secret.md"},
+  {pattern:"**/*.md",doc:"../../outside-other.md"},
   {pattern:"**/*.go",doc:"linked.md"},
   {pattern:"**/*.py",doc:"sub/doc.md"},
   {pattern:"**/*.sql",doc:"ts.md"}]}))' "$REPO/.reviewrules/manifest.json" "$WORK/outside-secret.md"
@@ -514,7 +514,7 @@ check_eq "doc behind a symlinked directory: not used" "$(jget "$WORK/rules-e1.js
 check_eq "ordinary in-repo doc: still used" "$(jget "$WORK/rules-e1.json" files.4.layer)" project
 check_eq "one warning per dropped doc" "$(jget "$WORK/rules-e1.json" warnings.length)" 4
 check "the warning says why" "$(jget "$WORK/rules-e1.json" warnings)" 'not a regular file inside the repository'
-check_eq "no outside file is listed in docs[]" "$(node -e 'const d=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).docs; console.log(d.some(p=>/outside-secret|linked\.md|elsewhere|sub\/doc/.test(p))?"leaked":"clean")' "$WORK/rules-e1.json")" clean
+check_eq "no outside file is listed in docs[]" "$(node -e 'const d=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).docs; console.log(d.some(p=>/outside-|linked\.md|elsewhere|sub\/doc/.test(p))?"leaked":"clean")' "$WORK/rules-e1.json")" clean
 printf '{"rules":[{"pattern":"**/*.go","doc":"based.md"}]}\n' > "$REPO/.reviewrules/manifest.json"
 printf '# based\n' > "$REPO/.reviewrules/based.md"
 G add .reviewrules/manifest.json .reviewrules/based.md
