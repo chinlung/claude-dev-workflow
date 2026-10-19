@@ -651,7 +651,7 @@ Node.js — 供第 5 階段 `validate-findings.cjs` schema 驗證。
 
 # Session Reflect 插件
 
-Session 收尾回顧系統。fail-open 的 Stop hook 閘門先廉價 triage（routine 或無實質內容的 session 直接放行），再由 `reflect` skill 從四視角掃描 session——範圍外發現、既有問題、延伸優化、知識缺口。每個候選建議必附具體證據錨點，並通過 inline 四濾鏡自我反思與對抗式 verifier 子代理雙重驗證後才會呈現。最多 5 個建議以多選問卷提供：選中的趁 context 還熱立即執行；未選的寫入 `.claude/reflect-backlog.md` 供日後處理（隨時可用 `/session-reflect:reflect` 重開回顧）。與 Session 經驗學習插件互補：該插件保存「經驗」，本插件提出「行動」。細節見 [`plugins/session-reflect/README.md`](plugins/session-reflect/README.md)。
+Session 收尾回顧系統。fail-open 的 Stop hook 閘門先廉價 triage（routine 或無實質內容的 session 直接放行），再由 `reflect` skill 從五視角掃描 session——範圍外發現、既有問題、延伸優化、知識缺口，以及環境摩擦（agent 的工作環境哪裡讓這次變慢或出錯；處方優先做成檢查而非文字規則）。每個候選建議必附具體證據錨點，並通過 inline 五濾鏡自我反思與對抗式 verifier 子代理雙重驗證後才會呈現。最多 5 個建議以多選問卷提供：選中的趁 context 還熱立即執行；未選的寫入 `.claude/reflect-backlog.md` 供日後處理（隨時可用 `/session-reflect:reflect` 重開回顧）。與 Session 經驗學習插件互補：該插件保存「經驗」，本插件提出「行動」。細節見 [`plugins/session-reflect/README.md`](plugins/session-reflect/README.md)。
 
 # Scope Ledger 插件
 

@@ -121,6 +121,32 @@ out=$(run_gate "$(input_json c7 "$t/tr.jsonl" false)" "$t")
 check "question tail → approve" "$out" '"approve"'
 check_flag "question tail → no flag" "$t/claude-session-reflect-c7" absent
 
+# 7b) 問句在收尾段中間、後接條列(2026-10-19 實際漏判的形狀)→ approve 且不標記 flag
+t=$WORK/c7b; mkdir -p "$t"
+make_transcript "$t/tr.jsonl" 12 '{"type":"assistant","message":{"content":[{"type":"text","text":"## 需要你決定\n\n要我照 P1–P3 實作嗎？實作範圍如下：\n- **流程**：開分支、建工作範圍帳本。\n- **檔案**：改 SKILL.md 和 README。\n- **收尾**：跑自審。\n\n另外，全域 CLAUDE.md 我會另外處理。"}]}}'
+out=$(run_gate "$(input_json c7b "$t/tr.jsonl" false)" "$t")
+check "question mid-tail → approve" "$out" '"approve"'
+check_flag "question mid-tail → no flag" "$t/claude-session-reflect-c7b" absent
+
+# 7c) 半形 ? 後接空白、再接說明 → approve
+t=$WORK/c7c; mkdir -p "$t"
+make_transcript "$t/tr.jsonl" 12 '{"type":"assistant","message":{"content":[{"type":"text","text":"Should I proceed? The plan touches two files."}]}}'
+out=$(run_gate "$(input_json c7c "$t/tr.jsonl" false)" "$t")
+check "ascii question mid-tail → approve" "$out" '"approve"'
+
+# 7d) 問句遠在窗口外(其後超過 400 字)→ 照常 block
+t=$WORK/c7d; mkdir -p "$t"
+filler=$(printf '已完成的工作說明。%.0s' $(seq 1 60))
+make_transcript "$t/tr.jsonl" 12 '{"type":"assistant","message":{"content":[{"type":"text","text":"為什麼會壞？因為設定錯了。'"$filler"'"}]}}'
+out=$(run_gate "$(input_json c7d "$t/tr.jsonl" false)" "$t")
+check "question outside tail window → block" "$out" '"block"'
+
+# 7e) 結尾只有 URL 的 ?query 與 shell 的 ${x:?} → 不算問句,照常 block
+t=$WORK/c7e; mkdir -p "$t"
+make_transcript "$t/tr.jsonl" 12 '{"type":"assistant","message":{"content":[{"type":"text","text":"詳見 https://example.com/runs?status=done 與 ${x:?unset}。"}]}}'
+out=$(run_gate "$(input_json c7e "$t/tr.jsonl" false)" "$t")
+check "url/shell ? → still block" "$out" '"block"'
+
 # 8) 實質 session → block 且標記 flag
 t=$WORK/c8; mkdir -p "$t"
 make_transcript "$t/tr.jsonl" 12 "$ASSISTANT_NORMAL"
