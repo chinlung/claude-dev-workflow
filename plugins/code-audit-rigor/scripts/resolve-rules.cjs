@@ -135,7 +135,11 @@ function readList(spec) {
   const out = [];
   const seen = new Set();
   for (const raw of text.split('\n')) {
-    const f = unquoteC(raw.trim()).replace(/^\.\//, '').split(path.sep).join('/');
+    // Same normalization as review-branch-rounds' readList: only a CRLF's \r is stripped, since
+    // leading and trailing spaces belong to the file name.
+    const line = raw.replace(/\r$/, '');
+    if (!line.trim()) continue;
+    const f = unquoteC(line).replace(/^\.\//, '').split(path.sep).join('/');
     if (f && !seen.has(f)) { seen.add(f); out.push(f); }
   }
   return out;

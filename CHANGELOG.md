@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.11.10] - 2026-10-19
+
+### Fixed
+
+- **code-audit-rigor 2.1.1 → 2.1.2: a file list from another run can no longer pass as this change's.** `/review-branch` wrote its scoped-file list to a fixed `$TMPDIR/review-branch-files.txt`, which local Claude Code sessions share; another session reviewing a different repository overwrote it mid-review, and `plan`, `resolve-rules` and `annotate` all reported success on the foreign list (the only symptom was a `risk.hits` naming files the repository does not have). The command now keeps its intermediate files in a directory derived from the repository's git dir — including the `--no-write` path's plan, rules and results — and `plan --base` refuses (exit 2, naming the paths) a list that names anything outside the change's own file set (committed on the branch, changed in the work tree, untracked). List lines are no longer trimmed in either script — a leading or trailing space belongs to the file name, and trimming it would have made the check refuse every run. `tests/review-branch-rounds.test.sh` 238 → 247, backed by six mutations.
+
 ## [1.11.9] - 2026-10-19
 
 ### Added

@@ -21,11 +21,19 @@ argument-hint: "[base-branch] [--focus <pathspec>] [--full]"
 
    **審查對象一律是磁碟上的工作樹版本**（Read 讀到的即是），不是 HEAD 版本。若帶 `--focus <pathspec>`（如 `--focus 'src/auth/**'`），三個命令都加 `-- <pathspec>`，只審符合路徑的變更——大 PR 省 token + 範圍紀律；此時覆蓋核對表的基準即為**過濾後**的清單。（2.0.0（含）以前只取已 commit diff，commit 前自審時最新的未 commit 工作被沉默略過而覆蓋表仍全綠——2.0.1 修正）
 4. 若無 `$ARGUMENTS`（或僅提供 `--focus`），自動偵測 base branch：先取 `origin/HEAD`（`git -C <root> symbolic-ref -q refs/remotes/origin/HEAD`，缺時 `git -C <root> remote set-head origin -a` 補上），無 remote 才依序嘗試本機 `main`、`master`；偵測到的名稱同樣走步驟 2 的 fetch 與 `origin/<base-branch>` 規則
-5. **跨輪記憶（2.1.0）**：把步驟 3 的清單寫成一行一路徑的檔 `$TMPDIR/review-branch-files.txt`，跑
+5. **跨輪記憶（2.1.0）**：本命令的中間檔一律放在**依 repo 區分的目錄** `<rb>`，不用固定檔名——本機各 session 共用 `$TMPDIR`，固定的 `$TMPDIR/review-branch-files.txt` 曾在審查中途被另一個 session 審別的 repo 時覆寫，而 `plan`／`resolve-rules`／`annotate` 照報成功（2.1.2 修正）。先算一次並印出：
 
    ```bash
-   node ${CLAUDE_PLUGIN_ROOT}/scripts/review-branch-rounds.cjs plan --root <root> --base <merge-base> --files "$TMPDIR/review-branch-files.txt"   # $ARGUMENTS 含 --full 時加 --full
+   RB="${TMPDIR%/}/review-branch-$(git -C <root> rev-parse --absolute-git-dir | shasum | cut -c1-12)"; mkdir -p "$RB"; echo "$RB"
    ```
+
+   之後每個命令都寫這個**字面路徑**（Bash 呼叫之間變數不保留）。把步驟 3 的清單寫成一行一路徑的檔 `<rb>/files.txt`，跑
+
+   ```bash
+   node ${CLAUDE_PLUGIN_ROOT}/scripts/review-branch-rounds.cjs plan --root <root> --base <merge-base> --files "<rb>/files.txt"   # $ARGUMENTS 含 --full 時加 --full
+   ```
+
+   帶 `--base` 時 `plan` 會以 git 算出本次變更的檔案集合（分支 commit ∪ 工作樹 ∪ 未追蹤），清單裡有任何不屬於它的路徑就 exit 2 並點名——清單被換掉或混進別的 repo 的路徑時擋在這裡，而不是照算下去；`--focus` 的清單是子集合，照常通過。遇到這個錯誤就從步驟 3 重建清單，不要刪掉被點名的路徑硬跑。
 
    它讀上一輪的狀態 `<gitdir>/review-branch-last.json`（`annotate` 每輪結束存的副本；同分支、且上一輪標註的 commit 是本次 HEAD 的祖先、base 相同，才算上一輪——分支名是分支作者取的，同名的另一個 PR 或 detached 審查不得繼承別的程式碼掙來的 dismissed／carried；rebase 或 force-push 後就是新的一輪 `full`，輸出 `previousRejected` 說明原因）——**從不讀工作樹的 `<root>/review-branch-results.json`**：工作樹是被審分支的，分支可以用這個名字（或不分大小寫檔案系統會對應到它的任何名字）夾帶一份把自己的檔標成未變動、預先駁回 finding 的結果檔；git dir 分支寫不到。工作樹有結果檔時輸出 `workTreeResultsIgnored: true`，純屬告知。接著它對清單裡每個檔算內容雜湊（`hash-object --no-filters`，位元組本身，不經 `.gitattributes` 的 clean filter——那個檔是分支的，`ident` 會把 `$Id: 任何東西 $` 洗成 `$Id$`），再加上 git 記在 tree entry 的型別——一般檔 `<hash>`、可執行 `<hash>+x`、symlink `link:<hash>`：git 把一般檔和「內容等於某個連結目標文字」的 symlink 存成同一個 blob，只靠 mode 區分，只比雜湊的話分支可以在兩輪之間把檔案換成 symlink 或加上執行位元而被當成沒變。印出並寫到 `<gitdir>/review-branch-plan.json`：
    - `round`／`scopeMode`：第幾輪、`full` 或 `since-last`——沒有上一輪、分支不同、上一輪被 `previousRejected`、或帶 `--full` 都是 `full`
@@ -35,14 +43,14 @@ argument-hint: "[base-branch] [--focus <pathspec>] [--full]"
 
    `--full` 用在換了 base、懷疑上一輪漏審、或這次修改牽連到未變動的檔時：全範圍重審，輪數照加。
 
-   被審的 repo 不是本 session 的專案目錄時（sandbox 只准寫專案目錄與 `$TMPDIR`），`plan` 與下節的 `resolve-rules` 都加 `--no-write`、輸出存到 `$TMPDIR/review-branch-plan.json`／`$TMPDIR/review-branch-rules.json`，結果檔也先寫在 `$TMPDIR`，Phase 3 的 `annotate` 以 `--plan`／`--rules` 指過去——它們寫 `<gitdir>` 會得到 `Operation not permitted`，那是 sandbox，不是腳本壞了。`annotate` 存不進 `<gitdir>/review-branch-last.json` 時會在 stderr 說明並回 `stateSaved: false`；下一輪的 `plan` 改帶 `--previous $TMPDIR/review-branch-results.json`。
+   被審的 repo 不是本 session 的專案目錄時（sandbox 只准寫專案目錄與 `$TMPDIR`），`plan` 與下節的 `resolve-rules` 都加 `--no-write`、輸出存到 `<rb>/plan.json`／`<rb>/rules.json`，結果檔也先寫在 `<rb>/review-branch-results.json`，Phase 3 的 `annotate` 以 `--plan`／`--rules` 指過去——它們寫 `<gitdir>` 會得到 `Operation not permitted`，那是 sandbox，不是腳本壞了。`annotate` 存不進 `<gitdir>/review-branch-last.json` 時會在 stderr 說明並回 `stateSaved: false`；下一輪的 `plan` 改帶 `--previous <rb>/review-branch-results.json`（`<rb>` 由 git dir 決定，下一輪算出同一個目錄）。
 
 ## 前置：解析適用審查規則與風險 tier（path-matched rule packs）
 
 用腳本解析，不要在腦中比對 glob（仿 alibaba/open-code-review 分層規則鏈，first-match wins；2.1.0 起機械化）：
 
 ```bash
-node ${CLAUDE_PLUGIN_ROOT}/scripts/resolve-rules.cjs --root <root> --base <base-tip> --files "$TMPDIR/review-branch-files.txt"
+node ${CLAUDE_PLUGIN_ROOT}/scripts/resolve-rules.cjs --root <root> --base <base-tip> --files "<rb>/files.txt"
 ```
 
 `<base-tip>` 是步驟 2 記下的 `origin/<base-branch>` SHA（退回本機時用本機 base 的 SHA），**不是 merge-base**——merge-base 由分支作者挑（從哪個 commit 開分支），可能落在專案加上某條 `deep` 規則之前。
