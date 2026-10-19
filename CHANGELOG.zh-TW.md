@@ -8,7 +8,7 @@
 
 ### Fixed
 
-- **code-audit-rigor 2.1.1 → 2.1.2：別次執行的檔案清單不能再冒充本次變更的清單。** `/review-branch` 把範圍內的檔案清單寫在固定的 `$TMPDIR/review-branch-files.txt`，而本機各 Claude Code session 共用 `$TMPDIR`；另一個 session 審別的 repo 時在審查途中覆寫了它，`plan`、`resolve-rules`、`annotate` 都對這份外來清單照報成功（唯一的徵兆是 `risk.hits` 列出本 repo 沒有的檔）。命令現在把中間檔放在依 repo git dir 區分的目錄（含 `--no-write` 路線的 plan、rules 與結果檔），且 `plan --base` 會以 git 算出本次變更的檔案集合（分支 commit、工作樹變更、未追蹤），清單有任何不屬於它的路徑就拒收（exit 2 並點名）。`tests/review-branch-rounds.test.sh` 238 → 243，有四種突變佐證。
+- **code-audit-rigor 2.1.1 → 2.1.2：別次執行的檔案清單不能再冒充本次變更的清單。** `/review-branch` 把範圍內的檔案清單寫在固定的 `$TMPDIR/review-branch-files.txt`，而本機各 Claude Code session 共用 `$TMPDIR`；另一個 session 審別的 repo 時在審查途中覆寫了它，`plan`、`resolve-rules`、`annotate` 都對這份外來清單照報成功（唯一的徵兆是 `risk.hits` 列出本 repo 沒有的檔）。命令現在把中間檔放在依 repo git dir 區分的目錄（含 `--no-write` 路線的 plan、rules 與結果檔），且 `plan --base` 會以 git 算出本次變更的檔案集合（分支 commit、工作樹變更、未追蹤），清單有任何不屬於它的路徑就拒收（exit 2 並點名）。兩支腳本讀清單時不再 trim——頭尾空白屬於檔名本身，trim 掉會讓新檢查每次都拒收。`tests/review-branch-rounds.test.sh` 238 → 247，有六種突變佐證。
 
 ## [1.11.9] - 2026-10-19
 

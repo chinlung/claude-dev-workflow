@@ -148,7 +148,11 @@ function readList(spec) {
   const seen = new Set();
   const out = [];
   for (const raw of text.split('\n')) {
-    const f = unquoteC(raw.trim()).replace(/^\.\//, '');
+    // Strip only a CRLF's \r: a leading or trailing space is part of a legal file name, and trimming
+    // it made the path match nothing git reports (plan refused the list on every run).
+    const line = raw.replace(/\r$/, '');
+    if (!line.trim()) continue;
+    const f = unquoteC(line).replace(/^\.\//, '');
     if (!f || f === RESULTS_FILE || seen.has(f)) continue;
     seen.add(f);
     out.push(f);

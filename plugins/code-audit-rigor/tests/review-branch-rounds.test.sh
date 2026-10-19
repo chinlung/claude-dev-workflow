@@ -734,6 +734,17 @@ G show "$BASE:src/a.ts" > "$REPO/src/a.ts"
 check_eq "committed change reverted in the work tree: still part of the change" "$(rc node "$ROUNDS" plan --root "$REPO" --base "$BASE" --files "$WORK/files.txt" --no-write)" 0
 cp "$WORK/a.bak" "$REPO/src/a.ts"
 check_eq "without --base there is nothing to check against: exit 0" "$(rc node "$ROUNDS" plan --root "$REPO" --files "$WORK/fforeign.txt" --no-write)" 0
+# 清單行只去 \r、不 trim:頭尾有空白的檔名是合法路徑,trim 後對不上 git 給的名字,plan 會永遠拒收
+printf 'x\n' > "$REPO/ lead.txt"
+printf 'y\n' > "$REPO/trail.txt "
+printf ' lead.txt\ntrail.txt \r\n' > "$WORK/fspace.txt"
+check_eq "file names with leading/trailing spaces: exit 0" "$(rc node "$ROUNDS" plan --root "$REPO" --base "$BASE" --files "$WORK/fspace.txt" --no-write)" 0
+node "$ROUNDS" plan --root "$REPO" --base "$BASE" --files "$WORK/fspace.txt" --no-write > "$WORK/plan-sp.json" 2>/dev/null || true
+check "...and the file is found and hashed, not 'deleted'" "$(jget "$WORK/plan-sp.json" files.0.blob)" '^[0-9a-f]\{40\}$'
+check_eq "...the trailing-space name is kept (only \\r is stripped)" "$(jget "$WORK/plan-sp.json" files.1.file)" "trail.txt "
+node "$RULES" --root "$REPO" --files "$WORK/fspace.txt" --user-manifest "$WORK/no-such-manifest.json" --no-write > "$WORK/rules-sp.json" 2>/dev/null
+check_eq "resolve-rules keeps the leading space too" "$(jget "$WORK/rules-sp.json" files.0.file)" " lead.txt"
+rm -f "$REPO/ lead.txt" "$REPO/trail.txt "
 
 echo
 echo "Results: $PASS passed, $FAIL failed"
