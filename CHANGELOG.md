@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.12.0] - 2026-10-20
+
+### Added
+
+- **pr 1.0.0: new plugin — a PR-body skill.** The `pr` skill writes a pull-request description in three sections: Summary (the smallest visual that makes the point — pseudocode, call tree, component or file tree, Mermaid, or a diff sketch), Evidence (before / after; screenshots for visual changes, then test runs and console output), and Merge Danger (one-way vs two-way door, blast radius). Ported from a standalone `pr` skill; the `GLOSSARY.md` instruction now applies only when the repository has one, and the Codex-only `agents/openai.yaml` was not carried over. The Summary's menu of visuals is credited to Dex Horthy's `show-me` skill (Humanlayer) in `plugins/pr/skills/pr/CREDITS.md`.
+
 ## [1.11.11] - 2026-10-19
 
 ### Fixed

@@ -4,6 +4,12 @@
 
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
+## [1.12.0] - 2026-10-20
+
+### Added
+
+- **pr 1.0.0：新插件——寫 PR body 的 skill。** `pr` skill 把 PR 描述分成三段：Summary（用最小、足以說清重點的視覺化：pseudocode、call tree、component／file tree、Mermaid 或 diff 草圖）、Evidence（before／after；視覺變更以截圖為優先，其次是測試執行與 console 輸出）、Merge Danger（one-way／two-way door、blast radius）。移植自一個獨立的 `pr` skill；`GLOSSARY.md` 那句改為 repo 有該檔時才適用，僅供 Codex 使用的 `agents/openai.yaml` 未搬入。Summary 的視覺化選單出處（Humanlayer Dex Horthy 的 `show-me` skill）記在 `plugins/pr/skills/pr/CREDITS.md`。
+
 ## [1.11.11] - 2026-10-19
 
 ### Fixed
