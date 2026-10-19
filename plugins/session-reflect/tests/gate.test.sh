@@ -155,6 +155,17 @@ check "substantive → block" "$out" '"block"'
 check "block reason mentions reflect skill" "$out" 'reflect skill'
 check_flag "substantive → flag created" "$t/claude-session-reflect-c8" exists
 
+# 8b) block reason 帶 transcript 路徑,供 skill 跑 friction-digest;路徑含引號仍是合法 JSON
+# 用獨立變數:案例 9 沿用案例 8 的 $t,覆寫它會讓案例 9 因 transcript 不存在而假通過
+t8b=$WORK/c8b; mkdir -p "$t8b/we\"ird dir"
+make_transcript "$t8b/we\"ird dir/tr.jsonl" 12 "$ASSISTANT_NORMAL"
+out=$(printf '%s' "$(jq -nc --arg p "$t8b/we\"ird dir/tr.jsonl" '{session_id:"c8b",transcript_path:$p,stop_hook_active:false}')" | TMPDIR="$t8b" bash "$GATE")
+if printf '%s' "$out" | jq -e --arg p "$t8b/we\"ird dir/tr.jsonl" '.decision == "block" and (.reason | contains($p))' >/dev/null 2>&1; then
+  PASS=$((PASS+1)); echo "PASS: block reason carries transcript path (valid JSON)"
+else
+  FAIL=$((FAIL+1)); echo "FAIL: block reason carries transcript path — got: $out"
+fi
+
 # 9) block 後再跑一次(同 session)→ approve
 out=$(run_gate "$(input_json c8 "$t/tr.jsonl" false)" "$t")
 check "second run after block → approve" "$out" '"approve"'

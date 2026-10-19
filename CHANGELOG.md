@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.11.9] - 2026-10-19
+
+### Added
+
+- **session-reflect 1.1.0 → 1.2.0: friction evidence comes from the transcript, not from memory.** A new `friction-digest.sh` extracts failed commands, permission and auto-mode classifier denials, hook blocks and failures, errors hidden in successful Bash output and user interrupts from the session's transcript JSONL, with per-kind counts, repeated failures and transcript line numbers; the Stop gate's block reason now carries the transcript path, and the skill runs the digest first. Long sessions are usually compacted by the time the review runs, and friction details are what compaction drops first. Field shapes measured on a real transcript; `tests/digest.test.sh` (37 assertions, in CI) is backed by 14 targeted mutations. This is P4 of `docs/session-reflect-retro-optimization-2026-10-19.md`.
+
 ## [1.11.8] - 2026-10-19
 
 ### Added
