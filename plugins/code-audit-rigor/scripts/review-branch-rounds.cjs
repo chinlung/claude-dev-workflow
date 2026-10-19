@@ -17,6 +17,9 @@
  *             must not be proposed again), the round number and the scope mode. Written to
  *             <gitdir>/review-branch-plan.json so `annotate` finds it after the results file has been
  *             overwritten (`--no-write` prints only; pass the saved JSON to `annotate --plan`).
+ *             With --base it first refuses (exit 2) a file list naming any path outside the change
+ *             (2.1.2): the list is a file the caller wrote, and a shared one was once overwritten by
+ *             another session's run on another repository.
  *   annotate  after Phase 2. Fills `introduced` on every suggestion (is its line inside this
  *             change? — committed branch diff ∪ working tree ∪ untracked; whole-file, binary and
  *             untracked changes count), `blob` and `unchangedSince` on every scoped file, `round`,
@@ -37,7 +40,8 @@
  *   node review-branch-rounds.cjs plan --root <repo> --files <list|-> [--base <sha>] [--full] [--previous <json>]
  *   node review-branch-rounds.cjs annotate <results.json> --root <repo> --base <sha> [--plan <json>] [--rules <json>]
  *
- * Exit 0 on success; 1 when `annotate` refuses (re-posted dismissed anchor); 2 on usage / IO errors.
+ * Exit 0 on success; 1 when `annotate` refuses (re-posted dismissed anchor); 2 on usage / IO errors
+ * and when `plan` refuses a file list that is not this change's.
  * Zero dependencies. The diff parsing mirrors scope-ledger's scope-facts.cjs on purpose (same author,
  * same conventions) but is not shared: plugins install independently.
  */
@@ -214,10 +218,36 @@ function dismissalApplies(d, currentBlob) {
 
 // ---------------------------------------------------------------------------------------- plan
 
+// Every path this change touches: committed on the branch (base..HEAD), changed in the work tree
+// (base..work tree) and untracked. Both diffs are needed: a committed change reverted in the work tree
+// is in the first only, and the command's list includes it.
+function changedFiles(root, base) {
+  const names = (args) => git(root, args).split('\0').filter(Boolean);
+  return new Set([
+    ...names(['diff', '--name-only', '-z', '--no-renames', base, 'HEAD', '--', '.']),
+    ...names(['diff', '--name-only', '-z', '--no-renames', base, '--', '.']),
+    ...names(['ls-files', '--others', '--exclude-standard', '-z']),
+  ]);
+}
+
 function plan(opts) {
   const root = repoRoot(opts.root || process.cwd());
   const files = readList(opts.files);
   if (files.length === 0) die('the file list is empty — nothing to plan');
+  // The list arrives as a file and nothing ties that file to this repository. Local sessions share
+  // $TMPDIR: on 2026-10-19 another session's run overwrote a fixed-name list with its own repo's paths
+  // mid-review, and plan, resolve-rules and annotate all reported success on it. With --base the
+  // change's own file set is computable, so a list naming anything outside it is refused, not planned.
+  // A --focus list is a subset and passes.
+  if (opts.base) {
+    if (!resolveCommit(root, opts.base)) die(`--base ${opts.base} is not a commit in ${root}`);
+    const changed = changedFiles(root, opts.base);
+    const foreign = files.filter((f) => !changed.has(f));
+    if (foreign.length) {
+      const shown = foreign.slice(0, 5).join(', ') + (foreign.length > 5 ? `, … (${foreign.length - 5} more)` : '');
+      die(`the file list names ${foreign.length} path(s) that are not part of this change against ${opts.base}: ${shown} — rebuild the list from this repository; a shared list file may have been overwritten by another run`);
+    }
+  }
   const branch = currentBranch(root);
   // The previous round is read from the git dir (see the header), never from the work tree.
   const previousPath = opts.previous || path.join(gitDir(root), LAST_FILE);

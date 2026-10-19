@@ -602,9 +602,13 @@ check_eq "quoted name: decoded" "$(jget "$WORK/plan-q1.json" files.0.file)" "src
 check "quoted name: the file is found and hashed" "$(jget "$WORK/plan-q1.json" files.0.blob)" '^[0-9a-f]\{40\}$'
 rm -f "$REPO/src/sé.ts"
 # "deleted" is the absence of a hash: two rounds that both failed to read a file never make it unchanged.
-node -e 'const f=process.argv[1]; const j=JSON.parse(require("fs").readFileSync(f,"utf8")); j.scopedFiles=[{file:"src/gone.ts",status:"reviewed",source:"committed",blob:"deleted"}]; require("fs").writeFileSync(process.argv[2], JSON.stringify(j))' "$REPO/.git/review-branch-last.json" "$WORK/state-deleted.json"
-printf 'src/gone.ts\n' > "$WORK/fgone.txt"
+# A real deletion (a tracked file removed in the work tree), so the path is part of the change: since
+# 2.1.2 plan refuses a list path the change does not touch, which a never-existing name would be.
+node -e 'const f=process.argv[1]; const j=JSON.parse(require("fs").readFileSync(f,"utf8")); j.scopedFiles=[{file:"src/b.ts",status:"reviewed",source:"working-tree",blob:"deleted"}]; require("fs").writeFileSync(process.argv[2], JSON.stringify(j))' "$REPO/.git/review-branch-last.json" "$WORK/state-deleted.json"
+printf 'src/b.ts\n' > "$WORK/fgone.txt"
+rm -f "$REPO/src/b.ts"
 node "$ROUNDS" plan --root "$REPO" --base "$BASE" --files "$WORK/fgone.txt" --previous "$WORK/state-deleted.json" --no-write > "$WORK/plan-g1.json" 2>/dev/null
+G checkout -q -- src/b.ts
 check_eq "deleted in both rounds: not unchanged" "$(jget "$WORK/plan-g1.json" unchanged)" "[]"
 check_eq "deleted in both rounds: still the same work (round continues)" "$(jget "$WORK/plan-g1.json" round)" 4
 # Hashes are of the raw bytes: the branch owns .gitattributes, and an `ident` clean filter would hash
@@ -709,6 +713,27 @@ node "$ROUNDS" plan --root "$REPO" --base "$BASE" --files "$WORK/frun.txt" --pre
 check_eq "executable bit set between rounds: the identity says so" "$(jget "$WORK/plan-x2.json" files.0.blob)" "${B2}+x"
 check_eq "executable bit set between rounds: the file is not unchanged" "$(jget "$WORK/plan-x2.json" unchanged)" "[]"
 rm -f "$REPO/src/run.sh"
+
+echo "== plan: the file list must belong to this change (2.1.2)"
+# 本機各 session 共用 $TMPDIR:另一 session 覆寫清單時,清單混入他 repo 的路徑,而 plan/annotate 照報成功
+# (2026-10-19 實例)。帶 --base 時 plan 以 git 算出本次變更的檔案集合,清單須是其子集合
+printf 'src/a.ts\n.github/workflows/tests.yml\nrefs/other-repo.md\n' > "$WORK/fforeign.txt"
+check_eq "paths from another repo in the list: exit 2" "$(rc node "$ROUNDS" plan --root "$REPO" --base "$BASE" --files "$WORK/fforeign.txt" --no-write)" 2
+check "...names a foreign path" "$(cat "$WORK/stderr.txt")" 'refs/other-repo.md'
+check "...says the list is not this change" "$(cat "$WORK/stderr.txt")" 'not part of this change'
+printf 'src/a.ts\nsrc/b.ts\n' > "$WORK/fstale.txt"
+check_eq "a tracked file this change does not touch: exit 2" "$(rc node "$ROUNDS" plan --root "$REPO" --base "$BASE" --files "$WORK/fstale.txt" --no-write)" 2
+check "...names it" "$(cat "$WORK/stderr.txt")" 'src/b.ts'
+printf 'src/c.ts\n' > "$WORK/fsubset.txt"
+check_eq "a subset of the change (--focus): exit 0" "$(rc node "$ROUNDS" plan --root "$REPO" --base "$BASE" --files "$WORK/fsubset.txt" --no-write)" 0
+printf 'src/a.ts\nimg.bin\nsrc/c.ts\n' > "$WORK/fall.txt"
+check_eq "committed + binary + untracked: exit 0" "$(rc node "$ROUNDS" plan --root "$REPO" --base "$BASE" --files "$WORK/fall.txt" --no-write)" 0
+# 已 commit 的變更在工作樹改回 base 內容:不在工作樹 diff 裡,但在已 commit 的 diff 裡,仍屬本次變更
+cp "$REPO/src/a.ts" "$WORK/a.bak"
+G show "$BASE:src/a.ts" > "$REPO/src/a.ts"
+check_eq "committed change reverted in the work tree: still part of the change" "$(rc node "$ROUNDS" plan --root "$REPO" --base "$BASE" --files "$WORK/files.txt" --no-write)" 0
+cp "$WORK/a.bak" "$REPO/src/a.ts"
+check_eq "without --base there is nothing to check against: exit 0" "$(rc node "$ROUNDS" plan --root "$REPO" --files "$WORK/fforeign.txt" --no-write)" 0
 
 echo
 echo "Results: $PASS passed, $FAIL failed"

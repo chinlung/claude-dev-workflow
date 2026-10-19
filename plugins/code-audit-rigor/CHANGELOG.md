@@ -2,6 +2,15 @@
 
 All notable changes to the `code-audit-rigor` plugin will be documented in this file.
 
+## [2.1.2] - 2026-10-19
+
+### Fixed
+
+- **A file list from another run can no longer pass as this change's.** `/review-branch` wrote its scoped-file list to a fixed `$TMPDIR/review-branch-files.txt`, and local Claude Code sessions share `$TMPDIR`. On 2026-10-19 another session reviewing a different repository overwrote that file mid-review; `plan`, `resolve-rules` and `annotate` all reported success on the foreign list, and the only visible symptom was a `risk.hits` naming files this repository does not have. Two layers now:
+  - **Prevention**: the command keeps its intermediate files in a directory derived from the repository's git dir (`$TMPDIR/review-branch-<hash>/`), so two repositories never share one; the `--no-write` path (reviewing a repository the sandbox cannot write) uses the same directory for its plan, rules and results, which also keeps `--previous` stable across rounds. Same-repository runs already share `<gitdir>` state.
+  - **Detection**: with `--base`, `plan` computes the change's own file set from git — committed on the branch (`base..HEAD`), changed in the work tree (`base..work tree`) and untracked — and refuses (exit 2, naming up to five paths) a list that names anything outside it. Both diffs are needed: a committed change reverted in the work tree is in the first only. A `--focus` list is a subset and passes. Run against the incident's own paths, the refusal fires.
+- `tests/review-branch-rounds.test.sh` 238 → 243: a foreign list and a stale tracked file are refused; a subset, committed + binary + untracked, and a reverted committed change pass; no check without `--base`. Four mutations (check disabled, committed diff dropped, untracked dropped, refusal turned into a warning) each turn the suite red. The "deleted in both rounds" case listed a path that never existed in the fixture repository — exactly what the new check refuses — and now deletes a tracked file instead, keeping what it tests.
+
 ## [2.1.1] - 2026-10-18
 
 ### Security
