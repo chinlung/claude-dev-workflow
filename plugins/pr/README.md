@@ -32,10 +32,16 @@ The `pr` skill triggers when Claude is writing a pull-request description — fo
 
 Prose stays brief. If the repository has a `GLOSSARY.md`, the body uses its terms.
 
+Rules added on top of the reference (1.1.0):
+
+- **Your repo's PR template wins.** If the repository has a pull request template, its headings stay and the three sections' guidance is applied inside them.
+- **Evidence is observed, not written.** Only output from commands run in the session or CI results; otherwise the body says `Not verified: <reason>`.
+- **Screenshots.** `gh` cannot upload images, so the body gets a `**Screenshot pending:**` placeholder and you drag the image in on GitHub.
+
 ## What it does not do
 
-It only shapes the body. It does not commit, push, open the PR, or pick reviewers — save the body to a file and open the PR with `gh pr create --body-file <file>`.
+It only shapes the body. It does not commit, push, or pick reviewers, and it opens or updates a PR only when you ask. The skill tells Claude to write the body to a file outside the repository; asked for a draft, it hands you the file's path, and asked to open or update the PR, it passes the file with `gh pr create --body-file <file>` (or `gh pr edit <number> --body-file <file>`).
 
 ## Origin and credits
 
-Ported from a standalone `pr` skill; the only content change is that the `GLOSSARY.md` instruction applies when the repository has one. The skill's Codex-only `agents/openai.yaml` interface file was not carried over, since Claude Code does not read it. The Summary section's menu of visuals comes from Dex Horthy's `show-me` skill (Humanlayer) — see [`skills/pr/CREDITS.md`](skills/pr/CREDITS.md).
+Ported from a standalone `pr` skill. 1.0.0 changed one line (the `GLOSSARY.md` instruction applies when the repository has one); 1.1.0 adds the three rules above and a closing "Delivering the body" section in the skill (described under "What it does not do"). The skill's Codex-only `agents/openai.yaml` interface file was not carried over, since Claude Code does not read it. The Summary section's menu of visuals comes from Dex Horthy's `show-me` skill (Humanlayer) — see [`skills/pr/CREDITS.md`](skills/pr/CREDITS.md).

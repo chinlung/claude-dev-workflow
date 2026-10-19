@@ -4,6 +4,12 @@
 
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
+## [1.12.1] - 2026-10-20
+
+### Changed
+
+- **pr 1.0.0 → 1.1.0：skill 現在寫明 body 怎麼交付、證據可以從哪裡來。** 在移植的參考版本之上加四條規則，每條都堵住 1.0.0 可能寫錯或弄丟 body 的一種情況：結尾新增一段，要求把 body 寫成 repo 外的檔案；只有使用者要求開或更新 PR 時，才用 `gh pr create --body-file`（既有 PR 用 `gh pr edit <number> --body-file`）交付，否則交出檔案路徑；不用 `--body` 直接帶入——shell 會把雙引號裡的反引號當命令執行；1.0.0 只把這條路寫在 README，而 skill 載入時模型讀不到 README。Evidence 只能引用本 session 實際跑過的命令輸出或 CI 結果，沒有就寫 `Not verified: <原因>`。repo 自己的 PR template（root、`docs/`、`.github/` 的 `pull_request_template.md`，或 `PULL_REQUEST_TEMPLATE/` 目錄）保留其段落。`gh` 無法上傳圖片，所以需要截圖時改留看得見的 `**Screenshot pending:**` 佔位。
+
 ## [1.12.0] - 2026-10-20
 
 ### Added

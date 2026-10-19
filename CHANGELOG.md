@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.12.1] - 2026-10-20
+
+### Changed
+
+- **pr 1.0.0 → 1.1.0: the skill now says how to deliver the body and where its evidence may come from.** Four rules on top of the ported reference, each closing a way 1.0.0 could produce a wrong or lost body: a closing section tells the model to write the body to a file outside the repository and, only when the user asked to open or update the PR, pass it with `gh pr create --body-file` (or `gh pr edit <number> --body-file`) — otherwise it hands over the file's path — never inline with `--body` where the shell runs backticks — in 1.0.0 that route was only in the README, which the model does not read when the skill loads; Evidence may only quote output from commands run in the session or CI results, and says `Not verified: <reason>` otherwise; a repository's own PR template (`pull_request_template.md` in the root, `docs/` or `.github/`, or a `PULL_REQUEST_TEMPLATE/` directory) keeps its headings; and since `gh` cannot upload images, a needed screenshot becomes a visible `**Screenshot pending:**` placeholder.
+
 ## [1.12.0] - 2026-10-20
 
 ### Added
