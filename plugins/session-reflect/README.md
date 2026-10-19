@@ -22,7 +22,11 @@ Stop event
        │   merely *mentioning* the plugin never suppresses the review)
        ├─ mid-interaction detection (pending question → yield without consuming
        │   the session's single trigger; parse failure → approve, per contract)
-       └─ block → Claude invokes the reflect skill:
+       └─ block (reason carries the transcript path) → Claude invokes the reflect skill:
+            Stage 0  friction digest — scripts/friction-digest.sh pulls failed commands,
+                     permission/classifier denials, hook blocks, errors hidden in
+                     successful Bash output and interrupts out of the transcript JSONL
+                     (survives compaction; no path on a manual run → stated, not skipped)
             Stage 1  quick triage — routine session? one-line "nothing to review", done
                      (routine or abandoned but had friction: only the environment lens runs)
             Stage 2  five-lens sweep, each lens gated by an activation condition —
@@ -48,7 +52,8 @@ Stop event
 ## Testing
 
 ```bash
-bash plugins/session-reflect/tests/gate.test.sh   # 23 assertions, also run in CI
+bash plugins/session-reflect/tests/gate.test.sh     # 24 assertions, also run in CI
+bash plugins/session-reflect/tests/digest.test.sh   # 37 assertions, also run in CI
 ```
 
 ## Relation to session-learning

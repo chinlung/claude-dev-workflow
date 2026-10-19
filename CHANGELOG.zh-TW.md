@@ -4,6 +4,12 @@
 
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
+## [1.11.9] - 2026-10-19
+
+### Added
+
+- **session-reflect 1.1.0 → 1.2.0：摩擦證據改從 transcript 取，不靠記憶。** 新增 `friction-digest.sh`，從 session 的 transcript JSONL 抽出失敗的命令、權限與 auto mode classifier 拒絕、hook 擋下與報紅、藏在成功 Bash 輸出裡的錯誤行、使用者中斷，附各類計數、重複失敗與 transcript 行號；Stop gate 的 block reason 改為帶上 transcript 路徑，skill 先跑摘要。長 session 到回顧時多半已被 compact，摩擦細節正是 compact 最先丟掉的東西。欄位形狀以真實 transcript 實測；`tests/digest.test.sh`（37 條斷言，已進 CI）有 14 種定點突變佐證。這是 `docs/session-reflect-retro-optimization-2026-10-19.md` 的 P4。
+
 ## [1.11.8] - 2026-10-19
 
 ### Added

@@ -52,6 +52,8 @@ if [ -n "$last_assistant" ]; then
   if [ "$asks" = "true" ]; then approve; fi
 fi
 
-# 全部通過:標記 flag 並觸發回顧
+# 全部通過:標記 flag 並觸發回顧。reason 帶 transcript 路徑供 skill 跑 friction-digest;
+# 以 jq 組 JSON(路徑含引號也合法),先組再標記——組失敗就放行且不消耗 flag
+if ! out=$(jq -nc --arg p "$transcript_path" '{decision: "block", reason: ("🔍 Session 收尾回顧:請呼叫 session-reflect:reflect skill 執行回顧。先依 skill 的 Stage 1 快速 triage:routine 或無實質內容、且沒有摩擦事件,直接回報「本次 session 無需回顧:<理由>」即可結束。transcript: " + $p)}'); then approve; fi
 touch "$flag_file"
-echo '{"decision": "block", "reason": "🔍 Session 收尾回顧:請呼叫 session-reflect:reflect skill 執行回顧。先依 skill 的 Stage 1 快速 triage:routine 或無實質內容、且沒有摩擦事件,直接回報「本次 session 無需回顧:<理由>」即可結束。"}'
+echo "$out"
