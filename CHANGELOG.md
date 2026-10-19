@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.11.11] - 2026-10-19
+
+### Fixed
+
+- **code-audit-rigor 2.1.2 → 2.1.3: `annotate` annotates only this round's fresh draft, for this branch.** When the tool call that writes the results file failed, `annotate` carried on with the stale file left on disk and saved it as the new round's state — twice on 2026-10-19, once a file from another branch and once one it had already annotated — and the validator and coverage check passed both. It now refuses (exit 2, before writing anything) a file that already carries the `head` it writes, and a file whose `branch` is not the checked-out one (not compared on a detached HEAD); the second also keeps a wrong `branch` from silently turning the next round into a full one. It also refuses a plan and a rules file that read different file lists (two sessions on one repository, or a skipped step, left a `risk` block computed from a list the plan never saw; `resolve-rules` cannot validate its list against the change itself because its `--base` is the base tip, so `annotate` compares the two), and a UTF-8 BOM at the start of a file list is no longer taken for part of the first path — it used to make a file that should be `deep` silently come out `standard`. `tests/review-branch-rounds.test.sh` 247 → 273, backed by thirteen mutations.
+
 ## [1.11.10] - 2026-10-19
 
 ### Fixed

@@ -226,10 +226,32 @@ check_eq "glob: {deploy,…}/** matches a nested path" "$(jget "$WORK/rules2.jso
 check_eq "glob: a plain source file is standard" "$(jget "$WORK/rules2.json" files.2.risk.tier)" standard
 
 echo "== annotate embeds risk from resolve-rules when present"
+# This section runs its own plan/annotate pair on a list of its own, so it saves the git dir's round state
+# and the results file, and puts both back at the end: the sections below count rounds from the state the
+# sections above left (one of them copies the results file to use as --previous).
+cp "$REPO/.git/review-branch-last.json" "$WORK/last-before-risk.json"
+cp "$REPO/.git/review-branch-plan.json" "$WORK/plan-before-risk.json"
+cp "$R" "$WORK/results-before-risk.json"
+# plan and resolve-rules read the same list (since 2.1.3 annotate refuses a pair that read different ones);
+# plan without --base, since these paths are not part of the fixture's change
+node "$ROUNDS" plan --root "$REPO" --files "$WORK/rfiles.txt" > /dev/null 2>&1 || true
 node "$RULES" --root "$REPO" --files "$WORK/rfiles.txt" --user-manifest "$WORK/no-such-manifest.json" > /dev/null
+# A fresh draft, like every other section: since 2.1.3 annotate refuses a file it has already annotated,
+# and this section is about the risk block, not about re-annotating.
+cat > "$R" <<'EOF'
+{ "branch": "feature/x",
+  "scopedFiles": [ {"file":"src/a.ts","status":"reviewed","source":"committed"} ],
+  "suggestions": [], "verifications": [] }
+EOF
 check_eq "annotate (risk) exits 0" "$(rc node "$ROUNDS" annotate "$R" --root "$REPO" --base "$BASE")" 0
 check_eq "annotate: risk tier embedded" "$(jget "$R" risk.tier)" deep
 check_eq "validator accepts the embedded risk" "$(rc node "$VALIDATOR" "$R")" 0
+# The rules file stays in the git dir; the sections below run annotate on lists of their own and have
+# nothing to do with this one.
+rm -f "$REPO/.git/review-branch-rules.json"
+cp "$WORK/last-before-risk.json" "$REPO/.git/review-branch-last.json"
+cp "$WORK/plan-before-risk.json" "$REPO/.git/review-branch-plan.json"
+cp "$WORK/results-before-risk.json" "$R"
 
 echo "== resolve-rules --base: the project risk list is read from the base revision"
 # A branch under review ships its own work tree, so a .reviewrules risk list read from there lets the branch
@@ -745,6 +767,83 @@ check_eq "...the trailing-space name is kept (only \\r is stripped)" "$(jget "$W
 node "$RULES" --root "$REPO" --files "$WORK/fspace.txt" --user-manifest "$WORK/no-such-manifest.json" --no-write > "$WORK/rules-sp.json" 2>/dev/null
 check_eq "resolve-rules keeps the leading space too" "$(jget "$WORK/rules-sp.json" files.0.file)" " lead.txt"
 rm -f "$REPO/ lead.txt" "$REPO/trail.txt "
+
+echo "== annotate: only a fresh results file for this branch is annotated (2.1.3)"
+# 2026-10-19 兩次:結果檔的 Write 失敗後,annotate 對磁碟上的舊檔(他分支的、或已標註過的)照樣成功並存成新一輪狀態
+node "$ROUNDS" plan --root "$REPO" --base "$BASE" --files "$WORK/files.txt" > /dev/null 2>&1 || true
+cat > "$R" <<'EOF'
+{ "branch": "feature/x",
+  "scopedFiles": [ {"file":"src/a.ts","status":"reviewed","source":"committed"} ],
+  "suggestions": [ {"file":"src/a.ts","line":2,"quotedCode":"L2 changed","description":"d","severity":"LOW"} ],
+  "verifications": [ {"id":"V-001","verdict":"PASS","suggestion":0} ] }
+EOF
+check_eq "a fresh results file for this branch: annotate exits 0" "$(rc node "$ROUNDS" annotate "$R" --root "$REPO" --base "$BASE")" 0
+SNAP_R=$(cat "$R"); SNAP_L=$(cat "$REPO/.git/review-branch-last.json")
+check_eq "the same file again (it already carries a head): exit 2" "$(rc node "$ROUNDS" annotate "$R" --root "$REPO" --base "$BASE")" 2
+check "...says it is already annotated" "$(cat "$WORK/stderr.txt")" 'already annotated'
+check_eq "...the results file is untouched" "$(cat "$R")" "$SNAP_R"
+check_eq "...and so is the saved round state" "$(cat "$REPO/.git/review-branch-last.json")" "$SNAP_L"
+cat > "$R" <<'EOF'
+{ "branch": "feature/other",
+  "scopedFiles": [ {"file":"src/a.ts","status":"reviewed","source":"committed"} ],
+  "suggestions": [], "verifications": [] }
+EOF
+SNAP_R=$(cat "$R")
+check_eq "a results file written for another branch: exit 2" "$(rc node "$ROUNDS" annotate "$R" --root "$REPO" --base "$BASE")" 2
+check "...names the file's branch" "$(cat "$WORK/stderr.txt")" 'feature/other'
+check "...and the current branch" "$(cat "$WORK/stderr.txt")" 'feature/x'
+check_eq "...the results file is untouched" "$(cat "$R")" "$SNAP_R"
+check_eq "...and the saved round state is not replaced by it" "$(cat "$REPO/.git/review-branch-last.json")" "$SNAP_L"
+G checkout -q --detach
+check_eq "detached HEAD: there is no branch to compare, annotate exits 0" "$(rc node "$ROUNDS" annotate "$R" --root "$REPO" --base "$BASE")" 0
+G checkout -q feature/x
+
+echo "== annotate: plan and resolve-rules must have read the same file list (2.1.3)"
+# plan 與 resolve-rules 各自讀一次清單、各自把結果存進 <gitdir>。兩個 session 並行、或漏跑其中一步時,
+# annotate 會把依另一份清單算出的 risk 嵌進本輪結果。resolve-rules 的 --base 是 base tip 而非 merge-base,
+# 無法照抄 plan 的「清單須屬本次變更」,所以改在 annotate 比對兩邊看過的檔案集合(與 base 無關)
+fresh_draft() {
+  cat > "$R" <<'EOF'
+{ "branch": "feature/x",
+  "scopedFiles": [ {"file":"src/a.ts","status":"reviewed","source":"committed"},
+                   {"file":"src/c.ts","status":"reviewed","source":"untracked"} ],
+  "suggestions": [], "verifications": [] }
+EOF
+}
+run_rules() { node "$RULES" --root "$REPO" --files "$1" --user-manifest "$WORK/no-such-manifest.json" > /dev/null 2>&1; }
+node "$ROUNDS" plan --root "$REPO" --base "$BASE" --files "$WORK/files.txt" > /dev/null 2>&1 || true
+fresh_draft; run_rules "$WORK/files.txt"
+check_eq "plan and rules read the same list: annotate exits 0" "$(rc node "$ROUNDS" annotate "$R" --root "$REPO" --base "$BASE")" 0
+check "...and embeds the risk block" "$(jget "$R" risk.tier)" '^\(standard\|deep\)$'
+printf 'src/c.ts\n' > "$WORK/fc.txt"
+fresh_draft; run_rules "$WORK/fc.txt"
+SNAP_R=$(cat "$R"); SNAP_L=$(cat "$REPO/.git/review-branch-last.json")
+check_eq "rules read fewer paths than the plan: exit 2" "$(rc node "$ROUNDS" annotate "$R" --root "$REPO" --base "$BASE")" 2
+check "...names the path only the plan has" "$(cat "$WORK/stderr.txt")" 'src/a.ts'
+check "...says the two read different lists" "$(cat "$WORK/stderr.txt")" 'different file lists'
+check_eq "...the results file is untouched" "$(cat "$R")" "$SNAP_R"
+check_eq "...and so is the saved round state" "$(cat "$REPO/.git/review-branch-last.json")" "$SNAP_L"
+printf 'src/a.ts\nsrc/c.ts\nsrc/b.ts\n' > "$WORK/fextra.txt"
+fresh_draft; run_rules "$WORK/fextra.txt"
+check_eq "rules read a path the plan did not: exit 2" "$(rc node "$ROUNDS" annotate "$R" --root "$REPO" --base "$BASE")" 2
+check "...names the path only the rules have" "$(cat "$WORK/stderr.txt")" 'src/b.ts'
+printf 'src/a.ts\nsrc/c.ts\nreview-branch-results.json\n' > "$WORK/fres.txt"
+fresh_draft; run_rules "$WORK/fres.txt"
+check_eq "the results file itself in the rules' list is not a difference (plan drops it): exit 0" "$(rc node "$ROUNDS" annotate "$R" --root "$REPO" --base "$BASE")" 0
+fresh_draft; run_rules "$WORK/fc.txt"
+check_eq "no plan to compare with (--plan names nothing): not checked, exit 0" "$(rc node "$ROUNDS" annotate "$R" --root "$REPO" --base "$BASE" --plan "$WORK/no-such-plan.json")" 0
+rm -f "$REPO/.git/review-branch-rules.json"
+fresh_draft
+check_eq "no rules file: nothing to compare, exit 0" "$(rc node "$ROUNDS" annotate "$R" --root "$REPO" --base "$BASE")" 0
+check_eq "...and no risk block is invented" "$(jget "$R" risk)" undefined
+# 清單檔開頭的 UTF-8 BOM(PowerShell 寫出的檔常見)屬於第一個檔名的一部分:不去掉的話第一個路徑對不上 git,
+# plan --base 會拒收,resolve-rules 則把它當成沒有任何規則命中的路徑,靜默落到 standard
+printf '\357\273\277src/a.ts\nsrc/c.ts\n' > "$WORK/fbom.txt"
+node "$ROUNDS" plan --root "$REPO" --base "$BASE" --files "$WORK/fbom.txt" --no-write > "$WORK/plan-bom.json" 2>/dev/null || true
+check_eq "a list that starts with a UTF-8 BOM: plan reads the first path cleanly" "$(jget "$WORK/plan-bom.json" files.0.file)" "src/a.ts"
+node "$RULES" --root "$REPO" --files "$WORK/fbom.txt" --user-manifest "$WORK/no-such-manifest.json" --no-write > "$WORK/rules-bom.json" 2>/dev/null || true
+check_eq "...and so does resolve-rules" "$(jget "$WORK/rules-bom.json" files.0.file)" "src/a.ts"
+rm -f "$REPO/.git/review-branch-rules.json"
 
 echo
 echo "Results: $PASS passed, $FAIL failed"

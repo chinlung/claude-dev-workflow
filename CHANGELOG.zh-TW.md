@@ -4,6 +4,12 @@
 
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
+## [1.11.11] - 2026-10-19
+
+### Fixed
+
+- **code-audit-rigor 2.1.2 → 2.1.3：`annotate` 只標註本輪、本分支的全新草稿。** 寫結果檔的那次工具呼叫失敗時，`annotate` 會照樣處理磁碟上殘留的舊檔，並把它存成新一輪的狀態——2026-10-19 發生過兩次，一次是他分支的檔、一次是它自己標註過的檔——而驗證器與覆蓋核對也都放行。現在遇到已經帶有它自己寫入的 `head` 的檔、或 `branch` 不是目前檢出分支的檔，會在寫入任何東西之前以 exit 2 拒絕（detached HEAD 時不比對分支）；後者同時避免 `branch` 寫錯時，下一輪被靜默退成完整審查。另外，`plan` 與 `resolve-rules` 讀的檔案清單不是同一組時也會拒絕（兩個 session 並行、或漏跑一步，會讓 risk 區塊依 plan 沒看過的清單算出；`resolve-rules` 的 `--base` 是 base tip，沒辦法自己驗清單屬本次變更，所以改由 `annotate` 比對兩邊）；清單檔開頭的 UTF-8 BOM 也不再被當成第一個路徑的一部分——以前它會讓本該是 `deep` 的檔靜默變成 `standard`。`tests/review-branch-rounds.test.sh` 247 → 273，有十三種突變佐證。
+
 ## [1.11.10] - 2026-10-19
 
 ### Fixed
