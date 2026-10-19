@@ -40,8 +40,10 @@
  *   node review-branch-rounds.cjs plan --root <repo> --files <list|-> [--base <sha>] [--full] [--previous <json>]
  *   node review-branch-rounds.cjs annotate <results.json> --root <repo> --base <sha> [--plan <json>] [--rules <json>]
  *
- * Exit 0 on success; 1 when `annotate` refuses (re-posted dismissed anchor); 2 on usage / IO errors
- * and when `plan` refuses a file list that is not this change's.
+ * Exit 0 on success; 1 when `annotate` refuses (re-posted dismissed anchor); 2 on usage / IO errors,
+ * when `plan` refuses a file list that is not this change's, and when `annotate` refuses its inputs (2.1.3):
+ * a results file that is already annotated or written for another branch, or a plan and a rules file that
+ * read different file lists. All of those come before anything is written.
  * Zero dependencies. The diff parsing mirrors scope-ledger's scope-facts.cjs on purpose (same author,
  * same conventions) but is not shared: plugins install independently.
  */
@@ -145,6 +147,8 @@ function readList(spec) {
   } else {
     try { text = fs.readFileSync(spec, 'utf8'); } catch (e) { die(`cannot read file list ${spec}: ${e.message}`); }
   }
+  // A UTF-8 BOM (some Windows tools write one) is not part of the first file name.
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
   const seen = new Set();
   const out = [];
   for (const raw of text.split('\n')) {
@@ -428,9 +432,44 @@ function annotate(opts) {
   if (!results || typeof results !== 'object' || Array.isArray(results)) die(`${resultsPath} is not a JSON object`);
   if (!Array.isArray(results.suggestions) || !Array.isArray(results.scopedFiles)) die(`${resultsPath} lacks suggestions[] / scopedFiles[]`);
 
+  // `annotate` takes this round's fresh draft and nothing else. The results file is written by a tool call
+  // that can fail (it must have been read first, and annotate itself rewrites it), and annotate used to
+  // carry on with whatever was left on disk: on 2026-10-19 it twice annotated and saved as the new round's
+  // state a file from an earlier run — another branch's, and one it had already annotated — and the
+  // validator and the coverage check passed both. Both refusals come before anything is written.
+  if (typeof results.head === 'string' && results.head) {
+    die(`${resultsPath} is already annotated (round ${results.round} at ${results.head.slice(0, 7)}): it is the output of an earlier run, not this round's draft — write this round's results file afresh; annotate never re-annotates, since that would save an earlier round's suggestions as this round's state`);
+  }
+  // plan's "same work" test compares the saved state's branch with the checked-out one, so a wrong
+  // branch here silently turns the next round into a full one. A detached HEAD has no branch name to compare.
+  const branchNow = currentBranch(root);
+  if (branchNow !== 'HEAD' && results.branch !== branchNow) {
+    die(`${resultsPath} was written for branch ${JSON.stringify(results.branch)} but ${JSON.stringify(branchNow)} is checked out — write this round's results file for this branch`);
+  }
+
   const gd = gitDir(root);
   const planData = readJson(opts.plan || path.join(gd, PLAN_FILE));
-  const planOk = !!(planData && typeof planData === 'object' && planData.branch === currentBranch(root));
+  const planOk = !!(planData && typeof planData === 'object' && planData.branch === branchNow);
+
+  // plan and resolve-rules each read the file list on their own and each save their result in the git dir.
+  // When two runs share that dir (two sessions on one repository, or a step skipped this round), the risk
+  // block below would be computed from a list the plan never saw. resolve-rules cannot check its list the
+  // way plan does (its --base is the base tip, not the merge-base, so "the change's own files" is not
+  // computable there), but both files name the paths they read, and those must be the same set. The
+  // results file itself is the one difference by design: plan drops it from the list, resolve-rules does not.
+  const rules = readJson(opts.rules || path.join(gd, RULES_FILE));
+  if (planOk && rules && Array.isArray(rules.files)) {
+    const paths = (list) => new Set((Array.isArray(list) ? list : []).map((e) => e && e.file).filter((f) => typeof f === 'string' && f !== RESULTS_FILE));
+    const inPlan = paths(planData.files);
+    const inRules = paths(rules.files);
+    const onlyPlan = [...inPlan].filter((f) => !inRules.has(f));
+    const onlyRules = [...inRules].filter((f) => !inPlan.has(f));
+    if (onlyPlan.length || onlyRules.length) {
+      const some = (a) => a.slice(0, 5).join(', ') + (a.length > 5 ? `, … (${a.length - 5} more)` : '');
+      die(`plan and resolve-rules read different file lists (only in the plan: ${onlyPlan.length ? some(onlyPlan) : '-'}; only in the rules: ${onlyRules.length ? some(onlyRules) : '-'}) — re-run plan and resolve-rules on the same list, then annotate; the risk block would otherwise describe files this round did not review`);
+    }
+  }
+
   const priorDismissed = planOk ? mergeDismissed(planData.dismissed) : [];
   const priorByKey = new Map();
   for (const d of priorDismissed) {
@@ -504,7 +543,6 @@ function annotate(opts) {
   results.dismissed = mergeDismissed(priorDismissed, failedNow.map((d) => ({ ...d, round })));
   results.carried = planOk ? (planData.carried || []) : (Array.isArray(results.carried) ? results.carried : []);
 
-  const rules = readJson(opts.rules || path.join(gd, RULES_FILE));
   if (rules && rules.risk && (rules.risk.tier === 'standard' || rules.risk.tier === 'deep')) {
     results.risk = { tier: rules.risk.tier, hits: Array.isArray(rules.risk.hits) ? rules.risk.hits : [] };
   }

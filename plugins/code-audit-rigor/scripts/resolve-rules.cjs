@@ -132,6 +132,9 @@ function readList(spec) {
   } else {
     try { text = fs.readFileSync(spec, 'utf8'); } catch (e) { die(`cannot read file list ${spec}: ${e.message}`); }
   }
+  // A UTF-8 BOM (some Windows tools write one) is not part of the first file name; left in, that path
+  // matches no rule and its risk tier silently falls to standard.
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
   const out = [];
   const seen = new Set();
   for (const raw of text.split('\n')) {
