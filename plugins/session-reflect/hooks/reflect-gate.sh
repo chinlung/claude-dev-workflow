@@ -43,12 +43,15 @@ if [ -n "$last_assistant" ]; then
   case "$tool_names" in
     *AskUserQuestion*|*ExitPlanMode*) approve ;;
   esac
-  if ! last_text=$(echo "$last_assistant" | jq -r '[.message.content[]? | select(.type=="text") | .text] | last // ""' 2>/dev/null); then approve; fi
-  case "$last_text" in
-    *"?"|*"？") approve ;;
-  esac
+  # 問句偵測看結尾 400 字窗口,不只看最後一字:收尾問句後常接條列與補充說明
+  # (曾漏判「要實作嗎?實作範圍如下:…」後還有五行的訊息)。半形 ? 須後接空白、
+  # 結尾或收尾符號,避開 URL 的 ?query 與 shell 的 ${x:?}。jq 以 codepoint 切片,不受 locale 影響。
+  # 取捨:窗口內非提問的?(標題、引號轉述、自問自答)也會讓路——flag 不消耗、下次 Stop 再判,
+  # 但若那正是 session 的最後一則,該 session 不回顧。舊版的漏判是在互動中觸發並耗掉唯一一次機會,代價不更低
+  if ! asks=$(echo "$last_assistant" | jq -r '[.message.content[]? | select(.type=="text") | .text] | last // "" | .[-400:] | test("？|\\?([\\s*)」』\"`]|$)")' 2>/dev/null); then approve; fi
+  if [ "$asks" = "true" ]; then approve; fi
 fi
 
 # 全部通過:標記 flag 並觸發回顧
 touch "$flag_file"
-echo '{"decision": "block", "reason": "🔍 Session 收尾回顧:請呼叫 session-reflect:reflect skill 執行回顧。先快速 triage:routine 或無實質內容,直接回報「本次 session 無需回顧:<理由>」即可結束。"}'
+echo '{"decision": "block", "reason": "🔍 Session 收尾回顧:請呼叫 session-reflect:reflect skill 執行回顧。先依 skill 的 Stage 1 快速 triage:routine 或無實質內容、且沒有摩擦事件,直接回報「本次 session 無需回顧:<理由>」即可結束。"}'

@@ -4,6 +4,12 @@
 
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
+## [1.11.8] - 2026-10-19
+
+### Added
+
+- **session-reflect 1.0.2 → 1.1.0：回顧也看 agent 的工作環境，且處方優先做成檢查而非規則。** 新增第五視角「環境摩擦」，把 session 中觀察到的症狀（為找一個檔繞了多輪、犯了機器抓得到的錯、review 漏抓、指令在場卻沒被遵守、昂貴的工具呼叫、拿不到關鍵資訊、反覆的權限拒絕）對應到處方；並新增第五道濾鏡決定處方的落點：先接上既有檢查再考慮新寫；機械性違規做成有下游消費者的確定性檢查；只有每個 session 都需要且無法機器化的才進常駐指令檔；「記住某件事」留給 session-learning。每個視角加上啟用條件；有摩擦事件的 routine 或中途放棄的 session 改為只跑新視角而非跳過；Stop gate 的問句偵測改看結尾 400 字而非最後一字（收尾問句後接條列的訊息原本會漏判）。源自一個使用者手動呼叫的 `retro` skill，設計筆記見 `docs/session-reflect-retro-optimization-2026-10-19.md`。
+
 ## [1.11.7] - 2026-10-18
 
 ### Security

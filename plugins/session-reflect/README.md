@@ -1,6 +1,6 @@
 # session-reflect
 
-> Session-end reflective review — a cheap Stop-hook gate plus a two-stage skill that proposes up to 5 **verified** improvement suggestions (out-of-scope bugs, pre-existing issues, adjacent optimizations, knowledge gaps), executes the ones you pick, and parks the rest in a backlog.
+> Session-end reflective review — a cheap Stop-hook gate plus a two-stage skill that proposes up to 5 **verified** improvement suggestions (out-of-scope bugs, pre-existing issues, adjacent optimizations, knowledge gaps, environment friction), executes the ones you pick, and parks the rest in a backlog.
 
 ## Quick start
 
@@ -24,10 +24,12 @@ Stop event
        │   the session's single trigger; parse failure → approve, per contract)
        └─ block → Claude invokes the reflect skill:
             Stage 1  quick triage — routine session? one-line "nothing to review", done
-            Stage 2  four-lens sweep — every candidate needs a concrete evidence anchor
-            Stage 2.5 verification — inline four-filter self-review (anchor actually
-                     Read, existing safeguards, deliberate design, observable value)
-                     + one adversarial verifier subagent framed to refute, not confirm
+                     (routine or abandoned but had friction: only the environment lens runs)
+            Stage 2  five-lens sweep, each lens gated by an activation condition —
+                     every candidate needs a concrete evidence anchor
+            Stage 2.5 verification — inline five-filter self-review (anchor actually
+                     Read, existing safeguards, deliberate design, observable value,
+                     placement) + one adversarial verifier subagent framed to refute
             Stage 3  multi-select prompt (2-4 options per question, per tool limits)
                      → chosen: execute now, while context is hot
                      → unchosen: append to .claude/reflect-backlog.md
@@ -46,7 +48,7 @@ Stop event
 ## Testing
 
 ```bash
-bash plugins/session-reflect/tests/gate.test.sh   # 18 assertions, also run in CI
+bash plugins/session-reflect/tests/gate.test.sh   # 23 assertions, also run in CI
 ```
 
 ## Relation to session-learning

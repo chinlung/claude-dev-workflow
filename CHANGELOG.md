@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.11.8] - 2026-10-19
+
+### Added
+
+- **session-reflect 1.0.2 → 1.1.0: the review also looks at the agent's environment, and prefers a check to a rule.** A fifth lens, environment friction, maps symptoms seen in the session (a long hunt for a file, a mistake a machine could catch, a review miss, an instruction present but not followed, expensive tool calls, missing information, recurring permission denials) to remedies, and a fifth filter places each remedy: wire up an existing check before writing a new one; a mechanical violation gets a deterministic check with a downstream consumer; only what every session needs and no machine can enforce goes in an always-loaded instruction file; "remember this" stays with session-learning. Each lens now has an activation condition, a routine or abandoned session with friction runs the new lens instead of being skipped, and the Stop gate's pending-question check reads the last 400 characters rather than the last one (a closing question followed by a list used to be missed). Adapted from a user-invoked `retro` skill; design notes in `docs/session-reflect-retro-optimization-2026-10-19.md`.
+
 ## [1.11.7] - 2026-10-18
 
 ### Security
