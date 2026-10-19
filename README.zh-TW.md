@@ -18,6 +18,7 @@
 | [Security Audit](#security-audit-插件) | 六階段多代理流程，主動獵捕可被利用的漏洞（vendored 自 cloudflare/security-audit-skill） | 自動觸發 skill |
 | [Session Reflect](#session-reflect-插件) | Session 收尾回顧，提出最多 5 個經驗證的可執行改進建議 | `/session-reflect:reflect` + Stop hook |
 | [Scope Ledger](#scope-ledger-插件) | 每 goal 一份工作範圍帳本 + follow-ups backlog + 六個 fail-open hook，review finding 依 mode（converge／harvest）先 triage 再動手，擋住 review 驅動的範圍擴張又不跳過真 bug | `/scope-ledger:scope` + PreToolUse（Edit＋Bash）／UserPromptSubmit／PostToolUse／Stop／SessionStart hooks |
+| [PR](#pr-插件) | 好審的 PR body 模板：視覺化 Summary、before／after Evidence、Merge Danger（door＋blast radius） | `/pr:pr` + 自動觸發 skill |
 
 ## 安裝方式
 
@@ -36,6 +37,7 @@
 /plugin install security-audit@scl-claude-plugins
 /plugin install session-reflect@scl-claude-plugins
 /plugin install scope-ledger@scl-claude-plugins
+/plugin install pr@scl-claude-plugins
 ```
 
 或直接安裝：
@@ -656,6 +658,10 @@ Session 收尾回顧系統。fail-open 的 Stop hook 閘門先廉價 triage（ro
 # Scope Ledger 插件
 
 讓 review 驅動的工作不會無限擴張、原目標不會被忘記，同時不讓真 bug 與安全 finding 被跳過。每個 goal 一份帳本（`.claude/scope-ledger.local.md`：使用者原始請求逐字、`mode`、review 輪數、In scope / Deferred / Log——不綁分支，因為一個 goal 常橫跨 hotfix 與 PR 鏈）作為基線，六個 fail-open hook 讀它：主代理首次寫程式碼檔而沒有帳本時 deny 一次——不論走 Edit/Write 還是 Bash 的 `sed -i`／`perl -pi`／heredoc 重導向／`cp`／`mv`／`patch`——要求先 `/scope-ledger:scope init "<goal>"`；session 首則提示無帳本時給一行不阻擋的提醒；每次 review 入口 skill 或 review 型子代理都注入 triage 政策：`converge` 模式下 review 的產出是 input 不是工單——只採納屬本次變更、可利用的安全 finding（修在本次觸碰範圍）、同缺陷 sibling、專案 MUST 守則、boy-scout 小修，其餘附嚴重度理由去處延後，**延後是排程不是裁決**；`harvest` 模式（goal 本身是稽核或一批 finding）下 finding 就是工單、依嚴重度分批。`done` 把 Deferred 搬進每 repo 一份的 `.claude/scope-followups.local.md`，SessionStart、首則提示、`status` 都會報件數（HIGH 優先），HIGH 安全項沒有 issue 或下一個 goal 不准延後。被 git 追蹤的帳本（含經 committed symlink 或 submodule 進入者）視為 repo 控制的內容、所有 hook 一律忽略；Stop 時 In scope 有未勾項就 block 一次、只要求逐項回報狀態而非催工作；SessionStart 在 compaction 或 resume 後把 In scope 全段印回 context。設計前先量了作者自己的 session：全歷史 todo 工具零呼叫、一個四天的 session 跑了 23 次安全審查橫跨 17 個 PR。`scope stats`（1.1.0）把 Log 裡每個 review 工具的 finding 結局（fixed／deferred／wrong／intentional／moot）加總並算 precision，reviewer 的噪音用量的、不用猜。細節見 [`plugins/scope-ledger/README.md`](plugins/scope-ledger/README.md)。
+
+# PR 插件
+
+單一 skill 的插件，把 PR body 寫成好審的形狀。**Summary** 用最小、足以說清重點的視覺化呈現變更：pseudocode、call tree、component／file tree、Mermaid，或針對變動形狀的 `diff` 草圖；**Evidence** 放 before／after（視覺變更以截圖為優先，其次是測試執行與 console 輸出）；**Merge Danger** 說明這是 one-way 還是 two-way door、blast radius 有多大。它只負責寫 body——把它存成檔案，再用 `gh pr create --body-file <file>` 開 PR；`/commit-commands:commit-push-pr` 會依 diff 自己寫 body，不會套用這份模板。Summary 的視覺化選單取自 Humanlayer Dex Horthy 的 `show-me` skill。詳見 [`plugins/pr/README.md`](plugins/pr/README.md)。
 
 ---
 

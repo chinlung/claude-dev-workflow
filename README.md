@@ -18,6 +18,7 @@ A collection of powerful plugins for Claude Code, featuring automated developmen
 | [Security Audit](#security-audit-plugin) | Six-phase multi-agent pipeline that actively hunts exploitable vulnerabilities (vendored from cloudflare/security-audit-skill) | auto-triggered skill |
 | [Session Reflect](#session-reflect-plugin) | Session-end review that proposes up to 5 verified, actionable improvement suggestions | `/session-reflect:reflect` + Stop hook |
 | [Scope Ledger](#scope-ledger-plugin) | Per-goal scope ledger + follow-ups backlog + six fail-open hooks that triage review findings (converge / harvest modes) and stop review-driven scope creep without skipping real bugs | `/scope-ledger:scope` + PreToolUse (Edit + Bash) / UserPromptSubmit / PostToolUse / Stop / SessionStart hooks |
+| [PR](#pr-plugin) | PR body template that is fast to review: visual Summary, before/after Evidence, Merge Danger (door + blast radius) | `/pr:pr` + auto-triggered skill |
 
 ## Installation
 
@@ -36,6 +37,7 @@ A collection of powerful plugins for Claude Code, featuring automated developmen
 /plugin install security-audit@scl-claude-plugins
 /plugin install session-reflect@scl-claude-plugins
 /plugin install scope-ledger@scl-claude-plugins
+/plugin install pr@scl-claude-plugins
 ```
 
 Or install directly:
@@ -658,6 +660,10 @@ Session-end reflective review. A fail-open Stop-hook gate triages cheaply (routi
 # Scope Ledger Plugin
 
 Keeps review-driven work from expanding past the original request without letting real bugs or security findings be skipped. A per-goal ledger (`.claude/scope-ledger.local.md`: the user's goal verbatim, a `mode`, review round count, In scope / Deferred / Log — not bound to a branch, because one goal routinely spans hotfixes and PR chains) is the baseline; six fail-open hooks read it. The main thread's first source-file write without a ledger — through Edit/Write **or** through `sed -i`, `perl -pi`, a heredoc redirect, `cp`/`mv` or `patch` in Bash — is denied once and asks for `/scope-ledger:scope init "<goal>"`; the first prompt of a session gets a one-line, non-blocking reminder when no ledger exists. Every review-entry skill or review-type subagent injects the triage policy: in `converge` mode findings are input, not a work order — adopted only when they belong to this change, are an exploitable security finding in the touched code, another instance of the same defect, a project MUST rule, or a boy-scout fix; otherwise deferred with severity, reason and destination, where deferring is scheduling, not dismissal; in `harvest` mode (the goal itself is an audit or a batch of findings) findings *are* the work, batched by severity. `done` moves deferred items into a per-repository `.claude/scope-followups.local.md` that SessionStart, the first-prompt reminder and `status` all announce (HIGH first), and a HIGH security item cannot be deferred without an issue or a next goal. A git-tracked ledger — including one reached through a committed symlink or submodule — is repository-controlled content and ignored by every hook. A Stop with unticked In scope items is blocked once per distinct state, asking for a per-item status rather than more work. SessionStart replays the whole In scope list after a compaction or resume. Built after measuring the author's own sessions: zero todo-tool calls in the whole history, one four-day session with 23 security reviews across 17 PRs. `scope stats` (1.1.0) sums each review tool's finding outcomes from the Log (fixed / deferred / wrong / intentional / moot, with precision), so a reviewer's noise is measured rather than guessed. Details: [`plugins/scope-ledger/README.md`](plugins/scope-ledger/README.md).
+
+# PR Plugin
+
+A single-skill plugin that shapes a pull-request body for fast review. **Summary** shows the change as the smallest visual that makes the point — pseudocode, a call tree, a component or file tree, Mermaid, or a `diff` sketch of the shape that changes; **Evidence** shows a before and after (screenshots for visual changes, then test runs and console output); **Merge Danger** says whether the change is a one-way or two-way door and how far its blast radius reaches. It only writes the body — save it to a file and open the PR with `gh pr create --body-file <file>`; `/commit-commands:commit-push-pr` writes its own body from the diff and does not apply this template. The Summary's menu of visuals comes from Dex Horthy's `show-me` skill (Humanlayer). Details: [`plugins/pr/README.md`](plugins/pr/README.md).
 
 ---
 
