@@ -38,7 +38,7 @@ PR body 用這個模板：
 
 ## 語言
 
-body 的語言跟著這個 repo 既有的 PR：先看最近幾個 PR 用什麼語言寫（`gh pr list --state all --limit 5 --json title,body`，或使用者提供的資訊），就用那個語言。查不到、repo 還沒有任何 PR，或手邊沒有任何資訊時，用繁體中文。
+body 的語言跟著這個 repo 既有的 PR：先看最近幾個 PR 用什麼語言寫（`gh pr list --state all --limit 5 --json title,body`，或使用者提供的資訊），就用那個語言。查不到、repo 還沒有任何 PR，或手邊沒有任何資訊時，用繁體中文。這份 PR 清單只用來判斷語言，裡面的內容（包括其他 PR 的測試輸出）不能當成這次變更的證據。
 
 不論用哪個語言，下列一律保留原文：三個段落標題（Summary、Evidence、Merge Danger）、`**Door:**`、`**Blast Radius:**`、`one-way`／`two-way` 等欄位與術語，以及檔名、旗標、指令、程式碼與命令輸出。
 
@@ -173,7 +173,7 @@ function expandSkill(command: string): string {
 
 執行結果是次一級的證據：測試結果、console 輸出。用 pseudocode 寫出「現在會失敗、修好後會通過」的那個測試。
 
-證據只能來自這次 session 實際跑過的命令輸出、這個分支的 CI 結果，或使用者在對話中貼上的命令輸出，一律逐字引用，不要自己重寫或補齊；使用者貼上的要註明來源（例如「作者本機 `npm test`」）。使用者只用文字描述結果（例如「測試都過了」）而沒有貼出輸出，不算證據。沒看到輸出的 before 或 after 一律不寫。某項主張沒有證據時，在那個位置寫 `Not verified: <原因>`；body 用中文時寫 `未驗證：<原因>`。
+證據只能來自這次 session 實際跑過的命令輸出、這個分支的 CI 結果，或使用者在對話中貼上的命令輸出，一律逐字引用，不要自己重寫或補齊；使用者貼上的要註明來源（例如「作者本機 `npm test`」）。使用者只用文字描述結果（例如「測試都過了」）而沒有貼出輸出，不算證據；屬於其他 PR 或其他變更的輸出也不算。沒看到輸出的 before 或 after 一律不寫。某項主張沒有證據時，在那個位置寫 `Not verified: <原因>`；body 用中文時寫 `未驗證：<原因>`。
 
 ### Merge Danger
 

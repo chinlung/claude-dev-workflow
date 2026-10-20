@@ -36,7 +36,7 @@ Rules added on top of the reference:
 
 - **The repo's language wins** (1.2.0). The body is written in the language of the repository's existing PRs (looked up with `gh pr list`, or what you tell it); when that cannot be found, or there are none, it is written in Traditional Chinese. Section headings, field names such as `**Door:**`, file names, commands and code stay as they are.
 - **Your repo's PR template wins** (1.1.0). If the repository has a pull request template, its headings stay and the three sections' guidance is applied inside them.
-- **Evidence is observed, not written** (1.1.0, widened in 1.2.0). Only output from commands run in the session, CI results, or command output you paste, quoted verbatim with its source; a result you only describe in words ("tests pass") is not evidence, and the body then says `Not verified: <reason>` (`未驗證：<原因>` in a Chinese body).
+- **Evidence is observed, not written** (1.1.0, widened in 1.2.0). Only output from commands run in the session, CI results, or command output you paste, quoted verbatim with its source; a result you only describe in words ("tests pass") is not evidence, nor is output from other PRs such as the ones `gh pr list` returns for the language rule (1.2.1), and the body then says `Not verified: <reason>` (`未驗證：<原因>` in a Chinese body).
 - **Screenshots** (1.1.0). `gh` cannot upload images, so the body gets a `**Screenshot pending:**` placeholder and you drag the image in on GitHub.
 
 ## What it does not do
@@ -51,7 +51,7 @@ It only shapes the body. It does not commit, push, or pick reviewers, and it ope
 
 ## Behaviour checks (eval)
 
-`evals/` holds seven cases, each run with and without the plugin so the suite measures uplift (Δ): a result stated only in words not treated as evidence, no fabricated evidence, the repository's template kept, Traditional Chinese when there is no precedent, an English precedent followed, pasted output quoted with its source and a merge-risk call, and one should-not-fire case (a commit message). From the plugin root:
+`evals/` holds eight cases, each run with and without the plugin so the suite measures uplift (Δ): a result stated only in words not treated as evidence, other PRs' output not treated as evidence, no fabricated evidence, the repository's template kept, Traditional Chinese when there is no precedent, an English precedent followed, pasted output quoted with its source and a merge-risk call, and one should-not-fire case (a commit message). From the plugin root:
 
 ```bash
 claude plugin eval . --ablation with-without --model sonnet --judge-model opus --no-publish
