@@ -69,25 +69,21 @@ function run(validator, fixture, expectValid) {
 let tmpCounter = 0;
 
 /**
- * Run a validator CLI against an in-memory object via a temp file. Returns the exit
- * code (0, or the process's non-zero status). THROWS for spawn/setup failures (write
- * error, validator missing/uncallable) — the caller MUST treat a throw as a harness
- * error, never as a validator rejection (that was the old fail-open).
+ * Run a validator CLI against an in-memory object via a temp file. Returns `{status,
+ * output}`: the exit code (0, or the process's non-zero status) and stdout+stderr, so
+ * a mutation can check WHICH rule rejected it (runMutations' optional `expect`).
+ * THROWS for spawn/setup failures (write error, validator missing/uncallable) — the
+ * caller MUST treat a throw as a harness error, never as a validator rejection (that
+ * was the old fail-open). `execFile` is injectable for the same reason as runOutcome's.
  */
-function execValidatorOnObject(validator, obj) {
-  return execValidatorCapture(validator, obj).status;
-}
-
-// Same contract as execValidatorOnObject, plus the validator's stdout+stderr so a
-// mutation can check WHICH rule rejected it (runMutations' optional `expect`).
-function execValidatorCapture(validator, obj) {
+function execValidatorCapture(validator, obj, execFile = execFileSync) {
   spawned.add(validator);
   const tmp = path.join(os.tmpdir(), `validate-fixtures-mut-${process.pid}-${tmpCounter++}.json`);
   // Write OUTSIDE the exit-capturing try: a write failure is a harness/environment
   // error, not a validator rejection — it must propagate, never be scored as a pass.
   fs.writeFileSync(tmp, JSON.stringify(obj));
   try {
-    const out = execFileSync(process.execPath, [validator, tmp], { stdio: 'pipe' });
+    const out = execFile(process.execPath, [validator, tmp], { stdio: 'pipe' });
     return { status: 0, output: String(out) };
   } catch (e) {
     // validator ran and exited non-zero
@@ -121,7 +117,7 @@ function execValidatorCapture(validator, obj) {
  * entry labelled with the group; a rejected base also sets `baseRefused`), and
  * runMutations() prints and scores them.
  */
-function mutationOutcomes(validator, baseFixture, group, mutations) {
+function mutationOutcomes(validator, baseFixture, group, mutations, execFile = execFileSync) {
   const rel = path.relative(ROOT, baseFixture);
   const groupFailure = (msg, extra) => [{ label: group, ok: false, msg, ...extra }];
   if (!fs.existsSync(validator)) return groupFailure(`validator not found — ${path.relative(ROOT, validator)}`);
@@ -133,7 +129,7 @@ function mutationOutcomes(validator, baseFixture, group, mutations) {
   }
   let baseExit;
   try {
-    baseExit = execValidatorOnObject(validator, base);
+    baseExit = execValidatorCapture(validator, base, execFile).status;
   } catch (e) {
     return groupFailure(`validator could not be executed on base ${rel} — ${e.message}`);
   }
@@ -150,7 +146,7 @@ function mutationOutcomes(validator, baseFixture, group, mutations) {
     }
     let result;
     try {
-      result = execValidatorCapture(validator, obj);
+      result = execValidatorCapture(validator, obj, execFile);
     } catch (e) {
       return { label, ok: false, msg: `validator could not be executed — ${e.message}` };
     }
@@ -689,17 +685,22 @@ function main() {
   }
   {
     // (a2) checkSchemaConsistency passes that drift on to its report: two mismatched pairs
-    //      must report problems and two matched pairs must report none. A check that
-    //      ignores the drift (always [] or always non-empty) fails one side.
+    //      must report problems and two matched pairs must report none; an unreadable
+    //      validator or schema (computeSchemaDrift's `error`) must report problems too. A
+    //      check that ignores the drift or the error fails one side.
     const label = 'canary: consistency check reports drift for mismatched pairs and nothing for matched ones';
+    const unreadable = P('scripts/no-such-file-for-the-canary.cjs'); // only read, never executed
     const seen = [];
     const sink = (l, problems) => seen.push(problems.length > 0);
     checkSchemaConsistency([findSchema0], debateV0, 'x', sink);
     checkSchemaConsistency([debateSchema0], findV0, 'x', sink);
     checkSchemaConsistency([findSchema0], findV0, 'x', sink);
     checkSchemaConsistency([debateSchema0], debateV0, 'x', sink);
+    checkSchemaConsistency([findSchema0], unreadable, 'x', sink);
+    checkSchemaConsistency([unreadable], findV0, 'x', sink);
     const got = JSON.stringify(seen);
-    expectNoProblems(label, got === JSON.stringify([true, true, false, false]) ? [] : [`problems reported per pair ${got}, wanted [true,true,false,false]`]);
+    const want = JSON.stringify([true, true, false, false, true, true]);
+    expectNoProblems(label, got === want ? [] : [`problems reported per pair ${got}, wanted ${want}`]);
   }
   // (b) The fixture and mutation harnesses, driven through runOutcome / mutationOutcomes —
   //     the same paths every run / runMutations call takes.
@@ -792,6 +793,33 @@ function main() {
     expectNoProblems(label, got === JSON.stringify([false, false, false, true])
       ? []
       : [`ok flags ${got}, wanted [false,false,false,true]; outcomes=${JSON.stringify(outcomes)}`]);
+  }
+  {
+    // (b6) Every other way mutationOutcomes can fail must yield exactly one ok:false entry,
+    //      without baseRefused, whose msg names the path taken — so none of them can score
+    //      a pass or pose as a rejected base. The BigInt case makes JSON.stringify throw
+    //      before the spawn: the temp-file write is where a harness error must surface.
+    const label = 'canary: mutation harness fails a missing validator, an unloadable base, and a validator it cannot run or feed';
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'vf-mutfail-'));
+    try {
+      const badJson = path.join(tmp, 'not-json.json');
+      fs.writeFileSync(badJson, '{ not json');
+      const noStatus = () => { throw new Error('spawn failed'); };
+      let calls = 0;
+      const baseOkThenNoStatus = () => { if (calls++ === 0) return Buffer.alloc(0); throw new Error('spawn failed'); };
+      const real = [{ label: 'real', mutate: o => { o.severity = 'NOT-A-SEVERITY'; } }];
+      const cases = [
+        ['missing validator', mutationOutcomes(path.join(tmp, 'missing.cjs'), findValid0, 'g', real), /^validator not found/],
+        ['unloadable base', mutationOutcomes(findV0, badJson, 'g', real), /^cannot load valid base/],
+        ['base cannot run', mutationOutcomes(findV0, findValid0, 'g', real, noStatus), /^validator could not be executed on base/],
+        ['mutation cannot run', mutationOutcomes(findV0, findValid0, 'g', real, baseOkThenNoStatus), /^validator could not be executed — spawn failed/],
+        ['mutation cannot be written', mutationOutcomes(findV0, findValid0, 'g', [{ label: 'bigint', mutate: o => { o.n = 1n; } }]), /^validator could not be executed — .*BigInt/],
+      ];
+      const problems = cases
+        .filter(([, out, re]) => !(out.length === 1 && out[0].ok === false && !out[0].baseRefused && re.test(out[0].msg)))
+        .map(([what, out]) => `${what}: ${JSON.stringify(out)}`);
+      expectNoProblems(label, problems);
+    } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
   }
   {
     // (c) collision gate MUST flag a planted commands/<X>.md ↔ skill-named-<X> pair — incl. a
