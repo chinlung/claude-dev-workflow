@@ -104,11 +104,14 @@ function execValidatorCapture(validator, obj) {
 
 /**
  * Generator-based coverage for the required-field / type / enum long tail.
- * Loads a KNOWN-VALID base fixture, applies exactly one mutation, and asserts the
- * validator rejects it (exit non-zero). Isolation is guaranteed by construction: a
- * valid base plus a single-field change means a non-zero exit can only come from that
- * field's rule. A validator that cannot be executed (missing / mis-pathed / write
- * failure) is scored as a FAILURE, never a spurious pass.
+ * Loads a base fixture, checks the validator accepts it, applies exactly one mutation,
+ * and asserts the validator rejects it (exit non-zero). Isolation is guaranteed by
+ * construction: a valid base plus a single-field change means a non-zero exit can only
+ * come from that field's rule — which is why the base is checked here rather than relying
+ * on the fixture section's separate `run(base, true)` line, which nothing ties to this
+ * call: an invalid base makes every mutation exit non-zero and score as a pass. A
+ * validator that cannot be executed (missing / mis-pathed / write failure) is scored as
+ * a FAILURE, never a spurious pass.
  *
  * Isolation still assumes the mutation hit the field its label names. A mutation that
  * lands on the wrong record or trips a second rule exits non-zero all the same, so a
@@ -129,6 +132,21 @@ function runMutations(validator, baseFixture, group, mutations) {
     base = JSON.parse(fs.readFileSync(baseFixture, 'utf8'));
   } catch (e) {
     console.error(`  ✗  ${group}: cannot load valid base ${rel} — ${e.message}`);
+    failed++;
+    failures.push(group);
+    return;
+  }
+  let baseExit;
+  try {
+    baseExit = execValidatorOnObject(validator, base);
+  } catch (e) {
+    console.error(`  ✗  ${group}: validator could not be executed on base ${rel} — ${e.message}`);
+    failed++;
+    failures.push(group);
+    return;
+  }
+  if (baseExit !== 0) {
+    console.error(`  ✗  ${group}: base fixture is not valid (${rel} exit ${baseExit}) — mutations skipped`);
     failed++;
     failures.push(group);
     return;
@@ -720,6 +738,35 @@ function main() {
       if (badExit !== 0) { console.log(`  ✓  ${real}`); passed++; }
       else { console.error(`  ✗  ${real}: expected non-zero, got 0`); failed++; failures.push(real); }
     } catch (e) { console.error(`  ✗  ${real}: ${e.message}`); failed++; failures.push(real); }
+  }
+  {
+    // (b2) runMutations itself MUST refuse a base the validator rejects, and must not run
+    //      the mutations (see its docblock). Drives the real function, not a helper, so a
+    //      dropped `return` or a check moved after the loop fails this too: the mutation
+    //      below exits non-zero on the invalid base and would score a pass.
+    const findV0 = P('plugins/code-audit-rigor/validators/validate-finding.cjs');
+    const label = 'canary: mutation harness refuses an invalid base fixture and skips its mutations';
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'vf-base-'));
+    try {
+      const badBase = path.join(tmp, 'bad-base.json');
+      fs.writeFileSync(badBase, JSON.stringify({ severity: 'NOT-A-SEVERITY' }));
+      const before = { failed, passed, len: failures.length };
+      const captured = [];
+      const origError = console.error;
+      console.error = (...a) => captured.push(a.join(' '));
+      try {
+        runMutations(findV0, badBase, 'canary-base', [
+          { label: 'would pass on an invalid base', mutate: o => { delete o.severity; } },
+        ]);
+      } finally { console.error = origError; }
+      const deltaPassed = passed - before.passed;
+      const pushed = failures.splice(before.len);
+      failed = before.failed; passed = before.passed;
+      const refused = captured.some(l => /base fixture is not valid/.test(l));
+      expectNoProblems(label, pushed.length === 1 && deltaPassed === 0 && refused
+        ? []
+        : [`failed+${pushed.length} passed+${deltaPassed} refused=${refused}`]);
+    } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
   }
   {
     // (c) collision gate MUST flag a planted commands/<X>.md ↔ skill-named-<X> pair — incl. a
