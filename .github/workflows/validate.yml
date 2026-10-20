@@ -34,6 +34,8 @@ jobs:
         run: bash plugins/scope-ledger/tests/scope-hooks.test.sh
       - name: Run scope-ledger stats tests
         run: bash plugins/scope-ledger/tests/scope-stats.test.sh
+      - name: Run security-audit vendored upstream validator tests
+        run: bash plugins/security-audit/tests/upstream.test.sh
       - name: Run code-audit-rigor review-branch-rounds / resolve-rules tests
         run: bash plugins/code-audit-rigor/tests/review-branch-rounds.test.sh
       - name: Run validate-on-plugin-edit hook tests

@@ -1,7 +1,7 @@
 {
   "name": "security-audit",
-  "version": "1.0.1",
-  "description": "Security-audit skill that turns the agent into a security auditor — a six-phase pipeline (recon → hunt → validate → report → structured output → independent verification) using parallel sub-agents to find exploitable vulnerabilities with real impact, not checklist deviations. Vendored from cloudflare/security-audit-skill (MIT). Complements code-audit-rigor: this one actively hunts exploits; code-audit-rigor governs PR/branch review with quantitative decision frameworks.",
+  "version": "2.0.0",
+  "description": "Security-audit skill that turns the agent into a security auditor — guidance by default, and on an explicit audit request a six-phase workflow (reconnaissance → coverage-led hunting → candidate validation → structured output → independent record verification → target-neutral report) that finds vulnerabilities crossing a real trust boundary, not checklist deviations. Vendored from cloudflare/security-audit-skill (MIT). Complements code-audit-rigor: this one actively hunts exploits; code-audit-rigor governs PR/branch review with quantitative decision frameworks.",
   "author": {
     "name": "scl@hanchih.com"
   },

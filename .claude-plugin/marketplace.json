@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "Claude Code plugins collection by scl",
-    "version": "1.12.3"
+    "version": "1.13.0"
   },
   "plugins": [
     {
@@ -60,8 +60,8 @@
     {
       "name": "security-audit",
       "source": "./plugins/security-audit",
-      "description": "安全稽核 skill - 將 agent 化為安全稽核員，以六階段流程（recon → hunt → validate → report → structured output → independent verification）並用平行 sub-agent 主動找出可被利用、有實際影響的漏洞，而非偏離 checklist 的理論性問題。Vendored 自 cloudflare/security-audit-skill（MIT）。與 code-audit-rigor 互補：本 plugin 主動獵捕 exploit，code-audit-rigor 以量化決策框架治理 PR/branch review。",
-      "version": "1.0.1",
+      "description": "安全稽核 skill - 將 agent 化為安全稽核員：預設只提供 guidance，明確要求稽核時才跑六階段流程（reconnaissance → coverage-led hunting → candidate validation → structured output → independent record verification → target-neutral report），找出跨越真實信任邊界、有原始碼證據的漏洞，而非偏離 checklist 的理論性問題。Vendored 自 cloudflare/security-audit-skill（MIT）。與 code-audit-rigor 互補：本 plugin 主動獵捕 exploit，code-audit-rigor 以量化決策框架治理 PR/branch review。",
+      "version": "2.0.0",
       "keywords": ["security-audit", "security-review", "vulnerability", "pen-test", "exploit", "adversarial-validation", "cloudflare"]
     },
     {

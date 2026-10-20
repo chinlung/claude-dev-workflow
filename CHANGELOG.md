@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.13.0] - 2026-10-20
+
+### Changed
+
+- **security-audit 1.0.1 → 2.0.0** (BREAKING) — re-vendored from cloudflare/security-audit-skill `f75f9a0` to `c1c8a8c`; everything under `skills/security-audit/` except `LICENSE` is byte-identical to upstream. The skill is now guidance by default and runs the full workflow only on an explicit audit request. `findings.json` has three verdicts (`confirmed`, `needs_validation`, `rejected`) with required `fingerprint` and `evidence`, so a 1.0.x `findings.json` no longer validates. A coverage ledger with its own validator, run profiles and budgets, sandbox-only execution of target code, and ten domain companions were added upstream. Locally: `tests/upstream.test.sh` runs upstream's 65 validator tests in CI and the PostToolUse hook; the fixture holds one record per verdict and the mutations find records by verdict (the old index-based `rejected missing reason` mutation deleted nothing on the new fixture, which the suite flagged); `runMutations` takes an optional `expect` regex the validator's output must match, and scores a mutation that throws as a failure instead of crashing the runner; the plugin-edit hook now triggers on any code or data file directly in a skill dir (root-relative) instead of two hard-coded security-audit file names, with hook tests for both directions; the plugin README maps the `research` role's judging duties (coverage critic, record verifier) to a read-only `general-purpose` agent instead of `Explore`. See that plugin's CHANGELOG [2.0.0].
+
 ## [1.12.3] - 2026-10-20
 
 ### Fixed

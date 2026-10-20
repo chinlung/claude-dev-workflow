@@ -82,6 +82,14 @@ for rel in plugins/x/commands/c.md plugins/x/skills/s/SKILL.md plugins/x/.claude
   check "6 $rel 觸發 node runner" "$(cat "$r/ran.log" 2>/dev/null)" 'runner'
 done
 
+# 6b) skill 目錄第一層的程式／資料檔(vendored security-audit 的 validator、上游測試、schema 即此形狀)→ 觸發 node runner
+i=0
+for rel in plugins/x/skills/s/validate-x.cjs plugins/x/skills/s/validate-x.test.cjs plugins/x/skills/s/report-schema.json; do
+  i=$((i+1)); r=$WORK/r6b-$i; make_root "$r"
+  run_hook "$r" "$r/$rel"
+  check "6b $rel 觸發 node runner" "$(cat "$r/ran.log" 2>/dev/null)" 'runner'
+done
+
 # 7) 閘門不讀的檔案 → no-op:skill 目錄下其他 md,以及形似但不在 plugins/<name>/ 底下的
 #    commands/skills/manifest/CHANGELOG(專案 .claude/、docs/、plugin 內的 marketplace.json)
 i=0
@@ -104,6 +112,13 @@ if [ -f "$r/ran.log" ]; then
   FAIL=$((FAIL+1)); echo "FAIL: 8 專案根之外的 plugins/x/commands 不應觸發 — ran.log: $(cat "$r/ran.log")"
 else
   PASS=$((PASS+1)); echo "PASS: 8 專案根之外零執行"
+fi
+r=$WORK/r8b; make_root "$r"
+run_hook "$r" "$WORK/outside/plugins/x/skills/s/validate-x.cjs"
+if [ -f "$r/ran.log" ]; then
+  FAIL=$((FAIL+1)); echo "FAIL: 8b 專案根之外的 skill 程式檔不應觸發 — ran.log: $(cat "$r/ran.log")"
+else
+  PASS=$((PASS+1)); echo "PASS: 8b 專案根之外的 skill 程式檔零執行"
 fi
 
 # ---- summary ----
