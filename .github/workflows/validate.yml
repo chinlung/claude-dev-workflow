@@ -22,21 +22,25 @@ jobs:
       - name: Run fixture / mutation / consistency suite
         run: node scripts/validate-fixtures.cjs
       # ubuntu-latest ships jq — no install step needed.
-      - name: Run session-reflect gate tests
-        run: bash plugins/session-reflect/tests/gate.test.sh
-      - name: Run session-reflect friction-digest tests
-        run: bash plugins/session-reflect/tests/digest.test.sh
-      - name: Run session-learning reminder tests
-        run: bash plugins/session-learning/tests/reminder.test.sh
-      - name: Run openspec-superpowers-workflow skip-gate tests
-        run: bash plugins/openspec-superpowers-workflow/tests/skip-gate.test.sh
-      - name: Run scope-ledger hook tests
-        run: bash plugins/scope-ledger/tests/scope-hooks.test.sh
-      - name: Run scope-ledger stats tests
-        run: bash plugins/scope-ledger/tests/scope-stats.test.sh
-      - name: Run security-audit vendored upstream validator tests
-        run: bash plugins/security-audit/tests/upstream.test.sh
-      - name: Run code-audit-rigor review-branch-rounds / resolve-rules tests
-        run: bash plugins/code-audit-rigor/tests/review-branch-rounds.test.sh
+      # Same enumeration as the local PostToolUse hook (scripts/hooks/validate-on-plugin-edit.cjs):
+      # every plugins/*/tests/*.test.sh, so a new suite cannot run locally yet be missing here.
+      # Every suite runs even after one fails; the step fails if any did, or if none were found.
+      - name: Run every plugin test suite (plugins/*/tests/*.test.sh)
+        run: |
+          # dotglob: the hook lists with readdirSync, which includes dot-named entries
+          shopt -s nullglob dotglob
+          suites=(plugins/*/tests/*.test.sh)
+          if [ "${#suites[@]}" -eq 0 ]; then
+            echo "::error::no plugin test suites found under plugins/*/tests/"
+            exit 1
+          fi
+          echo "found ${#suites[@]} suites"
+          rc=0
+          for suite in "${suites[@]}"; do
+            echo "::group::$suite"
+            bash "$suite" || { echo "::error file=$suite::suite failed"; rc=1; }
+            echo "::endgroup::"
+          done
+          exit "$rc"
       - name: Run validate-on-plugin-edit hook tests
         run: bash scripts/hooks/validate-on-plugin-edit.test.sh

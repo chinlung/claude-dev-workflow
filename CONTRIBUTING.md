@@ -18,7 +18,7 @@ plugins/<name>/
   skills/<name>/reference.md     # 選用：progressive disclosure（重內容下放）
   hooks/hooks.json               # 選用：事件掛鉤；hooks/ 下的腳本會被 hook 執行（見 6.5 節）
   agents/<name>.md               # 選用：子代理
-  tests/*.test.sh                # 選用但強烈建議：CI 與本機 hook 都會跑（見 6.5 節）
+  tests/*.test.sh                # 選用但強烈建議：CI 與本機 hook 依 glob 自動執行（見 6.5 節）
   .mcp.json                      # 選用：夾帶 MCP server（見第 5 節）
 ```
 
