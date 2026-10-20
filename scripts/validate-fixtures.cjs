@@ -31,43 +31,39 @@ const spawned = new Set();
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-/** Run a validator against a fixture; assert exit code matches expectation. */
-function run(validator, fixture, expectValid) {
-  spawned.add(validator);
+/**
+ * Run a validator against a fixture and judge whether its exit code matches the
+ * expectation; returns `{label, ok, msg}` and leaves printing and scoring to run().
+ * Two cases that would otherwise pass an expected-invalid fixture spuriously are
+ * failures regardless of expectValid: a missing fixture (the validator exits non-zero
+ * simply because it cannot read it) and a validator that could not be executed at all
+ * (no exit status — not a rejection). `execFile` is injectable so a canary can produce
+ * that second case, which a real node spawn never does.
+ */
+function runOutcome(validator, fixture, expectValid, execFile = execFileSync) {
   const label = `${path.relative(ROOT, validator)} ← ${path.relative(ROOT, fixture)}`;
-  if (!fs.existsSync(validator)) {
-    console.error(`  ✗  ${label}: validator not found`);
-    failed++;
-    failures.push(label);
-    return;
-  }
-  // Fail fast on a missing fixture regardless of expectValid. Without this, an
-  // expected-invalid case would pass spuriously: the validator exits non-zero
-  // simply because it cannot read the fixture, masking the missing test case.
-  if (!fs.existsSync(fixture)) {
-    console.error(`  ✗  ${label}: fixture not found`);
-    failed++;
-    failures.push(label);
-    return;
-  }
+  if (!fs.existsSync(validator)) return { label, ok: false, msg: 'validator not found' };
+  if (!fs.existsSync(fixture)) return { label, ok: false, msg: 'fixture not found' };
   let exitCode = 0;
+  spawned.add(validator);
   try {
-    execFileSync(process.execPath, [validator, fixture], { stdio: 'pipe' });
-    exitCode = 0;
+    execFile(process.execPath, [validator, fixture], { stdio: 'pipe' });
   } catch (e) {
-    exitCode = typeof e.status === 'number' ? e.status : 1;
+    if (typeof e.status !== 'number') return { label, ok: false, msg: `validator could not be executed — ${e.message}` };
+    exitCode = e.status;
   }
-  const ok = expectValid ? exitCode === 0 : exitCode !== 0;
-  if (ok) {
-    console.log(`  ✓  ${label}`);
-    passed++;
-  } else {
-    const expected = expectValid ? 'exit 0 (VALID)' : 'exit non-zero (INVALID)';
-    console.error(`  ✗  ${label}`);
-    console.error(`     expected ${expected}, got exit ${exitCode}`);
-    failed++;
-    failures.push(label);
-  }
+  if (expectValid ? exitCode === 0 : exitCode !== 0) return { label, ok: true };
+  const expected = expectValid ? 'exit 0 (VALID)' : 'exit non-zero (INVALID)';
+  return { label, ok: false, msg: `expected ${expected}, got exit ${exitCode}` };
+}
+
+/** Print and score one `{label, ok, msg}` outcome (from runOutcome / mutationOutcomes). */
+function reportOutcome(o, report = expectNoProblems) {
+  report(o.label, o.ok ? [] : [o.msg]);
+}
+
+function run(validator, fixture, expectValid) {
+  reportOutcome(runOutcome(validator, fixture, expectValid));
 }
 
 let tmpCounter = 0;
@@ -118,72 +114,54 @@ function execValidatorCapture(validator, obj) {
  * mutation may carry `expect` (a RegExp the validator's output must match) to pin the
  * rule that rejected it. A mutate() that throws (e.g. a lookup helper reporting fixture
  * drift) is scored as a failure and the run continues.
+ *
+ * Split in two so the judgement can be tested without touching the global counters:
+ * mutationOutcomes() runs everything and returns one `{label, ok, msg}` per result (a
+ * group-level failure — validator missing, base unloadable or rejected — is a single
+ * entry labelled with the group; a rejected base also sets `baseRefused`), and
+ * runMutations() prints and scores them.
  */
-function runMutations(validator, baseFixture, group, mutations) {
+function mutationOutcomes(validator, baseFixture, group, mutations) {
   const rel = path.relative(ROOT, baseFixture);
-  if (!fs.existsSync(validator)) {
-    console.error(`  ✗  ${group}: validator not found — ${path.relative(ROOT, validator)}`);
-    failed++;
-    failures.push(group);
-    return;
-  }
+  const groupFailure = (msg, extra) => [{ label: group, ok: false, msg, ...extra }];
+  if (!fs.existsSync(validator)) return groupFailure(`validator not found — ${path.relative(ROOT, validator)}`);
   let base;
   try {
     base = JSON.parse(fs.readFileSync(baseFixture, 'utf8'));
   } catch (e) {
-    console.error(`  ✗  ${group}: cannot load valid base ${rel} — ${e.message}`);
-    failed++;
-    failures.push(group);
-    return;
+    return groupFailure(`cannot load valid base ${rel} — ${e.message}`);
   }
   let baseExit;
   try {
     baseExit = execValidatorOnObject(validator, base);
   } catch (e) {
-    console.error(`  ✗  ${group}: validator could not be executed on base ${rel} — ${e.message}`);
-    failed++;
-    failures.push(group);
-    return;
+    return groupFailure(`validator could not be executed on base ${rel} — ${e.message}`);
   }
   if (baseExit !== 0) {
-    console.error(`  ✗  ${group}: base fixture is not valid (${rel} exit ${baseExit}) — mutations skipped`);
-    failed++;
-    failures.push(group);
-    return;
+    return groupFailure(`base fixture is not valid (${rel} exit ${baseExit}) — mutations skipped`, { baseRefused: true });
   }
-  for (const m of mutations) {
+  return mutations.map((m) => {
     const obj = JSON.parse(JSON.stringify(base));
     const label = `${group} ← mutate: ${m.label}`;
     try {
       m.mutate(obj);
     } catch (e) {
-      console.error(`  ✗  ${label}: mutation threw — ${e.message}`);
-      failed++;
-      failures.push(label);
-      continue;
+      return { label, ok: false, msg: `mutation threw — ${e.message}` };
     }
     let result;
     try {
       result = execValidatorCapture(validator, obj);
     } catch (e) {
-      console.error(`  ✗  ${label}: validator could not be executed — ${e.message}`);
-      failed++;
-      failures.push(label);
-      continue;
+      return { label, ok: false, msg: `validator could not be executed — ${e.message}` };
     }
-    if (result.status === 0) {
-      console.error(`  ✗  ${label}: expected rejection (exit non-zero), got exit 0`);
-      failed++;
-      failures.push(label);
-    } else if (m.expect && !m.expect.test(result.output)) {
-      console.error(`  ✗  ${label}: rejected, but output does not match ${m.expect}`);
-      failed++;
-      failures.push(label);
-    } else {
-      console.log(`  ✓  ${label}`);
-      passed++;
-    }
-  }
+    if (result.status === 0) return { label, ok: false, msg: 'expected rejection (exit non-zero), got exit 0' };
+    if (m.expect && !m.expect.test(result.output)) return { label, ok: false, msg: `rejected, but output does not match ${m.expect}` };
+    return { label, ok: true };
+  });
+}
+
+function runMutations(validator, baseFixture, group, mutations) {
+  for (const o of mutationOutcomes(validator, baseFixture, group, mutations)) reportOutcome(o);
 }
 
 // ── Schema ↔ validator consistency: structural (set-based) enum/pattern drift ──────
@@ -289,24 +267,10 @@ function computeSchemaDrift(schemaPaths, validatorPath) {
   return { drift };
 }
 
-function checkSchemaConsistency(schemaPaths, validatorPath, group) {
+function checkSchemaConsistency(schemaPaths, validatorPath, group, report = expectNoProblems) {
   const label = `${group} (schema ↔ validator)`;
   const { drift, error } = computeSchemaDrift(schemaPaths, validatorPath);
-  if (error) {
-    console.error(`  ✗  ${label}: ${error}`);
-    failed++;
-    failures.push(label);
-    return;
-  }
-  if (drift.length === 0) {
-    console.log(`  ✓  ${label}`);
-    passed++;
-  } else {
-    console.error(`  ✗  ${label}`);
-    drift.forEach(d => console.error(`     - ${d}`));
-    failed++;
-    failures.push(label);
-  }
+  report(label, error ? [error] : drift.map(d => `- ${d}`));
 }
 
 // ── repo-structure gates (plugin layout + version + changelog bookkeeping + dir completeness + registration) ──
@@ -710,63 +674,124 @@ function main() {
 
   // ── Self-test: the checkers must detect a planted defect (else they give false green) ──
   console.log('## Self-test (canaries)');
+  // Shared by the canaries below: the code-audit-rigor finding schema, validator and a valid
+  // fixture, and the multi-agent-debate output schema and validator (a mismatched pair).
+  const findSchema0 = P('plugins/code-audit-rigor/schema/finding.schema.json');
+  const findV0 = P('plugins/code-audit-rigor/validators/validate-finding.cjs');
+  const findValid0 = P('plugins/code-audit-rigor/tests/fixtures/code-audit-rigor/finding-valid.json');
+  const debateSchema0 = P('plugins/multi-agent-debate/schema/debate-output.schema.json');
+  const debateV0 = P('plugins/multi-agent-debate/validators/validate-debate-output.cjs');
   {
     // (a) consistency gate MUST report drift for a deliberately mismatched schema/validator pair.
-    const { drift, error } = computeSchemaDrift(
-      [P('plugins/code-audit-rigor/schema/finding.schema.json')],
-      P('plugins/multi-agent-debate/validators/validate-debate-output.cjs'),
-    );
+    const { drift, error } = computeSchemaDrift([findSchema0], debateV0);
     const label = 'canary: consistency gate detects a mismatched schema/validator pair';
-    if (!error && Array.isArray(drift) && drift.length > 0) { console.log(`  ✓  ${label}`); passed++; }
-    else { console.error(`  ✗  ${label}: gate did NOT report drift (error=${error || 'none'})`); failed++; failures.push(label); }
+    expectNoProblems(label, !error && Array.isArray(drift) && drift.length > 0 ? [] : [`gate did NOT report drift (error=${error || 'none'})`]);
   }
   {
-    // (b) mutation harness discrimination: a no-op (still-valid) object → exit 0 (the
-    //     harness scores exit 0 as FAILURE), and a real single-field mutation → non-zero.
-    const findV0 = P('plugins/code-audit-rigor/validators/validate-finding.cjs');
-    const base = JSON.parse(fs.readFileSync(P('plugins/code-audit-rigor/tests/fixtures/code-audit-rigor/finding-valid.json'), 'utf8'));
-    const noop = 'canary: no-op mutation leaves object valid (exit 0 → harness flags as non-rejection)';
-    const real = 'canary: a real single-field mutation is rejected (exit non-zero)';
+    // (a2) checkSchemaConsistency passes that drift on to its report: two mismatched pairs
+    //      must report problems and two matched pairs must report none. A check that
+    //      ignores the drift (always [] or always non-empty) fails one side.
+    const label = 'canary: consistency check reports drift for mismatched pairs and nothing for matched ones';
+    const seen = [];
+    const sink = (l, problems) => seen.push(problems.length > 0);
+    checkSchemaConsistency([findSchema0], debateV0, 'x', sink);
+    checkSchemaConsistency([debateSchema0], findV0, 'x', sink);
+    checkSchemaConsistency([findSchema0], findV0, 'x', sink);
+    checkSchemaConsistency([debateSchema0], debateV0, 'x', sink);
+    const got = JSON.stringify(seen);
+    expectNoProblems(label, got === JSON.stringify([true, true, false, false]) ? [] : [`problems reported per pair ${got}, wanted [true,true,false,false]`]);
+  }
+  // (b) The fixture and mutation harnesses, driven through runOutcome / mutationOutcomes —
+  //     the same paths every run / runMutations call takes.
+  {
+    // (b1) runOutcome's four verdicts, the missing-file ones with an INVALID expectation
+    //      (why that matters: see its docblock).
+    const label = 'canary: fixture harness judges valid/invalid both ways and fails fast on a missing fixture or validator';
+    // The "missing" paths live in a fresh private dir: at a guessable path, a file someone
+    // planted there would be run by node outside the sandbox.
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'vf-missing-'));
     try {
-      const okExit = execValidatorOnObject(findV0, base);
-      if (okExit === 0) { console.log(`  ✓  ${noop}`); passed++; }
-      else { console.error(`  ✗  ${noop}: expected exit 0, got ${okExit}`); failed++; failures.push(noop); }
-    } catch (e) { console.error(`  ✗  ${noop}: ${e.message}`); failed++; failures.push(noop); }
-    try {
-      const bad = JSON.parse(JSON.stringify(base)); bad.severity = 'NOT-A-SEVERITY';
-      const badExit = execValidatorOnObject(findV0, bad);
-      if (badExit !== 0) { console.log(`  ✓  ${real}`); passed++; }
-      else { console.error(`  ✗  ${real}: expected non-zero, got 0`); failed++; failures.push(real); }
-    } catch (e) { console.error(`  ✗  ${real}: ${e.message}`); failed++; failures.push(real); }
+      const cases = [
+        runOutcome(findV0, findValid0, true),
+        runOutcome(findV0, findValid0, false),
+        runOutcome(findV0, path.join(tmp, 'missing.json'), false),
+        runOutcome(path.join(tmp, 'missing.cjs'), findValid0, false),
+      ];
+      const got = JSON.stringify(cases.map(o => o.ok));
+      const msgsOk = cases[2].msg === 'fixture not found' && cases[3].msg === 'validator not found';
+      expectNoProblems(label, got === JSON.stringify([true, false, false, false]) && msgsOk ? [] : [`ok flags ${got}, wanted [true,false,false,false]; outcomes=${JSON.stringify(cases)}`]);
+    } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
   }
   {
-    // (b2) runMutations itself MUST refuse a base the validator rejects, and must not run
-    //      the mutations (see its docblock). Drives the real function, not a helper, so a
-    //      dropped `return` or a check moved after the loop fails this too: the mutation
-    //      below exits non-zero on the invalid base and would score a pass.
-    const findV0 = P('plugins/code-audit-rigor/validators/validate-finding.cjs');
+    // (b2) runOutcome with an injected execFile: a spawn that never produced an exit status
+    //      is a failure whichever way the fixture was expected (the INVALID case is the one
+    //      a "treat it as exit 1" shortcut would pass); a real non-zero exit still satisfies
+    //      an INVALID expectation and a clean exit does not.
+    const label = 'canary: fixture harness fails a validator that could not be executed, even for an expected-invalid fixture';
+    const noStatus = () => { throw new Error('spawn failed'); };
+    const exit2 = () => { const e = new Error('exit 2'); e.status = 2; throw e; };
+    const exit0 = () => Buffer.alloc(0);
+    const cases = [
+      runOutcome(findV0, findValid0, true, noStatus),
+      runOutcome(findV0, findValid0, false, noStatus),
+      runOutcome(findV0, findValid0, false, exit2),
+      runOutcome(findV0, findValid0, false, exit0),
+    ];
+    const got = JSON.stringify(cases.map(o => o.ok));
+    const msgsOk = cases.slice(0, 2).every(o => /^validator could not be executed/.test(o.msg));
+    expectNoProblems(label, got === JSON.stringify([false, false, true, false]) && msgsOk ? [] : [`ok flags ${got}, wanted [false,false,true,false]; outcomes=${JSON.stringify(cases)}`]);
+  }
+  {
+    // (b3) reportOutcome hands a failed outcome's message to its report and a passed one
+    //      an empty list — two of each, so a report that drops ok (always [] or always
+    //      [msg]) fails. run() and runMutations score only through it.
+    const label = 'canary: reportOutcome reports a failed outcome as a problem and a passed one as none';
+    const seen = [];
+    const sink = (l, problems) => seen.push([l, problems]);
+    for (const o of [
+      { label: 'a', ok: false, msg: 'm1' }, { label: 'b', ok: true },
+      { label: 'c', ok: false, msg: 'm2' }, { label: 'd', ok: true },
+    ]) reportOutcome(o, sink);
+    const got = JSON.stringify(seen);
+    const want = JSON.stringify([['a', ['m1']], ['b', []], ['c', ['m2']], ['d', []]]);
+    expectNoProblems(label, got === want ? [] : [`report saw ${got}, wanted ${want}`]);
+  }
+  {
+    // (b4) mutationOutcomes MUST refuse a base the validator rejects, and must not run
+    //      the mutations (see its docblock). A dropped `return` or a check moved after the
+    //      loop fails this too: the mutation below exits non-zero on the invalid base and
+    //      would score a pass.
     const label = 'canary: mutation harness refuses an invalid base fixture and skips its mutations';
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'vf-base-'));
     try {
       const badBase = path.join(tmp, 'bad-base.json');
       fs.writeFileSync(badBase, JSON.stringify({ severity: 'NOT-A-SEVERITY' }));
-      const before = { failed, passed, len: failures.length };
-      const captured = [];
-      const origError = console.error;
-      console.error = (...a) => captured.push(a.join(' '));
-      try {
-        runMutations(findV0, badBase, 'canary-base', [
-          { label: 'would pass on an invalid base', mutate: o => { delete o.severity; } },
-        ]);
-      } finally { console.error = origError; }
-      const deltaPassed = passed - before.passed;
-      const pushed = failures.splice(before.len);
-      failed = before.failed; passed = before.passed;
-      const refused = captured.some(l => /base fixture is not valid/.test(l));
-      expectNoProblems(label, pushed.length === 1 && deltaPassed === 0 && refused
+      let mutateCalls = 0;
+      const outcomes = mutationOutcomes(findV0, badBase, 'canary-base', [
+        { label: 'would pass on an invalid base', mutate: o => { mutateCalls++; delete o.severity; } },
+      ]);
+      expectNoProblems(label, outcomes.length === 1 && !outcomes[0].ok && outcomes[0].baseRefused && mutateCalls === 0
         ? []
-        : [`failed+${pushed.length} passed+${deltaPassed} refused=${refused}`]);
+        : [`mutateCalls=${mutateCalls} outcomes=${JSON.stringify(outcomes)}`]);
     } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+  }
+  {
+    // (b5) mutationOutcomes scores each mutation on a valid base: a throwing mutate(), a
+    //      no-op (the object stays valid, exit 0), and an `expect` that does not match the
+    //      validator's output are all failures; a real mutation with a matching `expect`
+    //      passes (so the base itself must validate). The four verdicts are asserted
+    //      together so a branch that always returns ok (or never does) fails.
+    const label = 'canary: mutation harness scores throw / no-op / wrong-expect as failures and a matched mutation as a pass';
+    const outcomes = mutationOutcomes(findV0, findValid0, 'canary-score', [
+      { label: 'throws', mutate: () => { throw new Error('drift'); } },
+      { label: 'no-op', mutate: () => {} },
+      { label: 'wrong expect', expect: /no such rule/, mutate: o => { o.severity = 'NOT-A-SEVERITY'; } },
+      { label: 'matched', expect: /severity/i, mutate: o => { o.severity = 'NOT-A-SEVERITY'; } },
+    ]);
+    const got = JSON.stringify(outcomes.map(o => o.ok));
+    expectNoProblems(label, got === JSON.stringify([false, false, false, true])
+      ? []
+      : [`ok flags ${got}, wanted [false,false,false,true]; outcomes=${JSON.stringify(outcomes)}`]);
   }
   {
     // (c) collision gate MUST flag a planted commands/<X>.md ↔ skill-named-<X> pair — incl. a
@@ -780,10 +805,8 @@ function main() {
       mk('clean/skills/reflect/SKILL.md', '---\nname: reflect\ndescription: d\n---\n');
       const planted = 'canary: collision gate detects a command shadowing a skill (frontmatter name ≠ dir name)';
       const quiet = 'canary: collision gate stays quiet on a plugin with distinct command/skill names';
-      if (findCommandSkillCollisions(path.join(tmp, 'bad')).length === 1) { console.log(`  ✓  ${planted}`); passed++; }
-      else { console.error(`  ✗  ${planted}: planted collision NOT reported`); failed++; failures.push(planted); }
-      if (findCommandSkillCollisions(path.join(tmp, 'clean')).length === 0) { console.log(`  ✓  ${quiet}`); passed++; }
-      else { console.error(`  ✗  ${quiet}: false positive`); failed++; failures.push(quiet); }
+      expectNoProblems(planted, findCommandSkillCollisions(path.join(tmp, 'bad')).length === 1 ? [] : ['planted collision NOT reported']);
+      expectNoProblems(quiet, findCommandSkillCollisions(path.join(tmp, 'clean')).length === 0 ? [] : ['false positive']);
     } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
   }
   {
@@ -800,8 +823,7 @@ function main() {
     for (const [what, mp, pv, cl, want] of cases) {
       const label = `canary: version gate — ${what}`;
       const got = versionProblems(mp, pv, cl).length;
-      if (got === want) { console.log(`  ✓  ${label}`); passed++; }
-      else { console.error(`  ✗  ${label}: expected ${want} problem(s), got ${got}`); failed++; failures.push(label); }
+      expectNoProblems(label, got === want ? [] : [`expected ${want} problem(s), got ${got}`]);
     }
   }
 
@@ -824,14 +846,12 @@ function main() {
     for (const [what, input, want] of cases) {
       const label = `canary: plugin changelog gate — ${what}`;
       const got = pluginChangelogProblems(input).length;
-      if (got === want) { console.log(`  ✓  ${label}`); passed++; }
-      else { console.error(`  ✗  ${label}: expected ${want} problem(s), got ${got}`); failed++; failures.push(label); }
+      expectNoProblems(label, got === want ? [] : [`expected ${want} problem(s), got ${got}`]);
     }
     const msgLabel = 'canary: plugin changelog gate — the message names the file and the authority';
     const msgGot = pluginChangelogProblems({ a: { text: '## [1.0.0] - d\n', version: '2.0.0' } });
     const msgWant = 'plugins/a/CHANGELOG.md: top heading [1.0.0] != plugin.json version 2.0.0';
-    if (msgGot.length === 1 && msgGot[0] === msgWant) { console.log(`  ✓  ${msgLabel}`); passed++; }
-    else { console.error(`  ✗  ${msgLabel}: got ${JSON.stringify(msgGot)}`); failed++; failures.push(msgLabel); }
+    expectNoProblems(msgLabel, msgGot.length === 1 && msgGot[0] === msgWant ? [] : [`got ${JSON.stringify(msgGot)}`]);
   }
 
 
@@ -868,8 +888,7 @@ function main() {
     for (const [what, input, want] of cases) {
       const label = `canary: plugin dir gate — ${what}`;
       const got = pluginDirProblems(input).length;
-      if (got === want) { console.log(`  ✓  ${label}`); passed++; }
-      else { console.error(`  ✗  ${label}: expected ${want} problem(s), got ${got}`); failed++; failures.push(label); }
+      expectNoProblems(label, got === want ? [] : [`expected ${want} problem(s), got ${got}`]);
     }
     // Both branches get a whole-message assertion. Counting alone let the half-built message be
     // replaced by the OPPOSITE failure mode ("has a plugin.json but no CHANGELOG.md") and stay green.
@@ -884,8 +903,7 @@ function main() {
     for (const [what, args, want] of symCases) {
       const label = `canary: plugin dir gate — ${what}`;
       const got = pluginDirProblems(...args).length;
-      if (got === want) { console.log(`  ✓  ${label}`); passed++; }
-      else { console.error(`  ✗  ${label}: expected ${want} problem(s), got ${got}`); failed++; failures.push(label); }
+      expectNoProblems(label, got === want ? [] : [`expected ${want} problem(s), got ${got}`]);
     }
     const msgCases = [
       ['the missing-changelog message names the dir and what is missing', { a: d({ manifest: true, readme: true }) },
@@ -898,13 +916,11 @@ function main() {
     for (const [what, input, want] of msgCases) {
       const label = `canary: plugin dir gate — ${what}`;
       const got = pluginDirProblems(input);
-      if (got.length === 1 && got[0] === want) { console.log(`  ✓  ${label}`); passed++; }
-      else { console.error(`  ✗  ${label}: got ${JSON.stringify(got)}`); failed++; failures.push(label); }
+      expectNoProblems(label, got.length === 1 && got[0] === want ? [] : [`got ${JSON.stringify(got)}`]);
     }
     const symMsgLabel = 'canary: plugin dir gate — the symlink message names the dir and why it is invisible';
     const symMsgGot = pluginDirProblems({}, ['ghost']);
-    if (symMsgGot.length === 1 && symMsgGot[0].startsWith('plugins/ghost is a symlink — a plugin dir must be a real directory')) { console.log(`  ✓  ${symMsgLabel}`); passed++; }
-    else { console.error(`  ✗  ${symMsgLabel}: got ${JSON.stringify(symMsgGot)}`); failed++; failures.push(symMsgLabel); }
+    expectNoProblems(symMsgLabel, symMsgGot.length === 1 && symMsgGot[0].startsWith('plugins/ghost is a symlink — a plugin dir must be a real directory') ? [] : [`got ${JSON.stringify(symMsgGot)}`]);
     // The floor guards the collection loops; these guard the floor. Deleting it, or making its
     // condition always-false, was otherwise invisible because the real repo has nothing to report.
     const floorCases = [
@@ -915,13 +931,11 @@ function main() {
     for (const [what, args, want] of floorCases) {
       const label = `canary: ${what}`;
       const got = shapedCountProblems(...args).length;
-      if (got === want) { console.log(`  ✓  ${label}`); passed++; }
-      else { console.error(`  ✗  ${label}: expected ${want}, got ${got}`); failed++; failures.push(label); }
+      expectNoProblems(label, got === want ? [] : [`expected ${want}, got ${got}`]);
     }
     const floorMsgLabel = 'canary: floor message carries both counts';
     const floorMsgGot = shapedCountProblems(3, 9, 'plugin dir(s)');
-    if (floorMsgGot.length === 1 && floorMsgGot[0].startsWith('shaped 3 of 9 plugin dir(s) —')) { console.log(`  ✓  ${floorMsgLabel}`); passed++; }
-    else { console.error(`  ✗  ${floorMsgLabel}: got ${JSON.stringify(floorMsgGot)}`); failed++; failures.push(floorMsgLabel); }
+    expectNoProblems(floorMsgLabel, floorMsgGot.length === 1 && floorMsgGot[0].startsWith('shaped 3 of 9 plugin dir(s) —') ? [] : [`got ${JSON.stringify(floorMsgGot)}`]);
   }
 
   {
@@ -956,8 +970,7 @@ function main() {
       ];
       for (const [what, got, want] of invChecks) {
         const label = `canary: ${what}`;
-        if (got === want) { console.log(`  ✓  ${label}`); passed++; }
-        else { console.error(`  ✗  ${label}: expected ${want}, got ${got}`); failed++; failures.push(label); }
+        expectNoProblems(label, got === want ? [] : [`expected ${want}, got ${got}`]);
       }
       // End to end through the wiring: five problems, one per planted defect, and no others.
       const probs = pluginDirGateProblems(tmp);
@@ -971,8 +984,7 @@ function main() {
       ];
       for (const [what, got, want] of wired) {
         const label = `canary: ${what}`;
-        if (got === want) { console.log(`  ✓  ${label}`); passed++; }
-        else { console.error(`  ✗  ${label}: expected ${want}, got ${got} — ${JSON.stringify(probs)}`); failed++; failures.push(label); }
+        expectNoProblems(label, got === want ? [] : [`expected ${want}, got ${got} — ${JSON.stringify(probs)}`]);
       }
     } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
   }
@@ -995,8 +1007,7 @@ function main() {
     for (const [what, ex, pt, want] of cases) {
       const label = `canary: denyWrite gate — ${what}`;
       const got = denyWriteProblems(ex, pt).length;
-      if (got === want) { console.log(`  ✓  ${label}`); passed++; }
-      else { console.error(`  ✗  ${label}: expected ${want} problem(s), got ${got}`); failed++; failures.push(label); }
+      expectNoProblems(label, got === want ? [] : [`expected ${want} problem(s), got ${got}`]);
     }
   }
   {
@@ -1018,10 +1029,8 @@ function main() {
       const files = 'canary: hook enumeration finds exactly the real suite and hook script (not fixtures, not hooks.json)';
       const links = 'canary: hook enumeration reports a symlinked plugin dir, tests/ dir and suite file';
       const wantFiles = ['plugins/real/hooks/h.sh', 'plugins/real/tests/a.test.sh'];
-      if (JSON.stringify([...got.files].sort()) === JSON.stringify(wantFiles)) { console.log(`  ✓  ${files}`); passed++; }
-      else { console.error(`  ✗  ${files}: got ${JSON.stringify(got.files)}`); failed++; failures.push(files); }
-      if (got.problems.length === 3) { console.log(`  ✓  ${links}`); passed++; }
-      else { console.error(`  ✗  ${links}: expected 3 problems, got ${JSON.stringify(got.problems)}`); failed++; failures.push(links); }
+      expectNoProblems(files, JSON.stringify([...got.files].sort()) === JSON.stringify(wantFiles) ? [] : [`got ${JSON.stringify(got.files)}`]);
+      expectNoProblems(links, got.problems.length === 3 ? [] : [`expected 3 problems, got ${JSON.stringify(got.problems)}`]);
     } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
   }
   {
@@ -1041,8 +1050,7 @@ function main() {
       const label = `canary: hook command — ${want ? `accepts and keeps "${want}"` : `rejects as unverifiable: ${cmd}`}`;
       const r = hookScriptOf(cmd);
       const ok = want ? r.script === want : typeof r.problem === 'string' && r.script === undefined;
-      if (ok) { console.log(`  ✓  ${label}`); passed++; }
-      else { console.error(`  ✗  ${label}: got ${JSON.stringify(r)}`); failed++; failures.push(label); }
+      expectNoProblems(label, ok ? [] : [`got ${JSON.stringify(r)}`]);
     }
   }
   {
@@ -1060,8 +1068,7 @@ function main() {
     for (const [what, en, mf, want] of cases) {
       const label = `canary: registration gate — ${what}`;
       const got = registrationProblems(en, mf).length;
-      if (got === want) { console.log(`  ✓  ${label}`); passed++; }
-      else { console.error(`  ✗  ${label}: expected ${want} problem(s), got ${got}`); failed++; failures.push(label); }
+      expectNoProblems(label, got === want ? [] : [`expected ${want} problem(s), got ${got}`]);
     }
   }
 
@@ -1486,8 +1493,7 @@ function main() {
       if (commandHooks === 0) {
         // Says only what was checked: other settings keys (statusLine.command, apiKeyHelper, …) and
         // .mcp.json also launch processes outside the sandbox and are NOT examined here.
-        console.log(`  ✓  ${label} (no command hooks in ${rel(settingsFile)} — this check had nothing to verify)`);
-        passed++;
+        expectNoProblems(`${label} (no command hooks in ${rel(settingsFile)} — this check had nothing to verify)`, []);
       } else {
         // 2. what that hook goes on to execute. scripts/hooks/validate-on-plugin-edit.cjs spawns this
         //    runner and every plugins/*/tests/*.test.sh; the suites invoke the plugin hook scripts;
