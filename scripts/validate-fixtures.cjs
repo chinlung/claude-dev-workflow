@@ -37,16 +37,17 @@ const spawned = new Set();
  * Two cases that would otherwise pass an expected-invalid fixture spuriously are
  * failures regardless of expectValid: a missing fixture (the validator exits non-zero
  * simply because it cannot read it) and a validator that could not be executed at all
- * (no exit status — not a rejection).
+ * (no exit status — not a rejection). `execFile` is injectable so a canary can produce
+ * that second case, which a real node spawn never does.
  */
-function runOutcome(validator, fixture, expectValid) {
+function runOutcome(validator, fixture, expectValid, execFile = execFileSync) {
   const label = `${path.relative(ROOT, validator)} ← ${path.relative(ROOT, fixture)}`;
   if (!fs.existsSync(validator)) return { label, ok: false, msg: 'validator not found' };
   if (!fs.existsSync(fixture)) return { label, ok: false, msg: 'fixture not found' };
   let exitCode = 0;
   spawned.add(validator);
   try {
-    execFileSync(process.execPath, [validator, fixture], { stdio: 'pipe' });
+    execFile(process.execPath, [validator, fixture], { stdio: 'pipe' });
   } catch (e) {
     if (typeof e.status !== 'number') return { label, ok: false, msg: `validator could not be executed — ${e.message}` };
     exitCode = e.status;
@@ -57,8 +58,8 @@ function runOutcome(validator, fixture, expectValid) {
 }
 
 /** Print and score one `{label, ok, msg}` outcome (from runOutcome / mutationOutcomes). */
-function reportOutcome(o) {
-  expectNoProblems(o.label, o.ok ? [] : [o.msg]);
+function reportOutcome(o, report = expectNoProblems) {
+  report(o.label, o.ok ? [] : [o.msg]);
 }
 
 function run(validator, fixture, expectValid) {
@@ -160,7 +161,7 @@ function mutationOutcomes(validator, baseFixture, group, mutations) {
 }
 
 function runMutations(validator, baseFixture, group, mutations) {
-  mutationOutcomes(validator, baseFixture, group, mutations).forEach(reportOutcome);
+  for (const o of mutationOutcomes(validator, baseFixture, group, mutations)) reportOutcome(o);
 }
 
 // ── Schema ↔ validator consistency: structural (set-based) enum/pattern drift ──────
@@ -266,10 +267,10 @@ function computeSchemaDrift(schemaPaths, validatorPath) {
   return { drift };
 }
 
-function checkSchemaConsistency(schemaPaths, validatorPath, group) {
+function checkSchemaConsistency(schemaPaths, validatorPath, group, report = expectNoProblems) {
   const label = `${group} (schema ↔ validator)`;
   const { drift, error } = computeSchemaDrift(schemaPaths, validatorPath);
-  expectNoProblems(label, error ? [error] : drift.map(d => `- ${d}`));
+  report(label, error ? [error] : drift.map(d => `- ${d}`));
 }
 
 // ── repo-structure gates (plugin layout + version + changelog bookkeeping + dir completeness + registration) ──
@@ -673,22 +674,37 @@ function main() {
 
   // ── Self-test: the checkers must detect a planted defect (else they give false green) ──
   console.log('## Self-test (canaries)');
+  // Shared by the canaries below: the code-audit-rigor finding schema, validator and a valid
+  // fixture, and the multi-agent-debate output schema and validator (a mismatched pair).
+  const findSchema0 = P('plugins/code-audit-rigor/schema/finding.schema.json');
+  const findV0 = P('plugins/code-audit-rigor/validators/validate-finding.cjs');
+  const findValid0 = P('plugins/code-audit-rigor/tests/fixtures/code-audit-rigor/finding-valid.json');
+  const debateSchema0 = P('plugins/multi-agent-debate/schema/debate-output.schema.json');
+  const debateV0 = P('plugins/multi-agent-debate/validators/validate-debate-output.cjs');
   {
     // (a) consistency gate MUST report drift for a deliberately mismatched schema/validator pair.
-    const { drift, error } = computeSchemaDrift(
-      [P('plugins/code-audit-rigor/schema/finding.schema.json')],
-      P('plugins/multi-agent-debate/validators/validate-debate-output.cjs'),
-    );
+    const { drift, error } = computeSchemaDrift([findSchema0], debateV0);
     const label = 'canary: consistency gate detects a mismatched schema/validator pair';
     expectNoProblems(label, !error && Array.isArray(drift) && drift.length > 0 ? [] : [`gate did NOT report drift (error=${error || 'none'})`]);
   }
-  // (b) The fixture and mutation harnesses, driven through runOutcome / mutationOutcomes —
-  //     the same paths every run / runMutations call takes — with the code-audit-rigor
-  //     finding validator.
-  const findV0 = P('plugins/code-audit-rigor/validators/validate-finding.cjs');
-  const findValid0 = P('plugins/code-audit-rigor/tests/fixtures/code-audit-rigor/finding-valid.json');
   {
-    // (b0) runOutcome's four verdicts, the missing-file ones with an INVALID expectation
+    // (a2) checkSchemaConsistency passes that drift on to its report: two mismatched pairs
+    //      must report problems and two matched pairs must report none. A check that
+    //      ignores the drift (always [] or always non-empty) fails one side.
+    const label = 'canary: consistency check reports drift for mismatched pairs and nothing for matched ones';
+    const seen = [];
+    const sink = (l, problems) => seen.push(problems.length > 0);
+    checkSchemaConsistency([findSchema0], debateV0, 'x', sink);
+    checkSchemaConsistency([debateSchema0], findV0, 'x', sink);
+    checkSchemaConsistency([findSchema0], findV0, 'x', sink);
+    checkSchemaConsistency([debateSchema0], debateV0, 'x', sink);
+    const got = JSON.stringify(seen);
+    expectNoProblems(label, got === JSON.stringify([true, true, false, false]) ? [] : [`problems reported per pair ${got}, wanted [true,true,false,false]`]);
+  }
+  // (b) The fixture and mutation harnesses, driven through runOutcome / mutationOutcomes —
+  //     the same paths every run / runMutations call takes.
+  {
+    // (b1) runOutcome's four verdicts, the missing-file ones with an INVALID expectation
     //      (why that matters: see its docblock).
     const label = 'canary: fixture harness judges valid/invalid both ways and fails fast on a missing fixture or validator';
     // The "missing" paths live in a fresh private dir: at a guessable path, a file someone
@@ -707,7 +723,41 @@ function main() {
     } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
   }
   {
-    // (b1) mutationOutcomes MUST refuse a base the validator rejects, and must not run
+    // (b2) runOutcome with an injected execFile: a spawn that never produced an exit status
+    //      is a failure whichever way the fixture was expected (the INVALID case is the one
+    //      a "treat it as exit 1" shortcut would pass); a real non-zero exit still satisfies
+    //      an INVALID expectation and a clean exit does not.
+    const label = 'canary: fixture harness fails a validator that could not be executed, even for an expected-invalid fixture';
+    const noStatus = () => { throw new Error('spawn failed'); };
+    const exit2 = () => { const e = new Error('exit 2'); e.status = 2; throw e; };
+    const exit0 = () => Buffer.alloc(0);
+    const cases = [
+      runOutcome(findV0, findValid0, true, noStatus),
+      runOutcome(findV0, findValid0, false, noStatus),
+      runOutcome(findV0, findValid0, false, exit2),
+      runOutcome(findV0, findValid0, false, exit0),
+    ];
+    const got = JSON.stringify(cases.map(o => o.ok));
+    const msgsOk = cases.slice(0, 2).every(o => /^validator could not be executed/.test(o.msg));
+    expectNoProblems(label, got === JSON.stringify([false, false, true, false]) && msgsOk ? [] : [`ok flags ${got}, wanted [false,false,true,false]; outcomes=${JSON.stringify(cases)}`]);
+  }
+  {
+    // (b3) reportOutcome hands a failed outcome's message to its report and a passed one
+    //      an empty list — two of each, so a report that drops ok (always [] or always
+    //      [msg]) fails. run() and runMutations score only through it.
+    const label = 'canary: reportOutcome reports a failed outcome as a problem and a passed one as none';
+    const seen = [];
+    const sink = (l, problems) => seen.push([l, problems]);
+    for (const o of [
+      { label: 'a', ok: false, msg: 'm1' }, { label: 'b', ok: true },
+      { label: 'c', ok: false, msg: 'm2' }, { label: 'd', ok: true },
+    ]) reportOutcome(o, sink);
+    const got = JSON.stringify(seen);
+    const want = JSON.stringify([['a', ['m1']], ['b', []], ['c', ['m2']], ['d', []]]);
+    expectNoProblems(label, got === want ? [] : [`report saw ${got}, wanted ${want}`]);
+  }
+  {
+    // (b4) mutationOutcomes MUST refuse a base the validator rejects, and must not run
     //      the mutations (see its docblock). A dropped `return` or a check moved after the
     //      loop fails this too: the mutation below exits non-zero on the invalid base and
     //      would score a pass.
@@ -726,7 +776,7 @@ function main() {
     } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
   }
   {
-    // (b2) mutationOutcomes scores each mutation on a valid base: a throwing mutate(), a
+    // (b5) mutationOutcomes scores each mutation on a valid base: a throwing mutate(), a
     //      no-op (the object stays valid, exit 0), and an `expect` that does not match the
     //      validator's output are all failures; a real mutation with a matching `expect`
     //      passes (so the base itself must validate). The four verdicts are asserted
