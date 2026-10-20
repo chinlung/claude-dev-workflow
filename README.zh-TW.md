@@ -615,22 +615,22 @@ Output 為結構化 JSON 風格 findings，依 EV 排序，含 dismissed finding
 
 # Security Audit 插件
 
-單一 skill plugin，將 Claude 化為安全稽核員，以六階段流程搭配平行 sub-agent 找出**可被利用、有實際影響的漏洞**——而非偏離 checklist 的理論性問題。Vendored 自 [cloudflare/security-audit-skill](https://github.com/cloudflare/security-audit-skill)（MIT）。
+單一 skill plugin，將 Claude 化為安全稽核員，找出跨越**真實信任邊界**的漏洞、每一條都附原始碼證據——而非偏離 checklist 的理論性問題。Vendored 自 [cloudflare/security-audit-skill](https://github.com/cloudflare/security-audit-skill)（MIT）。
 
 ## 何時觸發
 
-收到「security audit this codebase」、「find vulnerabilities in ./src」、「做安全審查」、「pen-test 這段程式碼」等請求時自動啟用。
+安全問題與針對性審查走 **guidance mode**：只用到相關段落回答，不寫任何檔案。完整流程只在明確要求時執行——「security audit this codebase」、「pen-test 這段程式碼」、完整／端到端的安全審查，或要求產出報告檔。
 
 ## 六個階段
 
-1. **Recon（偵查）** — 平行 research agent 描繪架構、信任邊界、輸入面 → `architecture.md`
-2. **Hunt（獵捕）** — 平行 general agent 從不同角度攻擊（injection、存取控制、業務邏輯、加密、功能濫用、串連攻擊、wildcard），每個可再派 sub-agent
-3. **Validate（驗證）** — 由另一組 agent 嘗試**推翻**每個 finding；對抗式審查殺掉 false positive
-4. **Report（報告）** — `REPORT.md`（人類可讀）+ `FINDINGS-DETAIL.md`（MEDIUM+ finding 的資料流追蹤）
-5. **Structured output（結構化輸出）** — `findings.json`，由 `validate-findings.cjs` 對 `report-schema.json` 驗證
-6. **Independent verification（獨立驗證）** — 全新 agent 對照原始碼逐一驗證每項事實聲明
+1. **Reconnaissance（偵查）** — 描繪架構、信任邊界、輸入面 → `architecture.md` 與確定性的 `coverage-ledger.json`
+2. **Coverage-led hunting（依覆蓋帳獵捕）** — 各自隔離的 hunter 分波認領帳上的單元；每波後由 coverage critic 找缺口
+3. **Candidate validation（候選驗證）** — 全新 verifier 嘗試**推翻**每個候選
+4. **Structured output（結構化輸出）** — `findings.json` 含 `confirmed`／`needs_validation`／`rejected` 三種紀錄，由 `validate-findings.cjs` 與 `validate-coverage-ledger.cjs` 檢查
+5. **Independent record verification（獨立紀錄驗證）** — 全新 agent 對照原始碼重新檢查每筆最終紀錄
+6. **Target-neutral report（報告）** — `REPORT.md`、`FINDINGS-DETAIL.md`、`NEEDS-VALIDATION.md`
 
-對同一 repo 多次執行是疊加的：每次讀取先前的 `findings.json` 以跳過已知問題、針對缺口加強。輸出預設到 `~/security-audit-skill/<repo-name>/run-<N>`。
+對同一 repo 多次執行是疊加的，原始碼有變的部分會重新驗證。輸出預設到 `~/security-audit-skill/<repo-name>/run-<N>`。
 
 ## security-audit vs code-audit-rigor
 
@@ -643,11 +643,11 @@ Output 為結構化 JSON 風格 findings，依 EV 排序，含 dismissed finding
 
 ## Claude Code 平台對應
 
-vendored skill 寫成 agent-neutral：其 `research` agent 對應 Claude Code 的 `Explore`，`general` agent 對應 `general-purpose`，Task tool 對應 `Agent` 工具。完整對應與上游同步說明（vendored 自 upstream commit `4de1ac8`）見 plugin [README](plugins/security-audit/README.md)。
+vendored skill 寫成 agent-neutral：`general` agent 對應 `general-purpose`；`research` agent 在偵查時對應 `Explore`，擔任 coverage critic 與紀錄 verifier 時則對應唯讀的 `general-purpose`（這兩個角色做的是判定、不是找程式碼）；Task tool 對應 `Agent` 工具。完整對應、為何 Claude Code 的 Bash 沙箱本身不滿足 skill 的執行控制，以及上游同步說明（vendored 自 upstream commit `c1c8a8c`）見 plugin [README](plugins/security-audit/README.md)。
 
 ## 前置需求
 
-Node.js — 供第 5 階段 `validate-findings.cjs` schema 驗證。
+Node.js — 供零依賴的 `validate-findings.cjs` 與 `validate-coverage-ledger.cjs` 使用。
 
 ---
 

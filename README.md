@@ -617,22 +617,22 @@ The plugin **bundles the codegraph MCP server** (`.mcp.json` → `codegraph serv
 
 # Security Audit Plugin
 
-A single-skill plugin that turns Claude into a security auditor, running a six-phase pipeline with parallel sub-agents to find **exploitable vulnerabilities with real impact** — not checklist deviations. Vendored from [cloudflare/security-audit-skill](https://github.com/cloudflare/security-audit-skill) (MIT).
+A single-skill plugin that turns Claude into a security auditor, finding vulnerabilities that cross a **real trust boundary** and backing each with source evidence — not checklist deviations. Vendored from [cloudflare/security-audit-skill](https://github.com/cloudflare/security-audit-skill) (MIT).
 
 ## When it triggers
 
-Auto-activates on requests like "security audit this codebase", "find vulnerabilities in ./src", "do a security review", or "pen-test the code".
+Security questions and focused reviews get **guidance mode**: the skill answers with the relevant parts and writes no files. The full workflow runs only on an explicit request — "security audit this codebase", "pen-test the code", a full / end-to-end security review, or a request for report artifacts.
 
 ## The six phases
 
-1. **Recon** — parallel research agents map architecture, trust boundaries, and input surfaces → `architecture.md`
-2. **Hunt** — parallel general agents attack from different angles (injection, access control, business logic, crypto, feature abuse, chained attacks, wildcard); each can spawn sub-agents
-3. **Validate** — separate agents try to *disprove* each finding; adversarial review kills false positives
-4. **Report** — `REPORT.md` (human-readable) + `FINDINGS-DETAIL.md` (traces for MEDIUM+ findings)
-5. **Structured output** — `findings.json` validated against `report-schema.json` by `validate-findings.cjs`
-6. **Independent verification** — fresh agents verify every factual claim against the source
+1. **Reconnaissance** — map architecture, trust boundaries, and input surfaces → `architecture.md` and a deterministic `coverage-ledger.json`
+2. **Coverage-led hunting** — isolated hunters take ledger units in waves; a coverage critic checks each wave for gaps
+3. **Candidate validation** — a fresh verifier tries to *disprove* every candidate
+4. **Structured output** — `findings.json` with `confirmed` / `needs_validation` / `rejected` records, checked by `validate-findings.cjs` and `validate-coverage-ledger.cjs`
+5. **Independent record verification** — fresh agents re-check every final record against the source
+6. **Target-neutral report** — `REPORT.md`, `FINDINGS-DETAIL.md`, `NEEDS-VALIDATION.md`
 
-Multiple runs against the same repo are additive: each reads prior `findings.json` to skip known issues and target gaps. Output defaults to `~/security-audit-skill/<repo-name>/run-<N>`.
+Multiple runs against the same repo are additive and revalidate anything whose source changed. Output defaults to `~/security-audit-skill/<repo-name>/run-<N>`.
 
 ## security-audit vs code-audit-rigor
 
@@ -645,11 +645,11 @@ Use the former to attack a codebase, the latter to review a diff.
 
 ## Claude Code platform mapping
 
-The vendored skill is agent-neutral: its `research` agent maps to Claude Code's `Explore`, its `general` agent to `general-purpose`, and the Task tool to the `Agent` tool. See the plugin [README](plugins/security-audit/README.md) for the full mapping and upstream-sync notes (vendored at upstream commit `4de1ac8`).
+The vendored skill is agent-neutral: its `general` agent maps to `general-purpose`, its `research` agent to `Explore` for reconnaissance and to a read-only `general-purpose` agent for the coverage critic and record verifier (they judge rather than locate), and the Task tool to the `Agent` tool. See the plugin [README](plugins/security-audit/README.md) for the full mapping, why Claude Code's Bash sandbox alone does not satisfy the skill's execution controls, and upstream-sync notes (vendored at upstream commit `c1c8a8c`).
 
 ## Requirements
 
-Node.js — for the Phase 5 `validate-findings.cjs` schema validator.
+Node.js — for the zero-dependency `validate-findings.cjs` and `validate-coverage-ledger.cjs`.
 
 ---
 

@@ -4,6 +4,12 @@
 
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
+## [1.13.0] - 2026-10-20
+
+### Changed
+
+- **security-audit 1.0.1 → 2.0.0**（BREAKING）— 從 cloudflare/security-audit-skill `f75f9a0` 重新 vendor 到 `c1c8a8c`；`skills/security-audit/` 下除 `LICENSE` 外與上游逐位元相同。skill 改為預設只提供 guidance，明確要求稽核時才跑完整流程。`findings.json` 改成三種 verdict（`confirmed`、`needs_validation`、`rejected`），`fingerprint` 與 `evidence` 為必填，1.0.x 產出的 `findings.json` 過不了新 validator。上游另新增 coverage ledger 與它的 validator、run profile 與預算、只在沙箱內執行目標程式碼的規則，以及十個領域 companion。本地端：`tests/upstream.test.sh` 讓上游 65 個 validator 測試在 CI 與 PostToolUse hook 執行；fixture 改為每種 verdict 各一筆，突變改依 verdict 查找紀錄（舊的依索引 `rejected missing reason` 突變在新 fixture 上什麼都沒刪，被測試套件抓到）；`runMutations` 新增選填的 `expect` regex，validator 輸出須符合它，且突變本身拋錯時記為失敗而不是讓整支 runner 崩潰；plugin 編輯 hook 改為對 skill 目錄第一層的任何程式或資料檔觸發（root-relative），不再寫死兩個 security-audit 檔名，並補上正反兩向的 hook 測試；plugin README 把 `research` 角色中屬判定的職責（coverage critic、record verifier）對應到唯讀的 `general-purpose` agent，不再對應 `Explore`。詳見該 plugin 的 CHANGELOG [2.0.0]。
+
 ## [1.12.3] - 2026-10-20
 
 ### Fixed

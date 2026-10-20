@@ -1,6 +1,7 @@
 [
   {
     "verdict": "confirmed",
+    "fingerprint": "src-handlers-user-lookup-sqli",
     "title": "SQL Injection in user lookup",
     "description": "The lookupUser handler concatenates the raw `id` query parameter into a SQL string, allowing an attacker to inject arbitrary SQL. Sending `id=1 OR 1=1` returns every user row.",
     "root_cause": "lookupUser in src/handlers/user.js does not parameterize the id query parameter, allowing SQL injection.",
@@ -21,15 +22,22 @@
         "description": "The concatenated string is executed directly against the database."
       }
     ],
+    "evidence": [
+      {
+        "file": "src/db/query.js",
+        "line": 40,
+        "description": "rawQuery passes the concatenated string to db.query without binding parameters."
+      }
+    ],
     "conditions": [],
     "execution": {
       "attacker_perspective": "An unauthenticated remote user with network access to the public API.",
       "payloads": ["id=1 OR 1=1"],
       "instructions": [
-        "Send GET /api/user?id=1%20OR%201=1",
-        "Observe the response contains rows for all users."
+        "Call lookupUser from a local harness against a dummy database seeded with two users, passing id=1 OR 1=1.",
+        "Compare the returned rows with the single requested id."
       ],
-      "expected_result": "The response body includes user records beyond the single requested id, confirming the injection."
+      "observed_result": "The harness returned both dummy user rows instead of the single requested id."
     },
     "remediation": {
       "strategy": "Use a parameterized query so the id value is bound rather than concatenated.",
@@ -57,7 +65,54 @@
     }
   },
   {
+    "verdict": "needs_validation",
+    "fingerprint": "src-upload-size-limit-hypothesis",
+    "title": "Upload size may be unbounded",
+    "description": "The upload handler buffers the whole request body; whether a size limit applies depends on proxy configuration that is not in the repository.",
+    "claimed_root_cause": "handleUpload reads the full body into memory without an application-level size check.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "src/handlers/upload.js",
+        "line": 8,
+        "scope": "handleUpload",
+        "description": "The request body is read in full before any size check."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "src/handlers/upload.js",
+        "line": 8,
+        "description": "No size limit is passed to the body reader."
+      }
+    ],
+    "blockers": ["The reverse-proxy body-size configuration is absent from this checkout."],
+    "validation_plan": {
+      "local": "Run handleUpload in a sandboxed harness with a body just above the documented limit and record whether it is rejected."
+    }
+  },
+  {
     "verdict": "rejected",
-    "reason": "The described XSS in renderComment does not exist: the template engine auto-escapes all interpolated values, and no raw-output helper is used on that path."
+    "fingerprint": "src-views-comment-xss",
+    "title": "XSS in renderComment",
+    "description": "The candidate claimed renderComment writes comment text into the page unescaped.",
+    "claimed_root_cause": "renderComment was claimed to interpolate comment.body without escaping.",
+    "trace": [
+      {
+        "kind": "sink",
+        "file": "src/views/comment.js",
+        "line": 22,
+        "scope": "renderComment",
+        "description": "comment.body is interpolated into the template."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "src/views/comment.js",
+        "line": 22,
+        "description": "The interpolation uses the auto-escaping template helper."
+      }
+    ],
+    "reason": "The template engine auto-escapes all interpolated values, and no raw-output helper is used on that path."
   }
 ]

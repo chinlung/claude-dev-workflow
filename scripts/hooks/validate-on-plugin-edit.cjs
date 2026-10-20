@@ -7,7 +7,9 @@
  * When a plugin-code file that affects the test suite is edited — a validator
  * (a .cjs under a validators/ dir), a schema (a .json under a schema/ dir), a
  * fixture (anything under a tests/ dir), a hook script (anything under a hooks/
- * dir), the runner itself (scripts/validate-fixtures.cjs), or a file the runner's
+ * dir), the runner itself (scripts/validate-fixtures.cjs), code or data sitting directly
+ * in a skill dir (plugins/<p>/skills/<s>/*.{cjs,js,mjs,json}, root-relative — e.g.
+ * vendored security-audit's validators, their upstream tests, report-schema.json), or a file the runner's
  * repo-structure gates read (plugins/<p>/commands/*.md, plugins/<p>/skills/<s>/SKILL.md,
  * plugins/<p>/.claude-plugin/plugin.json, plugins/<p>/CHANGELOG.md, the root marketplace.json,
  * a root CHANGELOG, and .claude/settings.json — the denyWrite gate reads it, and editing
@@ -53,9 +55,12 @@ process.stdin.on('end', () => {
   // local trigger, not a false one, and CI still runs the gates.
   const rel = path.relative(root, filePath).split(path.sep).join('/');
   const structural = /^(plugins\/[^/]+\/(commands\/[^/]+\.md|skills\/[^/]+\/SKILL\.md|\.claude-plugin\/plugin\.json|CHANGELOG\.md)|\.claude-plugin\/marketplace\.json|CHANGELOG(\.zh-TW)?\.md|\.claude\/settings\.json)$/.test(rel);
-  // Vendored security-audit keeps its validator/schema under skills/security-audit/
-  // (not the conventional validators/ + schema/ dirs), so match those paths too.
-  const relevant = structural || /(\/validators\/.*\.cjs|\/schema\/.*\.json|\/tests\/|\/hooks\/|scripts\/validate-fixtures\.cjs|security-audit\/(validate-findings\.cjs|report-schema\.json))/.test(filePath);
+  // Code and data that sit directly in a skill dir instead of the conventional validators/ +
+  // schema/ dirs — e.g. vendored security-audit's validators, their upstream test suites, and
+  // report-schema.json, which the runner and tests/*.test.sh run or load. Root-relative like
+  // `structural`, so a cache clone of the same skill does not trigger.
+  const skillCode = /^plugins\/[^/]+\/skills\/[^/]+\/[^/]+\.(c?js|mjs|json)$/.test(rel);
+  const relevant = structural || skillCode || /(\/validators\/.*\.cjs|\/schema\/.*\.json|\/tests\/|\/hooks\/|scripts\/validate-fixtures\.cjs)/.test(filePath);
   if (!relevant) process.exit(0);
 
   const failures = [];

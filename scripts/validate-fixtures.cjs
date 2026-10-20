@@ -79,17 +79,24 @@ let tmpCounter = 0;
  * error, never as a validator rejection (that was the old fail-open).
  */
 function execValidatorOnObject(validator, obj) {
+  return execValidatorCapture(validator, obj).status;
+}
+
+// Same contract as execValidatorOnObject, plus the validator's stdout+stderr so a
+// mutation can check WHICH rule rejected it (runMutations' optional `expect`).
+function execValidatorCapture(validator, obj) {
   spawned.add(validator);
   const tmp = path.join(os.tmpdir(), `validate-fixtures-mut-${process.pid}-${tmpCounter++}.json`);
   // Write OUTSIDE the exit-capturing try: a write failure is a harness/environment
   // error, not a validator rejection — it must propagate, never be scored as a pass.
   fs.writeFileSync(tmp, JSON.stringify(obj));
   try {
-    execFileSync(process.execPath, [validator, tmp], { stdio: 'pipe' });
-    return 0;
+    const out = execFileSync(process.execPath, [validator, tmp], { stdio: 'pipe' });
+    return { status: 0, output: String(out) };
   } catch (e) {
-    if (typeof e.status === 'number') return e.status; // validator ran and exited non-zero
-    throw e;                                            // could not even execute the validator
+    // validator ran and exited non-zero
+    if (typeof e.status === 'number') return { status: e.status, output: `${e.stdout || ''}${e.stderr || ''}` };
+    throw e; // could not even execute the validator
   } finally {
     try { fs.unlinkSync(tmp); } catch (e) { /* ignore cleanup errors */ }
   }
@@ -102,6 +109,12 @@ function execValidatorOnObject(validator, obj) {
  * valid base plus a single-field change means a non-zero exit can only come from that
  * field's rule. A validator that cannot be executed (missing / mis-pathed / write
  * failure) is scored as a FAILURE, never a spurious pass.
+ *
+ * Isolation still assumes the mutation hit the field its label names. A mutation that
+ * lands on the wrong record or trips a second rule exits non-zero all the same, so a
+ * mutation may carry `expect` (a RegExp the validator's output must match) to pin the
+ * rule that rejected it. A mutate() that throws (e.g. a lookup helper reporting fixture
+ * drift) is scored as a failure and the run continues.
  */
 function runMutations(validator, baseFixture, group, mutations) {
   const rel = path.relative(ROOT, baseFixture);
@@ -122,24 +135,35 @@ function runMutations(validator, baseFixture, group, mutations) {
   }
   for (const m of mutations) {
     const obj = JSON.parse(JSON.stringify(base));
-    m.mutate(obj);
     const label = `${group} ← mutate: ${m.label}`;
-    let exitCode;
     try {
-      exitCode = execValidatorOnObject(validator, obj);
+      m.mutate(obj);
+    } catch (e) {
+      console.error(`  ✗  ${label}: mutation threw — ${e.message}`);
+      failed++;
+      failures.push(label);
+      continue;
+    }
+    let result;
+    try {
+      result = execValidatorCapture(validator, obj);
     } catch (e) {
       console.error(`  ✗  ${label}: validator could not be executed — ${e.message}`);
       failed++;
       failures.push(label);
       continue;
     }
-    if (exitCode !== 0) {
-      console.log(`  ✓  ${label}`);
-      passed++;
-    } else {
+    if (result.status === 0) {
       console.error(`  ✗  ${label}: expected rejection (exit non-zero), got exit 0`);
       failed++;
       failures.push(label);
+    } else if (m.expect && !m.expect.test(result.output)) {
+      console.error(`  ✗  ${label}: rejected, but output does not match ${m.expect}`);
+      failed++;
+      failures.push(label);
+    } else {
+      console.log(`  ✓  ${label}`);
+      passed++;
     }
   }
 }
@@ -1258,18 +1282,41 @@ function main() {
   // runtime-generic schema interpreter with no `*_ENUM` constants to compare, so the
   // drift checker (which parses those constants) does not apply. Fixtures + single-field
   // mutations guard against the vendored file or Node behavior drifting on re-vendor.
+  // Upstream's own suites (validate-findings + validate-coverage-ledger) run separately
+  // via plugins/security-audit/tests/upstream.test.sh.
   console.log('\n## Security Audit — findings validator (vendored)');
   const saV = P('plugins/security-audit/skills/security-audit/validate-findings.cjs');
   const saF = P('plugins/security-audit/tests/fixtures/security-audit');
   run(saV, path.join(saF, 'valid-basic.json'), true);
+  // Look records up by verdict, not by index: inserting a record shifts every index
+  // after it, and an index-based mutation then lands on a different record. The 2.0.0
+  // fixture put needs_validation at [1], so `delete o[1].reason` deleted nothing (the
+  // suite caught that one: the object stayed valid). `expect` pins the rule each
+  // mutation must trip, which also catches a misaimed mutation that still exits non-zero.
+  const saRec = (o, verdict) => {
+    const e = o.find(f => f.verdict === verdict);
+    if (!e) throw new Error(`security-audit valid-basic.json drifted: no ${verdict} record`);
+    return e;
+  };
   runMutations(saV, path.join(saF, 'valid-basic.json'), 'security-audit-findings', [
-    { label: 'confirmed missing title', mutate: o => { delete o[0].title; } },
-    { label: 'confirmed bad overall_severity enum', mutate: o => { o[0].severity.overall_severity = 'SEV'; } },
-    { label: 'bad verdict discriminator', mutate: o => { o[0].verdict = 'maybe'; } },
-    { label: 'confirmed missing execution', mutate: o => { delete o[0].execution; } },
-    { label: 'trace first step not entrypoint (semantic)', mutate: o => { o[0].trace[0].kind = 'propagation'; } },
-    { label: 'trace last step not sink (semantic)', mutate: o => { o[0].trace[o[0].trace.length - 1].kind = 'propagation'; } },
-    { label: 'rejected missing reason', mutate: o => { delete o[1].reason; } },
+    { label: 'confirmed missing title', expect: /missing required field "title"/, mutate: o => { delete saRec(o, 'confirmed').title; } },
+    { label: 'confirmed missing fingerprint', expect: /missing required field "fingerprint"/, mutate: o => { delete saRec(o, 'confirmed').fingerprint; } },
+    { label: 'confirmed missing evidence', expect: /missing required field "evidence"/, mutate: o => { delete saRec(o, 'confirmed').evidence; } },
+    { label: 'confirmed bad overall_severity enum', expect: /overall_severity: invalid value "SEV"/, mutate: o => { saRec(o, 'confirmed').severity.overall_severity = 'SEV'; } },
+    { label: 'bad verdict discriminator', expect: /must match exactly one schema in oneOf; matched 0/, mutate: o => { saRec(o, 'confirmed').verdict = 'maybe'; } },
+    { label: 'confirmed missing execution', expect: /missing required field "execution"/, mutate: o => { delete saRec(o, 'confirmed').execution; } },
+    { label: 'confirmed pre-2.0.0 expected_result instead of observed_result', expect: /execution: unexpected field "expected_result"/, mutate: o => { const x = saRec(o, 'confirmed').execution; x.expected_result = x.observed_result; delete x.observed_result; } },
+    { label: 'overall_severity above demonstrated impact (semantic)', expect: /cannot exceed demonstrated impact/, mutate: o => { saRec(o, 'confirmed').severity.impact.score = 'medium'; } },
+    { label: 'trace first step not entrypoint (semantic)', expect: /trace\[0\]\.kind: must be "entrypoint"/, mutate: o => { saRec(o, 'confirmed').trace[0].kind = 'propagation'; } },
+    { label: 'trace last step not sink (semantic)', expect: /\.kind: must be "sink"/, mutate: o => { const t = saRec(o, 'confirmed').trace; t[t.length - 1].kind = 'propagation'; } },
+    { label: 'evidence path not repository-relative (semantic)', expect: /must be a safe repository-relative source path/, mutate: o => { saRec(o, 'confirmed').evidence[0].file = '/etc/passwd'; } },
+    { label: 'needs_validation carries a severity', expect: /needs_validation finding must not contain "severity"/, mutate: o => { saRec(o, 'needs_validation').severity = saRec(o, 'confirmed').severity; } },
+    { label: 'needs_validation missing blockers', expect: /missing required field "blockers"/, mutate: o => { delete saRec(o, 'needs_validation').blockers; } },
+    { label: 'rejected missing reason', expect: /missing required field "reason"/, mutate: o => { delete saRec(o, 'rejected').reason; } },
+    // needs_validation, not rejected: fingerprints must also be sorted, and the adjacent
+    // record taking the confirmed fingerprint keeps the order valid, so only the
+    // duplicate rule fires.
+    { label: 'duplicate fingerprint across records (semantic)', expect: /fingerprint: duplicate of/, mutate: o => { saRec(o, 'needs_validation').fingerprint = saRec(o, 'confirmed').fingerprint; } },
   ]);
 
   // ── Long-tail required-field / type / enum coverage (generated mutations) ────
