@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "Claude Code plugins collection by scl",
-    "version": "1.12.1"
+    "version": "1.12.2"
   },
   "plugins": [
     {
@@ -81,8 +81,8 @@
     {
       "name": "pr",
       "source": "./plugins/pr",
-      "description": "PR body skill - 寫出好審的 PR 描述：Summary 用最小的視覺化表達重點（pseudocode、call tree、component／file tree、Mermaid、diff 草圖），Evidence 放 before／after（截圖優先、測試輸出次之），Merge Danger 標 one-way／two-way door 與 blast radius。證據只採本 session 實跑的輸出或 CI 結果（無則標「Not verified」）、repo 有 PR template 時以它為準、body 寫檔，使用者要求開或更新 PR 時才交給 gh pr create／edit --body-file。Summary 的視覺化選單取自 Humanlayer Dex Horthy 的 show-me skill。",
-      "version": "1.1.0",
+      "description": "PR body skill - 寫出好審的 PR 描述：Summary 用最小的視覺化表達重點（pseudocode、call tree、component／file tree、Mermaid、diff 草圖），Evidence 放 before／after（截圖優先、測試輸出次之），Merge Danger 標 one-way／two-way door 與 blast radius。證據只採本 session 實跑的輸出、CI 結果或使用者貼上的輸出（逐字並註明來源，口述不算，無則標「Not verified」）、repo 有 PR template 時以它為準、body 寫檔，使用者要求開或更新 PR 時才交給 gh pr create／edit --body-file；body 語言跟著 repo 既有 PR，沒有前例用繁中。skill 本文為繁中（英文對照 SKILL.en.md），附 with／without eval suite。Summary 的視覺化選單取自 Humanlayer Dex Horthy 的 show-me skill。",
+      "version": "1.2.0",
       "keywords": ["pull-request", "pr-description", "code-review", "template", "diagram", "evidence", "merge-risk"]
     }
   ]

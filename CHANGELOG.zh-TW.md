@@ -4,6 +4,12 @@
 
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
+## [1.12.2] - 2026-10-20
+
+### Added
+
+- **pr 1.1.0 → 1.2.0：body 語言跟著 repo 既有 PR、skill 改為繁體中文，並以 eval suite 量測行為。** 新的語言規則讓 body 使用 repo 既有 PR 的語言（用 `gh pr list` 查，或依使用者提供的資訊），沒有前例時用繁體中文；段落標題、`**Door:**`／`**Blast Radius:**`、檔名、指令與程式碼保留原文。`SKILL.md` 改寫成繁體中文，英文原文保留為不會被載入的 `SKILL.en.md`，另新增 `README.zh-TW.md`。證據來源也接受使用者貼上的命令輸出，須逐字引用並註明來源；只用文字描述的結果仍寫「未驗證」（codex 發現 1.1.0 的規則排除了貼上的輸出，eval 卻期待引用它）。新的 `evals/`（7 個 case，with／without 對照）讓「沒有前例」的語言 case 從 0.00 升到 1.00；最後一輪每個 case 跑 3 次，載入 plugin 時全部 1.00，平均 Δ +0.32，「只有口述」的證據 case 為 1.00 對 0.53。交付段沒有 case，因為測它需要讓 agent 能對 GitHub 寫入。
+
 ## [1.12.1] - 2026-10-20
 
 ### Changed

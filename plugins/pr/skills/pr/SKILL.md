@@ -9,40 +9,48 @@ metadata:
     url: "https://github.com/humanlayer/skills/blob/main/plugins/show-me/skills/show-me/SKILL.md"
 ---
 
-Use this template for writing the PR body:
+<!-- 本檔是 Claude 載入的版本。英文對照版在同目錄的 SKILL.en.md，模型不會讀它；改規則時兩份要一起改。 -->
+
+PR body 用這個模板：
 
 ```markdown
 ## Summary
 
-<diagram, diff-sketch, or tree>
+<圖、diff 草圖或樹狀圖>
 
 ## Evidence
 
-- **Before:** <screenshot/output/failing test run>
-  **After:** <screenshot/output/passing test run>
+- **Before:** <截圖／輸出／失敗的測試執行>
+  **After:** <截圖／輸出／通過的測試執行>
 
 ## Merge Danger
 
-**Door:** <one-way or two-way>
+**Door:** <one-way 或 two-way>
 
-<optional: description>
+<選填：說明>
 
-**Blast Radius:** <one-word description>
+**Blast Radius:** <一個詞的描述>
 
-<optional: potential ramifications of merge>
+<選填：merge 之後可能的影響>
 ```
 
-If the repository has its own pull request template (`pull_request_template.md` at the root, in `docs/` or in `.github/`, or a `PULL_REQUEST_TEMPLATE/` directory in any of those; match the names case-insensitively), keep its headings and order and apply the guidance below inside its matching sections instead of replacing it.
+如果 repo 有自己的 PR template（root、`docs/` 或 `.github/` 底下的 `pull_request_template.md`，或這三處任一個 `PULL_REQUEST_TEMPLATE/` 目錄；檔名比對不分大小寫），保留它的段落標題與順序，把下面的寫法套進對應的段落，不要用這份模板取代它。
 
-## Sections
+## 語言
 
-Skip all preambles and keep prose brief. Use the user's domain language from `GLOSSARY.md` when the repository has one.
+body 的語言跟著這個 repo 既有的 PR：先看最近幾個 PR 用什麼語言寫（`gh pr list --state all --limit 5 --json title,body`，或使用者提供的資訊），就用那個語言。查不到、repo 還沒有任何 PR，或手邊沒有任何資訊時，用繁體中文。
+
+不論用哪個語言，下列一律保留原文：三個段落標題（Summary、Evidence、Merge Danger）、`**Door:**`、`**Blast Radius:**`、`one-way`／`two-way` 等欄位與術語，以及檔名、旗標、指令、程式碼與命令輸出。
+
+## 各段寫法
+
+不要前言，文字要短。repo 有 `GLOSSARY.md` 時，用裡面的領域用語。
 
 ### Summary
 
-Pick the smallest view that makes the key point clear.
+挑最小、足以把重點說清楚的呈現方式。
 
-- Show logic or an algorithm as pseudocode:
+- 邏輯或演算法用 pseudocode：
 
 ```text
 on(save)
@@ -52,7 +60,7 @@ on(save)
   return fresh result
 ```
 
-- Show runtime control flow as a call tree:
+- 執行時的控制流程用 call tree：
 
 ```text
 submitForm
@@ -62,7 +70,7 @@ submitForm
   navigateToSession
 ```
 
-- Show UI structure as a component tree, including state and module boundaries that matter:
+- UI 結構用 component tree，標出重要的 state 與模組邊界：
 
 ```text
 <SessionPage> (apps/example/src/routes/session.tsx)
@@ -71,16 +79,16 @@ submitForm
     <RunSkillButton> (packages/ui)
 ```
 
-- Show file responsibility or a broad refactor as a shallow file tree:
+- 檔案職責或大範圍重構用淺層的 file tree：
 
 ```text
 src/
-├── commands/       # parses user actions
-├── sessions/       # owns session state
-└── transport/      # sends API requests
+├── commands/       # 解析使用者動作
+├── sessions/       # 管理 session 狀態
+└── transport/      # 送出 API 請求
 ```
 
-- Show component interaction, control flow, or data flow with Mermaid:
+- 元件互動、控制流程或資料流用 Mermaid：
 
 ```mermaid
 sequenceDiagram
@@ -92,9 +100,9 @@ sequenceDiagram
     Daemon-->>UI: stream result
 ```
 
-- Use `diff` when the point is what changes and the surrounding shape already exists. Match the diff shape to the topic.
+- 重點是「哪裡變了」、而周圍結構本來就存在時，用 `diff`。diff 的形狀要配合主題。
 
-For a component change:
+元件變更：
 
 ```diff
  <SessionPage>
@@ -105,12 +113,12 @@ For a component change:
 +    <SkillResultCard />
 ```
 
-For a file-layout change:
+檔案配置變更：
 
 ```diff
  src/
  ├── commands/
-+│   └── show-me.ts       # expands the slash command
++│   └── show-me.ts       # 展開 slash command
  ├── sessions/
 -└── transport.ts
 +└── transport/
@@ -118,7 +126,7 @@ For a file-layout change:
 +    └── stream.ts
 ```
 
-For a call-tree or call-stack change:
+call tree 或 call stack 變更：
 
 ```diff
  submitForm
@@ -131,7 +139,7 @@ For a call-tree or call-stack change:
 +    subscribeToEvents
 ```
 
-For a state or control-flow change:
+狀態或控制流程變更：
 
 ```diff
  on(save)
@@ -142,7 +150,7 @@ For a state or control-flow change:
 +  invalidate cache
 ```
 
-- Show the whole block when most of it is new, when omitted context would hide ownership or order, or when the user needs a copyable target shape:
+- 大部分是新內容、省略上下文會看不出歸屬或順序，或使用者需要一份可以直接複製的目標形狀時，貼出整段：
 
 ```ts
 function expandSkill(command: string): string {
@@ -151,28 +159,28 @@ function expandSkill(command: string): string {
 }
 ```
 
-#### Guidance
+#### 原則
 
-Place each visual next to the short text it supports. Keep only the calls, files, props, states, and boundaries needed to answer the user's current question or the options to resolve the current discussion point.
+每張圖放在它支撐的那段短文字旁邊。只留下回答使用者眼前問題、或解決目前討論點所需的呼叫、檔案、props、state 與邊界。
 
-You may use one of these, you may use several, it is unlikely you will use all of them. Use your judgement and don't overwhelm the user.
+可以用一種，也可以用好幾種，但不太會全部都用到。自己判斷，別讓讀者被淹沒。
 
 ### Evidence
 
-Concrete evidence that the change works. Show a before and after.
+證明這個變更有效的具體證據，要有 before 和 after。
 
-Screenshots are S-tier - when the environment is set up for it and the change is visual. `gh` cannot upload images, so when a screenshot is needed write a visible placeholder such as `**Screenshot pending:** <what it shows>` and tell the user to drag the image into the PR description on GitHub once the PR is open.
+截圖是最高等級，前提是環境允許、而且變更是視覺上的。`gh` 沒辦法上傳圖片，所以需要截圖時，寫一行看得見的佔位，例如 `**Screenshot pending:** <要拍什麼>`，並請使用者在 PR 開好後，到 GitHub 上把圖片拖進 PR 描述。
 
-Execution-based evidence is A-tier. Test results, console output. Show the exact test that now fails and passes, using pseudocode.
+執行結果是次一級的證據：測試結果、console 輸出。用 pseudocode 寫出「現在會失敗、修好後會通過」的那個測試。
 
-Use only output from commands actually run in this session, or CI results for this branch, and quote it rather than reconstructing it. Never write a before or after you did not observe. When there is no evidence for a claim, write `Not verified: <reason>` in its place.
+證據只能來自這次 session 實際跑過的命令輸出、這個分支的 CI 結果，或使用者在對話中貼上的命令輸出，一律逐字引用，不要自己重寫或補齊；使用者貼上的要註明來源（例如「作者本機 `npm test`」）。使用者只用文字描述結果（例如「測試都過了」）而沒有貼出輸出，不算證據。沒看到輸出的 before 或 after 一律不寫。某項主張沒有證據時，在那個位置寫 `Not verified: <原因>`；body 用中文時寫 `未驗證：<原因>`。
 
 ### Merge Danger
 
-Describe whether it's a one-way or two-way door. You can walk back through two-way doors, but not one-way doors. A PR that is cheap to roll back is lower risk. Changes that involve destructive actions or hard-to-reverse decisions are one-way doors.
+說明這是 one-way 還是 two-way door。two-way door 可以走回頭，one-way door 不行。容易 rollback 的 PR 風險較低；牽涉破壞性動作或難以撤回的決定，就是 one-way door。
 
-The blast radius is the potential impact or scope of the changes introduced by this PR. Consider all possibilities. Examples are layout shift, breakages for consumers, mobile responsiveness, etc.
+blast radius 是這個 PR 帶來的變更可能影響的範圍。把各種可能都想過，例如版面位移、使用者端的相容性破壞、行動裝置的版面等。
 
-## Delivering the body
+## 交付 body
 
-Write the body to a file outside the repository (a temp directory, so it is never committed). Only when the user has asked you to open or update the PR, pass it with `gh pr create --body-file <file>`, or `gh pr edit <number> --body-file <file>` for a PR that already exists; otherwise give the user the file's path and stop. Do not pass it inline with `--body`: inside double quotes the shell runs backticks as commands and expands `$`, which mangles code spans.
+把 body 寫進 repo 外的檔案（放在暫存目錄，才不會被 commit）。只有在使用者要求開或更新 PR 時，才用 `gh pr create --body-file <file>` 交給 GitHub；PR 已存在就用 `gh pr edit <number> --body-file <file>`。使用者沒有這樣要求時，把檔案路徑告訴使用者就停。不要用 `--body` 直接帶入內容：在雙引號裡，shell 會把反引號當成命令執行，也會展開 `$`，code span 會被弄壞。
