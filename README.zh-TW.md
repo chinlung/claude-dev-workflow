@@ -661,7 +661,7 @@ Session 收尾回顧系統。fail-open 的 Stop hook 閘門先廉價 triage（ro
 
 # PR 插件
 
-單一 skill 的插件，把 PR body 寫成好審的形狀。**Summary** 用最小、足以說清重點的視覺化呈現變更：pseudocode、call tree、component／file tree、Mermaid，或針對變動形狀的 `diff` 草圖；**Evidence** 放 before／after（視覺變更以截圖為優先，其次是測試執行與 console 輸出）；**Merge Danger** 說明這是 one-way 還是 two-way door、blast radius 有多大。它只負責寫 body——把它存成檔案，再用 `gh pr create --body-file <file>` 開 PR；`/commit-commands:commit-push-pr` 會依 diff 自己寫 body，不會套用這份模板。Summary 的視覺化選單取自 Humanlayer Dex Horthy 的 `show-me` skill。詳見 [`plugins/pr/README.md`](plugins/pr/README.md)。
+單一 skill 的插件，把 PR body 寫成好審的形狀。**Summary** 用最小、足以說清重點的視覺化呈現變更：pseudocode、call tree、component／file tree、Mermaid，或針對變動形狀的 `diff` 草圖；**Evidence** 放 before／after（視覺變更以截圖為優先，其次是測試執行與 console 輸出）；**Merge Danger** 說明這是 one-way 還是 two-way door、blast radius 有多大。它只負責寫 body——把它存成檔案，再用 `gh pr create --body-file <file>` 開 PR；`/commit-commands:commit-push-pr` 會依 diff 自己寫 body，不會套用這份模板。body 的語言跟著 repo 既有 PR，沒有前例時用繁體中文；skill 本身是繁體中文，另附英文對照版，並有一套 eval 以「不載入 plugin」為基準量測它的行為。Summary 的視覺化選單取自 Humanlayer Dex Horthy 的 `show-me` skill。詳見 [`plugins/pr/README.zh-TW.md`](plugins/pr/README.zh-TW.md)。
 
 ---
 

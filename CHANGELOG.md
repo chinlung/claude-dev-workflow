@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.12.2] - 2026-10-20
+
+### Added
+
+- **pr 1.1.0 → 1.2.0: the body follows the repository's PR language, the skill is in Traditional Chinese, and an eval suite measures its behaviour.** A language rule writes the body in the language of the repository's existing pull requests (looked up with `gh pr list`, or what the user says) and in Traditional Chinese when there is no precedent; headings, `**Door:**` / `**Blast Radius:**`, file names, commands and code stay as they are. `SKILL.md` is now Traditional Chinese, with the English text kept as `SKILL.en.md` (not loaded); `README.zh-TW.md` is added. Evidence may now also be command output the user pasted, quoted verbatim with its source; a result only described in words is still `Not verified` (codex found that the 1.1.0 rule excluded pasted output while the eval expected it). The new `evals/` suite (seven cases, with/without ablation) took the no-precedent language case from 0.00 to 1.00; in the final three-run pass every case scored 1.00 with the plugin, mean Δ +0.32, and the words-only evidence case scored 1.00 vs 0.53. The delivery section has no case, since testing it would let the agent write to GitHub.
+
 ## [1.12.1] - 2026-10-20
 
 ### Changed

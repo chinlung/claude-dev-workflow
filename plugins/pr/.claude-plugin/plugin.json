@@ -1,6 +1,6 @@
 {
   "name": "pr",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "PR body skill — writes a pull-request description that is fast to review: a Summary drawn as the smallest visual that makes the point (pseudocode, call tree, component or file tree, Mermaid, or a diff sketch), before/after Evidence, and a Merge Danger section (one-way vs two-way door, blast radius).",
   "author": {
     "name": "scl@hanchih.com"
