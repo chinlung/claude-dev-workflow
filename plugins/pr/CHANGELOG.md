@@ -2,6 +2,13 @@
 
 All notable changes to the `pr` plugin will be documented in this file.
 
+## [1.2.1] - 2026-10-20
+
+### Fixed
+
+- **Other PRs' output is not evidence.** The language rule reads recent PRs with `gh pr list`, and their bodies can hold other changes' test output, which 1.2.0's wording ("output from commands run in this session") technically allowed as evidence. Both `SKILL.md` and `SKILL.en.md` now say the PR list is only for choosing the language, and that output belonging to another PR or change is not evidence (found by `/security-review` as a non-exploitable edge note; deferred from 1.2.0).
+- New eval case `08-other-pr-output-not-evidence` (the user hands over `gh pr list` output carrying other PRs' test results). Red check on 1.2.0, three runs per arm: with 1.00, without 0.89 — one baseline run quoted another PR's `118 passed` — so 1.2.0 already behaved correctly and this release states the rule rather than changing measured behaviour. Full suite after the change, three runs per case: every case 1.00 with the plugin, mean Δ +0.30, $4.28; 08 scored 1.00 in both arms on that run, so its baseline varies between runs.
+
 ## [1.2.0] - 2026-10-20
 
 ### Added

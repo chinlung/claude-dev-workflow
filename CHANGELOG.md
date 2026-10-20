@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.12.3] - 2026-10-20
+
+### Fixed
+
+- **pr 1.2.0 → 1.2.1: other PRs' output is not evidence.** The `gh pr list` output read for the language rule can carry other changes' test results, which 1.2.0's evidence wording technically allowed; both skill files now say that list is only for choosing the language and that output belonging to another PR or change is not evidence. A new eval case, `08-other-pr-output-not-evidence`, was already green on 1.2.0 (with 1.00, without 0.89), so this states the rule rather than changing measured behaviour; the full eight-case suite afterwards scored 1.00 with the plugin on every case, mean Δ +0.30.
+
 ## [1.12.2] - 2026-10-20
 
 ### Added

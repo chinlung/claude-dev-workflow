@@ -36,7 +36,7 @@ Claude 在寫 pull request 描述時會觸發 `pr` skill，例如你說「寫 PR
 
 - **語言跟著 repo 走**（1.2.0）：body 用 repo 既有 PR 的語言（用 `gh pr list` 查，或依你提供的資訊）；查不到或沒有前例時用繁體中文。段落標題、`**Door:**` 這類欄位名、檔名、指令與程式碼保留原文。
 - **repo 自己的 PR template 優先**（1.1.0）：repo 有 pull request template 時，保留它的段落，三段的寫法套進去。
-- **證據要親眼看到**（1.1.0，1.2.0 放寬）：只引用 session 中實際跑過的命令輸出、CI 結果，或你貼上的命令輸出，一律逐字引用並註明來源；只用文字描述的結果（「測試都過了」）不算證據，這時 body 會寫 `Not verified: <原因>`（中文 body 寫 `未驗證：<原因>`）。
+- **證據要親眼看到**（1.1.0，1.2.0 放寬）：只引用 session 中實際跑過的命令輸出、CI 結果，或你貼上的命令輸出，一律逐字引用並註明來源；只用文字描述的結果（「測試都過了」）不算證據，其他 PR 的輸出（例如語言規則用 `gh pr list` 查到的那些）也不算（1.2.1），這時 body 會寫 `Not verified: <原因>`（中文 body 寫 `未驗證：<原因>`）。
 - **截圖**（1.1.0）：`gh` 沒辦法上傳圖片，所以 body 會留 `**Screenshot pending:**` 佔位，由你到 GitHub 上把圖片拖進去。
 
 ## 它不做什麼
@@ -51,7 +51,7 @@ Claude 在寫 pull request 描述時會觸發 `pr` skill，例如你說「寫 PR
 
 ## 行為驗證（eval）
 
-`evals/` 有 7 個 case，用 with／without plugin 兩組比較來量 uplift（Δ）：只用文字描述的結果不當成證據、沒有證據時不編造、repo template 優先、沒有前例時用繁中、跟著英文前例、引用使用者貼上的輸出並註明來源與評估 merge 風險，以及一個「只要 commit message、不該觸發」的反向 case。在 plugin 根目錄執行：
+`evals/` 有 8 個 case，用 with／without plugin 兩組比較來量 uplift（Δ）：只用文字描述的結果不當成證據、其他 PR 的輸出不當成證據、沒有證據時不編造、repo template 優先、沒有前例時用繁中、跟著英文前例、引用使用者貼上的輸出並註明來源與評估 merge 風險，以及一個「只要 commit message、不該觸發」的反向 case。在 plugin 根目錄執行：
 
 ```bash
 claude plugin eval . --ablation with-without --model sonnet --judge-model opus --no-publish

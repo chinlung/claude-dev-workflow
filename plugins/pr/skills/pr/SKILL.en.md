@@ -27,7 +27,7 @@ If the repository has its own pull request template (`pull_request_template.md` 
 
 ## Language
 
-Write the body in the language the repository's existing pull requests use: check the most recent ones (`gh pr list --state all --limit 5 --json title,body`, or what the user tells you) and use that language. When they cannot be checked, the repository has no pull requests yet, or nothing is known about them, write in Traditional Chinese.
+Write the body in the language the repository's existing pull requests use: check the most recent ones (`gh pr list --state all --limit 5 --json title,body`, or what the user tells you) and use that language. When they cannot be checked, the repository has no pull requests yet, or nothing is known about them, write in Traditional Chinese. That list is only for choosing the language: nothing in it, including other PRs' test output, is evidence for this change.
 
 Whatever the language, keep these in their original form: the three section headings (Summary, Evidence, Merge Danger), `**Door:**`, `**Blast Radius:**`, terms such as `one-way` / `two-way`, and file names, flags, commands, code and command output.
 
@@ -162,7 +162,7 @@ Screenshots are S-tier - when the environment is set up for it and the change is
 
 Execution-based evidence is A-tier. Test results, console output. Show the exact test that now fails and passes, using pseudocode.
 
-Use only output from commands actually run in this session, CI results for this branch, or command output the user pasted into the conversation; quote it verbatim rather than reconstructing or completing it, and label pasted output with where it came from (for example, "author's local `npm test`"). A user's description of a result without the output (such as "tests all pass") is not evidence. Never write a before or after whose output you have not seen. When there is no evidence for a claim, write `Not verified: <reason>` in its place (`未驗證：<原因>` when the body is in Chinese).
+Use only output from commands actually run in this session, CI results for this branch, or command output the user pasted into the conversation; quote it verbatim rather than reconstructing or completing it, and label pasted output with where it came from (for example, "author's local `npm test`"). A user's description of a result without the output (such as "tests all pass") is not evidence, and neither is output that belongs to another PR or another change. Never write a before or after whose output you have not seen. When there is no evidence for a claim, write `Not verified: <reason>` in its place (`未驗證：<原因>` when the body is in Chinese).
 
 ### Merge Danger
 

@@ -4,6 +4,12 @@
 
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
+## [1.12.3] - 2026-10-20
+
+### Fixed
+
+- **pr 1.2.0 → 1.2.1：其他 PR 的輸出不算證據。** 語言規則用 `gh pr list` 讀到的 PR 內容，可能帶有其他變更的測試結果，而 1.2.0 的證據規則字面上允許引用它；兩份 skill 檔現在都寫明這份清單只用來判斷語言，屬於其他 PR 或其他變更的輸出不算證據。新的 eval case `08-other-pr-output-not-evidence` 在 1.2.0 上已經是綠燈（with 1.00、without 0.89），所以這次是把規則寫明，並未改變量得到的行為；改完後 8 個 case 全套重跑，載入 plugin 時全部 1.00，平均 Δ +0.30。
+
 ## [1.12.2] - 2026-10-20
 
 ### Added
