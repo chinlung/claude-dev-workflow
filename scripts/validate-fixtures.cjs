@@ -691,17 +691,20 @@ function main() {
     // (b0) runOutcome's four verdicts, the missing-file ones with an INVALID expectation
     //      (why that matters: see its docblock).
     const label = 'canary: fixture harness judges valid/invalid both ways and fails fast on a missing fixture or validator';
-    const missingFixture = path.join(os.tmpdir(), `vf-missing-${process.pid}.json`);
-    const missingValidator = path.join(os.tmpdir(), `vf-missing-${process.pid}.cjs`);
-    const cases = [
-      runOutcome(findV0, findValid0, true),
-      runOutcome(findV0, findValid0, false),
-      runOutcome(findV0, missingFixture, false),
-      runOutcome(missingValidator, findValid0, false),
-    ];
-    const got = JSON.stringify(cases.map(o => o.ok));
-    const msgsOk = cases[2].msg === 'fixture not found' && cases[3].msg === 'validator not found';
-    expectNoProblems(label, got === JSON.stringify([true, false, false, false]) && msgsOk ? [] : [`ok flags ${got}, wanted [true,false,false,false]; outcomes=${JSON.stringify(cases)}`]);
+    // The "missing" paths live in a fresh private dir: at a guessable path, a file someone
+    // planted there would be run by node outside the sandbox.
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'vf-missing-'));
+    try {
+      const cases = [
+        runOutcome(findV0, findValid0, true),
+        runOutcome(findV0, findValid0, false),
+        runOutcome(findV0, path.join(tmp, 'missing.json'), false),
+        runOutcome(path.join(tmp, 'missing.cjs'), findValid0, false),
+      ];
+      const got = JSON.stringify(cases.map(o => o.ok));
+      const msgsOk = cases[2].msg === 'fixture not found' && cases[3].msg === 'validator not found';
+      expectNoProblems(label, got === JSON.stringify([true, false, false, false]) && msgsOk ? [] : [`ok flags ${got}, wanted [true,false,false,false]; outcomes=${JSON.stringify(cases)}`]);
+    } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
   }
   {
     // (b1) mutationOutcomes MUST refuse a base the validator rejects, and must not run
