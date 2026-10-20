@@ -118,71 +118,55 @@ function execValidatorCapture(validator, obj) {
  * mutation may carry `expect` (a RegExp the validator's output must match) to pin the
  * rule that rejected it. A mutate() that throws (e.g. a lookup helper reporting fixture
  * drift) is scored as a failure and the run continues.
+ *
+ * Split in two so the judgement can be tested without touching the global counters:
+ * mutationOutcomes() runs everything and returns one `{label, ok, msg}` per result (a
+ * group-level failure — validator missing, base unloadable or rejected — is a single
+ * entry labelled with the group; a rejected base also sets `baseRefused`), and
+ * runMutations() prints and scores them.
  */
-function runMutations(validator, baseFixture, group, mutations) {
+function mutationOutcomes(validator, baseFixture, group, mutations) {
   const rel = path.relative(ROOT, baseFixture);
-  if (!fs.existsSync(validator)) {
-    console.error(`  ✗  ${group}: validator not found — ${path.relative(ROOT, validator)}`);
-    failed++;
-    failures.push(group);
-    return;
-  }
+  const groupFailure = (msg, extra) => [{ label: group, ok: false, msg, ...extra }];
+  if (!fs.existsSync(validator)) return groupFailure(`validator not found — ${path.relative(ROOT, validator)}`);
   let base;
   try {
     base = JSON.parse(fs.readFileSync(baseFixture, 'utf8'));
   } catch (e) {
-    console.error(`  ✗  ${group}: cannot load valid base ${rel} — ${e.message}`);
-    failed++;
-    failures.push(group);
-    return;
+    return groupFailure(`cannot load valid base ${rel} — ${e.message}`);
   }
   let baseExit;
   try {
     baseExit = execValidatorOnObject(validator, base);
   } catch (e) {
-    console.error(`  ✗  ${group}: validator could not be executed on base ${rel} — ${e.message}`);
-    failed++;
-    failures.push(group);
-    return;
+    return groupFailure(`validator could not be executed on base ${rel} — ${e.message}`);
   }
   if (baseExit !== 0) {
-    console.error(`  ✗  ${group}: base fixture is not valid (${rel} exit ${baseExit}) — mutations skipped`);
-    failed++;
-    failures.push(group);
-    return;
+    return groupFailure(`base fixture is not valid (${rel} exit ${baseExit}) — mutations skipped`, { baseRefused: true });
   }
-  for (const m of mutations) {
+  return mutations.map((m) => {
     const obj = JSON.parse(JSON.stringify(base));
     const label = `${group} ← mutate: ${m.label}`;
     try {
       m.mutate(obj);
     } catch (e) {
-      console.error(`  ✗  ${label}: mutation threw — ${e.message}`);
-      failed++;
-      failures.push(label);
-      continue;
+      return { label, ok: false, msg: `mutation threw — ${e.message}` };
     }
     let result;
     try {
       result = execValidatorCapture(validator, obj);
     } catch (e) {
-      console.error(`  ✗  ${label}: validator could not be executed — ${e.message}`);
-      failed++;
-      failures.push(label);
-      continue;
+      return { label, ok: false, msg: `validator could not be executed — ${e.message}` };
     }
-    if (result.status === 0) {
-      console.error(`  ✗  ${label}: expected rejection (exit non-zero), got exit 0`);
-      failed++;
-      failures.push(label);
-    } else if (m.expect && !m.expect.test(result.output)) {
-      console.error(`  ✗  ${label}: rejected, but output does not match ${m.expect}`);
-      failed++;
-      failures.push(label);
-    } else {
-      console.log(`  ✓  ${label}`);
-      passed++;
-    }
+    if (result.status === 0) return { label, ok: false, msg: 'expected rejection (exit non-zero), got exit 0' };
+    if (m.expect && !m.expect.test(result.output)) return { label, ok: false, msg: `rejected, but output does not match ${m.expect}` };
+    return { label, ok: true };
+  });
+}
+
+function runMutations(validator, baseFixture, group, mutations) {
+  for (const o of mutationOutcomes(validator, baseFixture, group, mutations)) {
+    expectNoProblems(o.label, o.ok ? [] : [o.msg]);
   }
 }
 
@@ -720,53 +704,46 @@ function main() {
     if (!error && Array.isArray(drift) && drift.length > 0) { console.log(`  ✓  ${label}`); passed++; }
     else { console.error(`  ✗  ${label}: gate did NOT report drift (error=${error || 'none'})`); failed++; failures.push(label); }
   }
+  // (b) The mutation harness, driven through mutationOutcomes — the same path every
+  //     runMutations block takes — with the code-audit-rigor finding validator.
+  const findV0 = P('plugins/code-audit-rigor/validators/validate-finding.cjs');
+  const findValid0 = P('plugins/code-audit-rigor/tests/fixtures/code-audit-rigor/finding-valid.json');
   {
-    // (b) mutation harness discrimination: a no-op (still-valid) object → exit 0 (the
-    //     harness scores exit 0 as FAILURE), and a real single-field mutation → non-zero.
-    const findV0 = P('plugins/code-audit-rigor/validators/validate-finding.cjs');
-    const base = JSON.parse(fs.readFileSync(P('plugins/code-audit-rigor/tests/fixtures/code-audit-rigor/finding-valid.json'), 'utf8'));
-    const noop = 'canary: no-op mutation leaves object valid (exit 0 → harness flags as non-rejection)';
-    const real = 'canary: a real single-field mutation is rejected (exit non-zero)';
-    try {
-      const okExit = execValidatorOnObject(findV0, base);
-      if (okExit === 0) { console.log(`  ✓  ${noop}`); passed++; }
-      else { console.error(`  ✗  ${noop}: expected exit 0, got ${okExit}`); failed++; failures.push(noop); }
-    } catch (e) { console.error(`  ✗  ${noop}: ${e.message}`); failed++; failures.push(noop); }
-    try {
-      const bad = JSON.parse(JSON.stringify(base)); bad.severity = 'NOT-A-SEVERITY';
-      const badExit = execValidatorOnObject(findV0, bad);
-      if (badExit !== 0) { console.log(`  ✓  ${real}`); passed++; }
-      else { console.error(`  ✗  ${real}: expected non-zero, got 0`); failed++; failures.push(real); }
-    } catch (e) { console.error(`  ✗  ${real}: ${e.message}`); failed++; failures.push(real); }
-  }
-  {
-    // (b2) runMutations itself MUST refuse a base the validator rejects, and must not run
-    //      the mutations (see its docblock). Drives the real function, not a helper, so a
-    //      dropped `return` or a check moved after the loop fails this too: the mutation
-    //      below exits non-zero on the invalid base and would score a pass.
-    const findV0 = P('plugins/code-audit-rigor/validators/validate-finding.cjs');
+    // (b1) mutationOutcomes MUST refuse a base the validator rejects, and must not run
+    //      the mutations (see its docblock). A dropped `return` or a check moved after the
+    //      loop fails this too: the mutation below exits non-zero on the invalid base and
+    //      would score a pass.
     const label = 'canary: mutation harness refuses an invalid base fixture and skips its mutations';
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'vf-base-'));
     try {
       const badBase = path.join(tmp, 'bad-base.json');
       fs.writeFileSync(badBase, JSON.stringify({ severity: 'NOT-A-SEVERITY' }));
-      const before = { failed, passed, len: failures.length };
-      const captured = [];
-      const origError = console.error;
-      console.error = (...a) => captured.push(a.join(' '));
-      try {
-        runMutations(findV0, badBase, 'canary-base', [
-          { label: 'would pass on an invalid base', mutate: o => { delete o.severity; } },
-        ]);
-      } finally { console.error = origError; }
-      const deltaPassed = passed - before.passed;
-      const pushed = failures.splice(before.len);
-      failed = before.failed; passed = before.passed;
-      const refused = captured.some(l => /base fixture is not valid/.test(l));
-      expectNoProblems(label, pushed.length === 1 && deltaPassed === 0 && refused
+      let mutateCalls = 0;
+      const outcomes = mutationOutcomes(findV0, badBase, 'canary-base', [
+        { label: 'would pass on an invalid base', mutate: o => { mutateCalls++; delete o.severity; } },
+      ]);
+      expectNoProblems(label, outcomes.length === 1 && !outcomes[0].ok && outcomes[0].baseRefused && mutateCalls === 0
         ? []
-        : [`failed+${pushed.length} passed+${deltaPassed} refused=${refused}`]);
+        : [`mutateCalls=${mutateCalls} outcomes=${JSON.stringify(outcomes)}`]);
     } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+  }
+  {
+    // (b2) mutationOutcomes scores each mutation on a valid base: a throwing mutate(), a
+    //      no-op (the object stays valid, exit 0), and an `expect` that does not match the
+    //      validator's output are all failures; a real mutation with a matching `expect`
+    //      passes (so the base itself must validate). The four verdicts are asserted
+    //      together so a branch that always returns ok (or never does) fails.
+    const label = 'canary: mutation harness scores throw / no-op / wrong-expect as failures and a matched mutation as a pass';
+    const outcomes = mutationOutcomes(findV0, findValid0, 'canary-score', [
+      { label: 'throws', mutate: () => { throw new Error('drift'); } },
+      { label: 'no-op', mutate: () => {} },
+      { label: 'wrong expect', expect: /no such rule/, mutate: o => { o.severity = 'NOT-A-SEVERITY'; } },
+      { label: 'matched', expect: /severity/i, mutate: o => { o.severity = 'NOT-A-SEVERITY'; } },
+    ]);
+    const got = JSON.stringify(outcomes.map(o => o.ok));
+    expectNoProblems(label, got === JSON.stringify([false, false, false, true])
+      ? []
+      : [`ok flags ${got}, wanted [false,false,false,true]; outcomes=${JSON.stringify(outcomes)}`]);
   }
   {
     // (c) collision gate MUST flag a planted commands/<X>.md ↔ skill-named-<X> pair — incl. a
