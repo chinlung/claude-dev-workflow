@@ -73,17 +73,19 @@ Task(
 
 ## Phase 3：對抗審查（並行）
 
-**並行**派出 critic 和 adversary：
+**並行**派出 critic 和 adversary。判定類 agent（critic、adversary、disproof-agent、verifier）的派發一律明示 `model="opus"`，與它們的 frontmatter 相同：若環境有 PreToolUse 模型下限 hook，它看不到具名 agent 的 frontmatter，省略 model 的派發會被擋下重派。明示的值會蓋過 frontmatter，要換模型兩處一起改，`tests/agent-models.test.sh` 檢查兩者一致。
 
 ```
 Task(
   subagent_type="high-precision-dev:critic",
+  model="opus",
   prompt="審查兩份獨立實作。\n\nSPEC.md 路徑：{路徑}\nImplementer-A worktree：{路徑}\nImplementer-B worktree：{路徑}\nIMPL_A_REPORT.md：{路徑}\nIMPL_B_REPORT.md：{路徑}\n\n輸出 CRITIQUE.md 到 {產出目錄}。",
   run_in_background=true
 )
 
 Task(
   subagent_type="high-precision-dev:adversary",
+  model="opus",
   prompt="攻擊兩份獨立實作。\n\nSPEC.md 路徑：{路徑}\nImplementer-A worktree：{路徑}\nImplementer-B worktree：{路徑}\nIMPL_A_REPORT.md：{路徑}\nIMPL_B_REPORT.md：{路徑}\n\n輸出 ATTACKS.md 到 {產出目錄}。",
   run_in_background=true
 )
@@ -102,6 +104,7 @@ Task(
 ```
 Task(
   subagent_type="high-precision-dev:disproof-agent",
+  model="opus",
   prompt="對 Phase 3 的 severity >= 3 發現進行獨立反證。\n\nSPEC.md 路徑：{路徑}\nCRITIQUE.md 路徑：{路徑}\nATTACKS.md 路徑：{路徑}\nImplementer-A worktree：{路徑}\nImplementer-B worktree：{路徑}\n\n輸出 DISPROOF.md 到 {產出目錄}。"
 )
 ```
@@ -139,6 +142,7 @@ Task(
 ```
 Task(
   subagent_type="high-precision-dev:verifier",
+  model="opus",
   prompt="比較兩份實作，逐條對照 SPEC.md，產生最終實作和 VERIFICATION.md。\n\nSPEC.md 路徑：{路徑}\nCONSENSUS.md 路徑：{路徑}\nImplementer-A worktree：{路徑}\nImplementer-B worktree：{路徑}\nCRITIQUE.md：{路徑}\nATTACKS.md：{路徑}\nDISPROOF.md：{路徑}（若 Phase 3.5 執行）\nIMPL_A_REPORT.md：{路徑}\nIMPL_B_REPORT.md：{路徑}\n\n請在步驟零中同時確認 DISPROOF.md 中的 rejected 發現已被正確記錄（未進入修復循環），以及 verified/corrected 發現的修復均已通過 critic 重新審查。\n\n輸出最終實作和 VERIFICATION.md 到 {產出目錄}。"
 )
 ```

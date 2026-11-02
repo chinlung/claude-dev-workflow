@@ -4,6 +4,13 @@
 
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
+## [1.13.1] - 2026-11-02
+
+### Changed
+
+- **code-audit-rigor 2.1.3 → 2.2.0：`/review-branch` Phase 2 改派 `finding-verifier` agent。** 原本由主迴圈把五個驗證步驟逐條改寫成新的 `general-purpose` prompt；作者留存的 37 份驗證 prompt 中，決定結果的步驟常被漏掉（呼叫鏈追蹤 6/37、反駁框架 12/37）。現在步驟只寫在 `agents/finding-verifier.md`（`model: opus`、`disallowedTools: Agent`，不設 `effort`／`memory`／`maxTurns`），command 明示 `model: "opus"`，邊界情況給 `SKIP`、在 `notes` 標記（硬給 `PASS`／`FAIL` 會被跨輪帶入或駁回），`tests/finding-verifier.test.sh`（15 項檢查、14 個突變）守住接線。詳見該 plugin 的 CHANGELOG [2.2.0]。
+- **high-precision-dev 1.5.0 → 1.6.0：critic 與 disproof-agent 改用 `opus`。** 它們是判定類 agent，不再為了同廠商的去相關而降到較便宜的模型；`/start` 派發每個判定類 agent 時明示 `model="opus"`；README 不再說 agent 的 `effort` 不能寫在 frontmatter；新增 `tests/agent-models.test.sh`（13 項檢查、8 個突變）。詳見該 plugin 的 CHANGELOG [1.6.0]。
+
 ## [1.13.0] - 2026-10-20
 
 ### Changed
