@@ -188,13 +188,19 @@ function blobOf(root, rel) {
 
 const anchorKey = (s) => `${s.file}\u0000${s.quotedCode}`;
 
-function verdictByIndex(results) {
+// suggestion index → its first verification (the first one decides; later ones for the same index are ignored)
+function firstVerificationByIndex(results) {
   const m = new Map();
   for (const v of Array.isArray(results.verifications) ? results.verifications : []) {
-    if (Number.isInteger(v.suggestion) && v.suggestion >= 0 && !m.has(v.suggestion)) m.set(v.suggestion, v.verdict);
+    if (Number.isInteger(v.suggestion) && v.suggestion >= 0 && !m.has(v.suggestion)) m.set(v.suggestion, v);
   }
   return m;
 }
+
+// A borderline verification is a SKIP whose notes start with "邊界：", the marker agents/finding-verifier.md
+// tells a verifier to use when it cannot decide.
+const BORDERLINE_PREFIX = '邊界：';
+const isBorderline = (v) => v.verdict === 'SKIP' && typeof v.notes === 'string' && v.notes.trimStart().startsWith(BORDERLINE_PREFIX);
 
 // A dismissed anchor carries the blob of its file at the time of the dismissal: the verdict was about
 // that content. It blocks a re-post only while the file still has that blob; once the file changes,
@@ -307,12 +313,16 @@ function plan(opts) {
   let dismissed = [];
   let carried = [];
   if (sameWork) {
-    const verdict = verdictByIndex(previous);
+    const first = firstVerificationByIndex(previous);
     const suggestions = Array.isArray(previous.suggestions) ? previous.suggestions : [];
     const passedOnUnchanged = [];
     suggestions.forEach((s, i) => {
-      if (!s || typeof s.file !== 'string' || typeof s.quotedCode !== 'string') return;
-      if (verdict.get(i) === 'PASS' && unchangedSet.has(s.file)) passedOnUnchanged.push({ ...s, round: prevRound });
+      const v = first.get(i);
+      if (!v || !s || typeof s.file !== 'string' || typeof s.quotedCode !== 'string' || !unchangedSet.has(s.file)) return;
+      if (v.verdict === 'PASS') passedOnUnchanged.push({ ...s, round: prevRound });
+      // An undecided verification on a file that is not re-reviewed would otherwise vanish from every
+      // later report; carry it, flagged, until the file changes (2.3.0).
+      else if (isBorderline(v)) passedOnUnchanged.push({ ...s, round: prevRound, borderline: true });
     });
     // The previous round's FAIL verdicts are already in its `dismissed` (annotate merges them, with the
     // file's blob); nothing to add here.
@@ -526,12 +536,12 @@ function annotate(opts) {
     process.exit(1);
   }
 
-  const verdict = verdictByIndex(results);
+  const first = firstVerificationByIndex(results);
   const scopedBlob = new Map();
   for (const e of results.scopedFiles) if (e && typeof e.file === 'string' && typeof e.blob === 'string') scopedBlob.set(e.file, e.blob);
   const failedNow = [];
   results.suggestions.forEach((s, i) => {
-    if (s && verdict.get(i) === 'FAIL' && typeof s.file === 'string' && typeof s.quotedCode === 'string') {
+    if (s && first.get(i)?.verdict === 'FAIL' && typeof s.file === 'string' && typeof s.quotedCode === 'string') {
       failedNow.push({ file: s.file, quotedCode: s.quotedCode, blob: scopedBlob.has(s.file) ? scopedBlob.get(s.file) : blobNow(s.file) });
     }
   });

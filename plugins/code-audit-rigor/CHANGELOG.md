@@ -2,6 +2,18 @@
 
 All notable changes to the `code-audit-rigor` plugin will be documented in this file.
 
+## [2.3.0] - 2026-11-02
+
+### Changed
+
+- **A borderline verification no longer drops out of the next round.** In 2.2.0 a borderline result (a `SKIP` carrying its `suggestion` index, `notes` starting with `邊界：`) appeared in one report only: on the next round its file was unchanged, so it was not re-reviewed, and `plan` carried only `PASS`. `plan` now also carries a borderline `SKIP` on an unchanged file, flagged `borderline: true`; the flag persists round to round with the entry and the entry goes away when the file changes and is reviewed again. `/review-branch` lists flagged entries in the borderline table (with the round they came from) and counts them separately from "上一輪待修". A `SKIP` without the `邊界：` marker and a `FAIL` with it are not carried.
+- Schema and validator: `carried[].borderline` is an optional boolean; anything else is rejected. Files written before 2.3.0 stay valid.
+
+### Added
+
+- `scripts/review-branch-rounds.cjs`: `verdictByIndex` becomes `firstVerificationByIndex` (index → first verification), so `plan`'s PASS / borderline decision and `annotate`'s FAIL → dismissed read the same "first verification decides" walk.
+- `tests/review-branch-rounds.test.sh` 273 → 282 checks: the borderline `SKIP` is carried and flagged while a `PASS` is carried unflagged, a plain `SKIP`, a `SKIP` without notes and a borderline `FAIL` are not carried, the flag survives a second round, and the validator accepts `true` and rejects a non-boolean. Six mutations each turn the suite red (the `SKIP` branch removed, the flag dropped, every `SKIP` carried, a borderline `FAIL` carried, the unchanged-file filter dropped, the validator check removed).
+
 ## [2.2.0] - 2026-11-02
 
 ### Added

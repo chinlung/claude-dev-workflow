@@ -4,6 +4,13 @@
 
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
+## [1.13.2] - 2026-11-02
+
+### Changed
+
+- **code-audit-rigor 2.2.0 → 2.3.0：邊界驗證會一直帶到檔案改動為止。** `plan` 把檔案未變的邊界 `SKIP`（notes 以「邊界：」開頭）帶成 `carried` 並標 `borderline: true`，未定論的 finding 會留在 `/review-branch` 的邊界表，不再只出現在一份報告裡；schema 與 validator 新增選填的布林欄位 `carried[].borderline`。詳見該 plugin 的 CHANGELOG [2.3.0]。
+- `docs/agent-subagent-analysis-2026-11-01.md` §9 與 §10.2 不再說 `turn.start` 收到的是展開後的 skill 全文；證據只支持「不是指令名」。
+
 ## [1.13.1] - 2026-11-02
 
 ### Changed

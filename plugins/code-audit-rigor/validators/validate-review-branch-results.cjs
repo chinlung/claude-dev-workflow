@@ -30,6 +30,7 @@ function checkAnchors(list, name, errors) {
     if (!isNonEmptyString(d.quotedCode)) errors.push(`${p}.quotedCode required`);
     if (!isPosInt(d.round)) errors.push(`${p}.round must be integer >= 1`);
     if (d.blob !== undefined && !isNonEmptyString(d.blob)) errors.push(`${p}.blob must be a non-empty string when present`);
+    if (d.borderline !== undefined && typeof d.borderline !== 'boolean') errors.push(`${p}.borderline must be a boolean when present`);
   });
 }
 

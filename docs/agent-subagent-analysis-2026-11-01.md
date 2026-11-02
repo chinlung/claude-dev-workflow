@@ -385,7 +385,7 @@ side agent 提示的內容：「某次 claude-security 掃描的 12 個 scan-ver
 - **是 Claude Code 自己請求了 haiku，不是服務端替換**：verifier transcript 每一筆 assistant 紀錄的 `requestedModel` 都是 `global.anthropic.claude-haiku-5-5`（binary：`requestedModel: Z.model`，即送出的請求模型）。同一時段明示 `model: "opus"` 的 scan-redactor，`requestedModel` 是 `global.anthropic.claude-opus-5-5`。
 - **session 預設確實是 haiku**：本 session 開場的模型就是 Haiku 5.5（使用者 2026-11-02 才用 `/model` 改成 Fable 並存為預設）；那個 session 17:13 的主迴圈 model identity 也宣告為 haiku。
 - **沒有環境變數強制子代理模型**：`CLAUDE_CODE_SUBAGENT_MODEL`、`CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL` 都沒設，settings 的 `env` 也沒有。
-- **15:11 主迴圈為什麼是 opus**：`/claude-security` 被 harness 展開成 skill 全文送進 `turn.start`，model-router 的分類器判定涉及安全（risky），拉到 RISK_FLOOR 的 opus。Workflow 的 agent 繼承的是 `parentModel`，型別註解寫明「what `inherit` resolves to」，也就是 session 設定，不是改寫後的主迴圈模型。
+- **15:11 主迴圈為什麼是 opus**：`/claude-security` 被 harness 展開後送進 `turn.start`（送進去的是 skill 全文還是標記列未實測，見 §10.4；確定的是不是指令名），model-router 的分類器判定涉及安全（risky），拉到 RISK_FLOOR 的 opus。Workflow 的 agent 繼承的是 `parentModel`，型別註解寫明「what `inherit` resolves to」，也就是 session 設定，不是改寫後的主迴圈模型。
 
 ### 9.3 提示沒看到的第二個受害點：主迴圈自己的判定工作
 
@@ -426,7 +426,7 @@ side agent 提示的內容：「某次 claude-security 掃描的 12 個 scan-ver
 
 | 進入方式 | 掛點 | 10-31 的對應案例 |
 |---|---|---|
-| 正常打出的 slash 指令（引擎展開） | `prompt.submit`：`command.name` 是引擎設的指令名；`turn.start` 看到的是展開後的 skill 全文，不是指令名 | 15:11 `/claude-security` 被分類器當成 risky 才上 opus，純屬運氣 |
+| 正常打出的 slash 指令（引擎展開） | `prompt.submit`：`command.name` 是引擎設的指令名；`turn.start` 看到的不是指令名（實際是 skill 全文還是 `<command-message>` 標記列，未實測，見 §10.4） | 15:11 `/claude-security` 被分類器當成 risky 才上 opus，純屬運氣 |
 | 沒被展開的變體 | `turn.start` 的 slash 分支 | 13:08 ` /code-audit-rigor:code-audit-rigor`（開頭多一個空格） |
 | 模型自己載入 | `tool.call{Skill}` | 13:08 接著呼叫的 Skill tool |
 

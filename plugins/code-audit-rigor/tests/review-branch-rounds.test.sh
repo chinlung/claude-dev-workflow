@@ -845,6 +845,51 @@ node "$RULES" --root "$REPO" --files "$WORK/fbom.txt" --user-manifest "$WORK/no-
 check_eq "...and so does resolve-rules" "$(jget "$WORK/rules-bom.json" files.0.file)" "src/a.ts"
 rm -f "$REPO/.git/review-branch-rules.json"
 
+echo "== plan: a borderline SKIP on an unchanged file is carried, flagged borderline (2.3.0)"
+# finding-verifier gives SKIP + "邊界：" notes when it cannot decide. Unchanged files are not re-reviewed, so
+# without carrying it the undecided finding would vanish from every later report while the file stays the same.
+node -e '
+  const fs = require("fs"); const [src, out] = process.argv.slice(1);
+  const j = JSON.parse(fs.readFileSync(src, "utf8"));
+  const f = j.scopedFiles.find((e) => e.status === "reviewed" && e.blob).file;
+  const s = (q) => ({ file: f, line: 1, quotedCode: q, description: q, severity: "LOW", introduced: true });
+  j.suggestions = [s("passed"), s("undecided"), s("holistic"), s("nonotes"), s("failedborder")];
+  j.verifications = [
+    { id: "V-1", verdict: "PASS", suggestion: 0 },
+    { id: "V-2", verdict: "SKIP", suggestion: 1, notes: "邊界：caller set unclear" },
+    { id: "V-3", verdict: "SKIP", suggestion: 2, notes: "整體性建議，無單一程式碼" },
+    { id: "V-4", verdict: "SKIP", suggestion: 3 },
+    { id: "V-5", verdict: "FAIL", suggestion: 4, notes: "邊界：leaning false" },
+  ];
+  j.carried = []; j.dismissed = [];
+  fs.writeFileSync(out, JSON.stringify(j));
+' "$REPO/.git/review-branch-last.json" "$WORK/prev-border.json"
+node "$ROUNDS" plan --root "$REPO" --base "$BASE" --files "$WORK/files.txt" --previous "$WORK/prev-border.json" --no-write > "$WORK/plan-border.json"
+check_eq "borderline: PASS and the borderline SKIP are carried; a plain SKIP, a SKIP without notes and a FAIL are not" "$(jget "$WORK/plan-border.json" carried.length)" 2
+# carried keeps suggestion order: the PASS (index 0) first, the borderline SKIP (index 1) second
+check_eq "...the PASS is carried first" "$(jget "$WORK/plan-border.json" carried.0.quotedCode)" passed
+check_eq "...without the flag" "$(jget "$WORK/plan-border.json" carried.0.borderline)" undefined
+check_eq "...the borderline SKIP is carried second" "$(jget "$WORK/plan-border.json" carried.1.quotedCode)" undecided
+check_eq "...with borderline: true" "$(jget "$WORK/plan-border.json" carried.1.borderline)" true
+# The next round keeps it: the carried entry (with its flag) survives while the file stays unchanged.
+node -e '
+  const fs = require("fs"); const [prev, plan, out] = process.argv.slice(1);
+  const j = JSON.parse(fs.readFileSync(prev, "utf8"));
+  j.carried = JSON.parse(fs.readFileSync(plan, "utf8")).carried; j.suggestions = []; j.verifications = [];
+  fs.writeFileSync(out, JSON.stringify(j));
+' "$WORK/prev-border.json" "$WORK/plan-border.json" "$WORK/prev-border2.json"
+node "$ROUNDS" plan --root "$REPO" --base "$BASE" --files "$WORK/files.txt" --previous "$WORK/prev-border2.json" --no-write > "$WORK/plan-border2.json"
+check_eq "...and is still carried a round later" "$(jget "$WORK/plan-border2.json" carried.1.quotedCode)" undecided
+check_eq "...still flagged" "$(jget "$WORK/plan-border2.json" carried.1.borderline)" true
+# mkborder <out> <borderline as JSON> → the annotated results file with one carried entry carrying that value
+mkborder() {
+  node -e 'const fs=require("fs"); const [r,out,v]=process.argv.slice(1); const j=JSON.parse(fs.readFileSync(r,"utf8")); j.carried=[{file:"src/a.ts",quotedCode:"x",round:1,borderline:JSON.parse(v)}]; fs.writeFileSync(out, JSON.stringify(j))' "$R" "$@"
+}
+mkborder "$WORK/r-border-ok.json" true
+mkborder "$WORK/r-border-bad.json" '"yes"'
+check_eq "validator accepts carried borderline: true" "$(rc node "$VALIDATOR" "$WORK/r-border-ok.json")" 0
+check_eq "validator rejects a carried borderline that is not a boolean" "$(rc node "$VALIDATOR" "$WORK/r-border-bad.json")" 1
+
 echo
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
