@@ -76,7 +76,7 @@ tiers 的 effort 是 sonnet `high`、opus `high`、fable `xhigh`，被路由的�
 - 重播：用本報告的 80 段樣本重跑，確認 risk 題收窄後支付／憑證類仍判 risky、`commit` 不再判 risky。
 - 上線後一週：用 #3 的決定檔與 transcript 對照，比較熱 cache 升級次數與 flip-flop 次數。
 
-工具：分析腳本 `router-hist.mjs`、`router-replay.mjs` 在 session scratchpad（未入版控）。
+工具：產生本報告數字的分析腳本已整理進 claude-config 的 `scripts/model-router-review/`（`turns.mjs` → `report.mjs`、`replay.mjs`；README 有重算步驟與各區段對應），取代當時只在 session scratchpad 的 `router-hist.mjs`、`router-replay.mjs`。整理時修了四處，所以同一批資料重算會略有出入：間隔量到該 turn 的請求而不是它的第一個回答（約 1% 的 turn 換到相鄰的桶）、「上一個請求」只記路由器會當作 prompt 的 turn、含圖片的訊息保留文字、重播抽樣在整份清單上平均取（原本清單不夠長時只取到最前面）。
 
 ## 4. 落地結果（2026-11-02）
 
@@ -100,7 +100,7 @@ tiers 的 effort 是 sonnet `high`、opus `high`、fable `xhigh`，被路由的�
 
 ### 仍待驗證
 
-1. 新紀錄累積約一週後，用 `model-router.log` 對 transcript 算 nimble 的誤判率，以及沿用回合之後的升降次數（本報告只能從送出值反推）。
+1. 新紀錄累積約一週後，用 `model-router.log` 對 transcript 重算：`node turns.mjs --since <日期>` → `node report.mjs turns.json`（claude-config 的 `scripts/model-router-review/`），第 8 段給決定分佈、風險／floor 次數、沿用後下一輪是否換 pair。注意紀錄環是所有 session 共用、沒有 session id，換 pair 的次數是上限值；工具不判 nimble 的對錯，誤判率仍要人工讀樣本（`replay.mjs` 可重播抽樣提示看分級）。
 2. `turn.start` 的 `e.text` 是否與 transcript 的 user 文字逐字相同——系統前綴辨識的前提；不符時退回照舊分類，不會更糟，但沿用不會觸發。
 3. harness 是否可能把排隊中的通知與使用者剛打的字合併成同一段 `e.text`（歷史資料 0 例，但沒讀 binary 確認）；若會，整段以系統前綴開頭，裡面的請求不會被風險詞篩到。
 4. mod 的測試用 `claude plugin test <dir>` 執行，不在 `run-all.sh`／CI 內（CI 沒有 claude binary），改 router 後要手跑。
