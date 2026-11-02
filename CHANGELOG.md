@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.13.2] - 2026-11-02
+
+### Changed
+
+- **code-audit-rigor 2.2.0 → 2.3.0: a borderline verification is carried until its file changes.** `plan` carries a borderline `SKIP` (notes starting with `邊界：`) on an unchanged file as `carried` with `borderline: true`, so an undecided finding stays in `/review-branch`'s borderline table instead of appearing in one report only; `carried[].borderline` is an optional boolean in the schema and validator. See that plugin's CHANGELOG [2.3.0].
+- `docs/agent-subagent-analysis-2026-11-01.md` §9 and §10.2 no longer say `turn.start` receives the expanded skill text; the evidence shows only that it is not the command name.
+
 ## [1.13.1] - 2026-11-02
 
 ### Changed

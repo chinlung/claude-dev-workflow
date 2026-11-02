@@ -77,7 +77,8 @@
         "properties": {
           "file": { "type": "string", "minLength": 1 },
           "quotedCode": { "type": "string", "minLength": 1 },
-          "round": { "type": "integer", "minimum": 1 }
+          "round": { "type": "integer", "minimum": 1 },
+          "borderline": { "type": "boolean", "description": "true when the carried suggestion was not verified but left undecided: a SKIP whose notes start with 邊界： (2.3.0). Absent for a verified (PASS) suggestion." }
         }
       }
     },
