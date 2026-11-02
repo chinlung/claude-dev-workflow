@@ -2,6 +2,21 @@
 
 All notable changes to the `code-audit-rigor` plugin will be documented in this file.
 
+## [2.2.0] - 2026-11-02
+
+### Added
+
+- **`agents/finding-verifier.md`: the refute-first verifier `/review-branch` Phase 2 dispatches for each suggestion.** Phase 2 used to have the main loop rewrite its five steps into a fresh `general-purpose` prompt for every suggestion. Across the 37 verification prompts in the author's retained transcripts (2026-10-03 to 10-31) the mechanical parts carried well (verdict 37, confidence 35, read-only 34, quote anchoring 30) and the steps that decide the outcome did not (call-chain tracing 6, refute framing 12, borderline handling 9). The steps, the refute framing, the 33–67 confidence band and the output format now live only in the agent body; the command passes the suggestion itself. Frontmatter:
+  - `model: opus` — a verification is a judgment and is never downgraded. The frontmatter also covers a Workflow `agent({ agentType })` call, which never passes the PreToolUse model-floor hook;
+  - `disallowedTools: Agent` — no nested dispatch;
+  - no `effort` (a judgment keeps the session's), no `memory` (a remembered verdict anchors the next one), no `maxTurns` (judgment subagents in the same record ran p50 13 / p90 42 / max 90 tool calls, and a cut-off verification reads like a verdict). Write stays available: 169 of the 179 Edit/Write calls judgment subagents made in that record went to `$TMPDIR` reproductions, none to the code under review.
+- A borderline verification (confidence still 33–67 after a re-read) is a `SKIP` that carries its `suggestion` index and starts `notes` with `邊界：`; the report lists it in its own table for the user. It is not forced into `PASS` or `FAIL`: `annotate` records every `FAIL` as dismissed (not raised again while the file is unchanged) and `plan` carries every `PASS` on an unchanged file as verified, and neither reads `notes`. A `SKIP` enters neither. The command states the remaining gap: on an unchanged file the borderline item does not come back the next round, so that round's report is the only place it appears.
+- `tests/finding-verifier.test.sh` (15 checks, run by CI and the plugin-edit hook): the frontmatter floor and the three unset fields, the verdict line against the schema's enum, Phase 2's fenced dispatch template naming the agent type and an explicit model equal to the agent's frontmatter (the explicit value overrides it; only the template counts, since the surrounding prose mentions both), and the steps present in the agent and absent from the command. Fourteen mutations each turn it red: model sonnet, `disallowedTools` dropped, `effort` / `memory` / `maxTurns` added, a BORDERLINE verdict, the agent renamed, Phase 2 back to `general-purpose`, every explicit model dropped, only the template's model line dropped, the template naming another type while the prose still names this one, the explicit model drifting from the frontmatter, the steps copied back into the command, the steps removed from the agent.
+
+### Changed
+
+- `commands/review-branch.md` Phase 2 dispatches `code-audit-rigor:finding-verifier` with `model: "opus"` named explicitly (where a PreToolUse model-floor hook is installed, it cannot read a named agent type's frontmatter and bounces a dispatch without a model). When the dispatch reports the type missing, it falls back to `general-purpose` on `model: "opus"`, told to Read `agents/finding-verifier.md` first rather than having the body pasted into every prompt.
+
 ## [2.1.3] - 2026-10-19
 
 ### Fixed

@@ -500,7 +500,7 @@ SKIP 的唯一依據是上述契約面判定，沒有其他豁免類別（例如
 
 | 指令 | 功能 |
 |---|---|
-| `/review-branch [base-branch] [--focus <pathspec>]` | 兩輪分支審查：Phase 1 建議清單（注入 per-file-type 規則）→ Phase 2 逐建議子代理驗證（先做 quotedCode grep 錨定）→ Phase 3 報告（必附 coverage 核對表）。審查範圍＝已 commit 分支 diff ∪ 工作樹修改 ∪ 未追蹤檔（2.0.1）。跨輪記憶（2.1.0）：未變動的檔跳過、已驗證未修的帶入下一輪、已駁回的 anchor 不重貼、每條 finding 標本次引入／既有、風險 tier 印在第一行 |
+| `/review-branch [base-branch] [--focus <pathspec>]` | 兩輪分支審查：Phase 1 建議清單（注入 per-file-type 規則）→ Phase 2 逐建議由 `finding-verifier` agent 驗證（先試著推翻、先做 quotedCode grep 錨定、跑在 opus；2.2.0）→ Phase 3 報告（必附 coverage 核對表）。審查範圍＝已 commit 分支 diff ∪ 工作樹修改 ∪ 未追蹤檔（2.0.1）。跨輪記憶（2.1.0）：未變動的檔跳過、已驗證未修的帶入下一輪、已駁回的 anchor 不重貼、每條 finding 標本次引入／既有、風險 tier 印在第一行 |
 | `/review-pr <PR號>` | 抓取 GitHub 全部 3 個評論 endpoint（`pulls/comments`、`pulls/reviews`、`issues/comments`），分類、修復安全性/邏輯問題並附驗證測試、commit 並回覆，（2.1.0）並在每個 inline thread 回貼證據或理由後 resolve |
 
 兩者的規則解析鏈：專案 `.reviewrules/` → 使用者 `~/.claude/review-rules/` → plugin 內建 `${CLAUDE_PLUGIN_ROOT}/rules/`（機器無關）——2.1.0 起由 `scripts/resolve-rules.cjs` 機械解析，同時解析 manifest 的 `risk` 區段。

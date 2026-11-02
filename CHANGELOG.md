@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.13.1] - 2026-11-02
+
+### Changed
+
+- **code-audit-rigor 2.1.3 → 2.2.0: `/review-branch` Phase 2 dispatches a `finding-verifier` agent.** The five verification steps used to be rewritten by the main loop into a new `general-purpose` prompt per suggestion; in the author's 37 retained verification prompts the outcome-deciding steps were often missing (call-chain tracing 6/37, refute framing 12/37). They now live only in `agents/finding-verifier.md` (`model: opus`, `disallowedTools: Agent`, no `effort` / `memory` / `maxTurns`), the command names `model: "opus"` explicitly, a borderline result is a `SKIP` flagged in `notes` (a forced `PASS` / `FAIL` would be carried or dismissed across rounds), and `tests/finding-verifier.test.sh` (15 checks, 14 mutations) pins the wiring. See that plugin's CHANGELOG [2.2.0].
+- **high-precision-dev 1.5.0 → 1.6.0: critic and disproof-agent on `opus`.** They are judgment agents and are no longer put on the cheaper tier for same-vendor decorrelation; `/start` names `model="opus"` on every judgment dispatch; the README no longer says agent `effort` cannot be set in frontmatter; `tests/agent-models.test.sh` (13 checks, 8 mutations). See that plugin's CHANGELOG [1.6.0].
+
 ## [1.13.0] - 2026-10-20
 
 ### Changed

@@ -43,16 +43,18 @@ Each phase writes prose Markdown deliverables to the SPEC.md directory (see the 
 |-------|------|-------|--------|
 | Implementer A | Independent implementation — spec-first / top-down | `opus` | `IMPL_A_REPORT.md` |
 | Implementer B | Independent implementation — test-first / behavior-driven | `sonnet` | `IMPL_B_REPORT.md` |
-| Critic | Finds bugs using severity 1–5 scale | `sonnet` | `CRITIQUE.md` |
+| Critic | Finds bugs using severity 1–5 scale | `opus` | `CRITIQUE.md` |
 | Adversary | 3-round red-team attack | `opus` | `ATTACKS.md` |
-| Disproof Agent | Tries to disprove critic/adversary findings | `sonnet` | — |
+| Disproof Agent | Tries to disprove critic/adversary findings | `opus` | — |
 | Verifier | Compares implementations, merges best parts | `opus` | `VERIFICATION.md` |
 
-### Model assignment (cross-family decorrelation)
+### Model assignment
 
-The `model` per agent is set **cross-family on purpose** — this is the strongest lever against the shared-model correlation floor described above. Two agents on the same base model share systematic blind spots (they mis-read the same spec clause the same way); two agents on *different* model families (Opus vs Sonnet) have *different* blind spots, so their disagreements carry real decorrelated signal. The assignment keeps **builders and checkers spanning both families**: implementer-a (`opus`) vs implementer-b (`sonnet`) decorrelates the two implementations, and the checkers (`sonnet` critic / `opus` adversary / `sonnet` disproof / `opus` verifier) ensure both families review the work. The verifier and adversary run on the stronger `opus`.
+**Builders are split across two models; checkers all run on `opus`.** implementer-a (`opus`, spec-first) and implementer-b (`sonnet`, test-first) take different approaches on different models, and the Phase 4 test gate checks what both produce. The four checkers — critic, adversary, disproof-agent, verifier — decide whether something has a problem; a review that misses a bug is never discovered afterwards, so none of them gets the cheaper tier. `/start` names `model="opus"` on every checker dispatch so a PreToolUse model-floor hook, where one is installed (it cannot read a named agent's frontmatter), does not bounce it. That explicit value overrides the frontmatter, so `tests/agent-models.test.sh` pins the checkers to `opus` and requires each dispatch to equal its agent's frontmatter.
 
-Caveats: (1) this is still bounded — different frontier models can share *some* blind spots; the genuinely independent check is the Phase 4 environmental test gate, which is not a model at all. (2) It requires access to both families and costs more than a single model. To run everything on the session model instead, set each agent's `model:` back to `inherit`. Per-agent **effort** is *not* configurable via agent frontmatter (only `model` is) — effort follows the session's `/effort` setting.
+1.5.0 put critic and disproof-agent on `sonnet` for cross-family decorrelation. Opus and Sonnet of one generation from one vendor share more blind spots than that assumed, and a setup with a model-floor hook re-sent those dispatches on opus anyway. For decorrelation, add a different vendor's pass (e.g. Codex) rather than a cheaper model from the same one; the genuinely independent check is still the Phase 4 environmental test gate, which is not a model at all.
+
+Effort: current Claude Code accepts `effort:` in agent frontmatter, plugin agents included; these agents leave it unset so they follow the session's `/effort`. To run everything on the session model instead, set each agent's `model:` to `inherit` and drop the `model="opus"` arguments in `commands/start.md`.
 
 ## License
 

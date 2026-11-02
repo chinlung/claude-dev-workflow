@@ -5,6 +5,21 @@ All notable changes to the `high-precision-dev` plugin will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-11-02
+
+### Changed
+
+- **critic and disproof-agent run on `opus`** (`sonnet` since 1.5.0). Both decide whether an implementation has a problem, and a review that misses a bug is never discovered afterwards, so the cheaper tier's savings do not pay for it. Opus and Sonnet of one generation from one vendor decorrelate less than 1.5.0 assumed; decorrelation belongs to a different vendor's pass (e.g. Codex), and the independent check the plugin rests on is still the Phase 4 environmental test gate. In a setup with a PreToolUse model-floor hook the sonnet assignment was not delivered anyway: a critic dispatch without a model is bounced and re-sent on opus. implementer-b stays on `sonnet` (its output is checked by the tests).
+- `/start` names `model="opus"` on every critic, adversary, disproof-agent and verifier dispatch, so a PreToolUse model-floor hook (where one is installed) that cannot read a named agent's frontmatter does not bounce them. The explicit value overrides the frontmatter, so the test requires each dispatch to equal its agent's frontmatter; changing a model means changing both.
+
+### Added
+
+- `tests/agent-models.test.sh` (13 checks, run by CI and the plugin-edit hook): the four judgment agents on `opus`, every `/start` dispatch of them naming `model="opus"`, and a literal coverage floor (a floor derived from the agent list passes when the list is emptied). Eight mutations each turn it red.
+
+### Fixed
+
+- README: per-agent `effort` *is* configurable in agent frontmatter on current Claude Code (plugin agents included); the 1.5.0 text said it was not. These agents leave it unset so they follow the session's `/effort`.
+
 ## [1.5.0] - 2026-07-01
 
 ### Changed

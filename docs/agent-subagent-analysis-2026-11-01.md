@@ -17,9 +17,9 @@
 | 順序 | 建議 | 性質 | 一句話理由 |
 |---|---|---|---|
 | **先做（11-02 已做，見 §10）** | **處理「`inherit`／省略 model 的子代理繼承 session 設定，不是 model-router 改寫後的模型」** | 機制修正，不是 agent | 10-31 的 claude-security 掃描中，16 個判定類 agent（4 researcher、12 verifier）實際跑在 **haiku**，當時畫面上的主迴圈是 opus。floor hook 從 transcript 讀到的同樣是改寫後的模型，所以看不出來 |
-| **P1** | 建 `finding-verifier` | plugin agent（code-audit-rigor） | review-branch Phase 2 的五個步驟在 37 份驗證 prompt 裡帶到的比例不一：錨定 30/37，呼叫鏈追蹤只有 6/37，反駁框架 12/37。另外 agent 定義是 Workflow `agent()` 路徑上唯一能守住模型下限的地方 |
+| **P1（11-02 已做，見 §11）** | 建 `finding-verifier` | plugin agent（code-audit-rigor） | review-branch Phase 2 的五個步驟在 37 份驗證 prompt 裡帶到的比例不一：錨定 30/37，呼叫鏈追蹤只有 6/37，反駁框架 12/37。另外 agent 定義是 Workflow `agent()` 路徑上唯一能守住模型下限的地方 |
 | **P2** | review-branch 補上「大 diff 怎麼切」的規則；`diff-reviewer` agent 是選配 | 先改 command 本文 | 19 次切塊審查都是主迴圈自己臨場決定的（command 沒寫）。quotedCode 契約帶到 18/19，帶得不錯；缺的是切法與輸出合併規則 |
-| **P3** | 既有 plugin agent 補 `model`／`effort` | frontmatter | 你自己的歷史裡 0 次使用（10-03 以來）。受益的是 marketplace 使用者，以及「session 預設模型很低」的情境 |
+| **P3（僅 high-precision-dev 一列 11-02 已做，見 §11）** | 既有 plugin agent 補 `model`／`effort` | frontmatter | 你自己的歷史裡 0 次使用（10-03 以來）。受益的是 marketplace 使用者，以及「session 預設模型很低」的情境 |
 | 撤回 | ~~`diff-security-reviewer`~~ | — | 51 次安全審查派發中有 43 次緊接在內建 `/security-review` 之後，屬於內建流程，不是手寫 |
 | 撤回 | ~~eval runner／grader agent~~ | — | 21 次 eval 派發全部來自 VietMoney 專案的 `skill-creator`；pr plugin 本來就在用 `claude plugin eval` |
 | 維持 | `dev-workflow` 評估退役 | 你決定 | 0 次使用，又是線性鏈的角色 agent |
@@ -444,3 +444,11 @@ side agent 提示的內容：「某次 claude-security 掃描的 12 個 scan-ver
 - 真實 session 裡 Workflow agent 的 `agent.spawn` model 改寫是否生效、重試是否沿用。驗法：在 session 設定低於 opus 時跑一次 claude-security changes scan，看 `subagents/workflows/*/agent-*.jsonl` 的 `requestedModel`。
 - 展開型 slash 指令的 `prompt.submit` → `turn.start` 順序與一對一關係。驗法：在 haiku session 打 `/code-audit-rigor:code-audit-rigor`，第一個 assistant 紀錄的 `requestedModel` 應為 opus。
 - 兩者都要在 mod 載入的 session 做；sandbox 內跑過 `claude plugin test` 後要確認 `tengu_plugin_hooks_modules` 沒被存成 off。
+
+## 11. 2026-11-02 補充：P1 與 P3 的 high-precision-dev 落地
+
+- **P1 已做（code-audit-rigor 2.2.0）**：`agents/finding-verifier.md`，frontmatter `model: opus`、`disallowedTools: Agent`，不設 `effort`／`memory`／`maxTurns`。`/review-branch` Phase 2 改派它，並明示 `model: "opus"`（frontmatter 也是 opus；明示是為了相容會擋「具名 agent 沒帶 model」的 floor hook）。agent type 不存在時退回 `general-purpose`、帶 opus，請它先 Read agent 檔。
+- **與 §1 第 6 列不同之處**：邊界情況最後**不是**「寫進 `confidence` 和 `notes`、verdict 照給」，而是帶 `suggestion` 索引的 `SKIP`、`notes` 以「邊界：」開頭。原因是 `review-branch-rounds.cjs` 的 `annotate` 會把每個 `FAIL` 記成 dismissed，`plan` 會把檔案未變的 `PASS` 帶成 carried，兩者都不讀 notes；硬給的 verdict 會被跨輪當成定論（自審時 review-branch 與 codex 各自抓到）。殘餘缺口：檔案下一輪沒變時邊界項不會再出現，已列入 follow-ups。
+- **P3 只做了 high-precision-dev 一列（1.6.0）**：選項 A，critic 與 disproof-agent 改 `opus`，`/start` 每個判定類派發明示 `model="opus"`，README 與 CHANGELOG 更正「agent 的 effort 不能寫在 frontmatter」。multi-agent-debate、dev-workflow 等其他列**仍未做**。
+- 守門測試：`plugins/code-audit-rigor/tests/finding-verifier.test.sh`（15 項）、`plugins/high-precision-dev/tests/agent-models.test.sh`（13 項），派發的 model 都比對 frontmatter 而非寫死；突變 22 個全部被抓到。
+- 仍待做（follow-ups）：floor hook 解析具名 plugin agent 的 frontmatter（修好後可拿掉呼叫點的 `model=`）、Phase 2 依檔案併批派發的評估、跨 plugin 的判定類模型閘門。
