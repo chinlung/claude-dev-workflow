@@ -504,6 +504,212 @@ function pluginDirGateProblems(pluginsPath) {
 }
 
 /**
+ * Agent models. Claude Code resolves a subagent's model as: the Agent call's `model` parameter, else
+ * the definition's `model` frontmatter (`inherit` = the main conversation's model), else the
+ * CLAUDE_CODE_SUBAGENT_MODEL environment variable, else the main conversation's model
+ * (code.claude.com/docs/en/sub-agents, read 2026-11-04; before Claude Code 2.1.251 the variable came
+ * first and overrode even the frontmatter). An agent file without `model` therefore runs
+ * on whatever the user's session or environment happens to be — for a judgment role on a haiku
+ * session, a review on haiku that nobody notices — and `claude plugin validate` checks neither the
+ * field's presence nor its value.
+ *   (1) an agent file has frontmatter, names `model` at most once, and a named value is one Claude
+ *       Code accepts: an alias, `inherit`, or a claude-* model id, optionally with `[1m]`;
+ *   (2) every agent in JUDGMENT_AGENTS (its output is a verdict on whether something has a problem,
+ *       and a wrong verdict is never discovered) names `model: opus`, and every listed agent exists —
+ *       a renamed file would otherwise drop out of the check in silence;
+ *   (3) every `Task(`/`Agent(` call in plugins/<p>/commands/*.md or skills/<s>/SKILL.md whose
+ *       `subagent_type` is a quoted judgment-agent name passes `model` = `opus`: the dispatch value wins
+ *       over the frontmatter (unless a mod's agent.spawn hook rewrites it), and a model-floor hook that
+ *       cannot read a named agent's frontmatter bounces a dispatch without one. What this cannot see:
+ *       a dispatch described in prose (a fallback to general-purpose, "re-run the critic"), or one
+ *       written as an object literal or a JSON key — keep judgment dispatches in the call form.
+ * Leaving `model` out is allowed for an agent that is not a judgment agent: then the user's own
+ * CLAUDE_CODE_SUBAGENT_MODEL still applies, which an explicit `inherit` would override (frontmatter is
+ * step 2 of the order, the variable step 3) — decided 2026-11-04 after review.
+ * Known limit: a typo inside a claude-* id (`claude-opsu-5`) passes; only judgment agents are pinned
+ * exactly.
+ */
+const MODEL_VALUE = /^(?:inherit|(?:sonnet|opus|haiku|fable|claude-[a-z0-9][a-z0-9.-]*)(?:\[1m\])?)$/;
+const JUDGMENT_AGENTS = [
+  'code-audit-rigor/finding-verifier',
+  'dev-workflow/quality-assurance',
+  'high-precision-dev/adversary',
+  'high-precision-dev/critic',
+  'high-precision-dev/disproof-agent',
+  'high-precision-dev/verifier',
+  'multi-agent-debate/critic',
+  'multi-agent-debate/validator',
+];
+
+/**
+ * An agent file's frontmatter `model`, read the way a YAML loader would for the shapes agent files use:
+ * `{ model, count }` — `model` the value (null when no top-level `model:` key), `count` how many such
+ * keys there are; undefined when the file has no frontmatter. A key needs whitespace or the line end
+ * after its colon (`model:opus` is a plain scalar in YAML, not a key); a quoted value is unquoted, an
+ * unquoted one loses a ` # comment`; a leading BOM and trailing spaces after `---` are tolerated.
+ */
+function frontmatterModel(text) {
+  const m = /^---[ \t]*\r?\n(?:([\s\S]*?)\r?\n)?---[ \t]*(?:\r?\n|$)/.exec(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text);
+  if (!m) return undefined;
+  const keys = (m[1] ?? '').split(/\r?\n/).map((l) => /^model:(?:[ \t]+(.*))?$/.exec(l)).filter(Boolean);
+  if (keys.length === 0) return { model: null, count: 0 };
+  const raw = (keys[0][1] ?? '').trim();
+  const quoted = /^(['"])(.*)\1(?:\s+#.*)?$/.exec(raw);
+  return { model: quoted ? quoted[2] : raw.replace(/\s+#.*$/, ''), count: keys.length };
+}
+
+/** "<p>/<path under agents/>" → [plugin, path under agents/ without .md]. */
+const splitAgentKey = (key) => [key.slice(0, key.indexOf('/')), key.slice(key.indexOf('/') + 1)];
+
+/**
+ * Every .md under plugins/<p>/agents/ as "<p>/<path without .md>", and each one's frontmatter model.
+ * Recursive: Claude Code registers plugins/<p>/agents/review/x.md as <p>:review:x, so a nested agent
+ * must not slip past the gate.
+ */
+function agentModelInventory(pluginsPath) {
+  const files = [];
+  const walk = (plugin, dir, prefix) => {
+    let entries;
+    try { if (!fs.statSync(dir).isDirectory()) return; entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const x of entries) {
+      if (x.isDirectory()) walk(plugin, path.join(dir, x.name), `${prefix}${x.name}/`);
+      else if (x.name.endsWith('.md')) files.push(`${plugin}/${prefix}${x.name.slice(0, -'.md'.length)}`);
+    }
+  };
+  for (const e of fs.readdirSync(pluginsPath, { withFileTypes: true })) {
+    if (e.isDirectory()) walk(e.name, path.join(pluginsPath, e.name, 'agents'), '');
+  }
+  const models = Object.create(null);
+  for (const key of files) {
+    const [p, rel] = splitAgentKey(key);
+    let text;
+    try { text = fs.readFileSync(path.join(pluginsPath, p, 'agents', `${rel}.md`), 'utf8'); } catch { continue; } // unread → missing from models → the floor names it
+    models[key] = frontmatterModel(text);
+  }
+  return { files, models };
+}
+
+/** `models` maps "<p>/<name>" → frontmatterModel()'s result. */
+function agentModelProblems(models, judges) {
+  const problems = [];
+  const fileOf = (key) => { const [p, rel] = splitAgentKey(key); return `plugins/${p}/agents/${rel}.md`; };
+  for (const [key, fm] of Object.entries(models)) {
+    if (fm === undefined) { problems.push(`${fileOf(key)}: no frontmatter — Claude Code reads an agent's name, description and model from it`); continue; }
+    if (fm.count > 1) problems.push(`${fileOf(key)}: \`model\` appears ${fm.count} times in the frontmatter — YAML loaders take the last one or refuse the file; keep one`);
+    if (fm.model === '') problems.push(`${fileOf(key)}: \`model:\` has no value`);
+    else if (fm.model !== null && !MODEL_VALUE.test(fm.model)) problems.push(`${fileOf(key)}: model \`${fm.model}\` is not one Claude Code accepts (sonnet, opus, haiku, fable, inherit, or a claude-* model id, optionally with [1m]), and Claude Code does not check it`);
+  }
+  for (const key of judges) {
+    if (!(key in models)) { problems.push(`judgment agent ${key} is listed but ${fileOf(key)} does not exist — a renamed agent drops out of the opus check; update JUDGMENT_AGENTS`); continue; }
+    const fm = models[key];
+    if (fm === undefined) continue; // reported above
+    if (fm.model === null) problems.push(`${fileOf(key)}: a judgment agent names no \`model\` — left out, it runs on CLAUDE_CODE_SUBAGENT_MODEL or the main conversation's model; write \`model: opus\``);
+    else if (fm.model !== '' && fm.model !== 'opus') problems.push(`${fileOf(key)}: a judgment agent (its output is a verdict on whether something has a problem, and a wrong verdict is never discovered) must be \`opus\`, not \`${fm.model}\``);
+  }
+  return problems;
+}
+
+function agentModelGateProblems(pluginsPath, judges = JUDGMENT_AGENTS) {
+  const inv = agentModelInventory(pluginsPath);
+  return [
+    ...shapedCountProblems(Object.keys(inv.models).length, inv.files.length, 'agent file(s)'),
+    ...agentModelProblems(inv.models, judges),
+  ];
+}
+
+/** The text between the `(` at `open` and its matching `)`, skipping quoted strings; null when it never closes. */
+function callArgs(text, open) {
+  let depth = 0;
+  let quote = null;
+  for (let i = open; i < text.length; i++) {
+    const c = text[i];
+    if (quote) { if (c === '\\') i++; else if (c === quote) quote = null; continue; }
+    if (c === '"' || c === "'") quote = c;
+    else if (c === '(') depth++;
+    else if (c === ')' && --depth === 0) return text.slice(open + 1, i);
+  }
+  return null;
+}
+
+/** The top-level `key=value` / `key: value` arguments of a call's argument text, values unquoted. */
+function callKwargs(args) {
+  const parts = [];
+  let depth = 0;
+  let quote = null;
+  let start = 0;
+  for (let i = 0; i < args.length; i++) {
+    const c = args[i];
+    if (quote) { if (c === '\\') i++; else if (c === quote) quote = null; continue; }
+    if (c === '"' || c === "'") quote = c;
+    else if ('([{'.includes(c)) depth++;
+    else if (')]}'.includes(c)) depth--;
+    else if (c === ',' && depth === 0) { parts.push(args.slice(start, i)); start = i + 1; }
+  }
+  parts.push(args.slice(start));
+  const out = Object.create(null);
+  for (const p of parts) {
+    const m = /^\s*([A-Za-z_]\w*)\s*[=:]\s*([\s\S]*?)\s*$/.exec(p);
+    if (m) out[m[1]] = m[2].replace(/^(['"])([\s\S]*)\1$/, '$2');
+  }
+  return out;
+}
+
+/**
+ * Every dispatch of a judgment agent in plugins/<p>/commands/*.md and plugins/<p>/skills/<s>/SKILL.md:
+ * a `subagent_type` naming "<p>:<name>" for a listed judge, with the `model` argument of the
+ * `Task(`/`Agent(` call it sits in. `mentions` counts those `subagent_type`s independently of the call
+ * parsing, for the floor.
+ */
+function judgeDispatchInventory(pluginsPath, judges) {
+  const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const sources = [];
+  for (const e of fs.readdirSync(pluginsPath, { withFileTypes: true })) {
+    if (!e.isDirectory()) continue;
+    const at = (...rel) => path.join(pluginsPath, e.name, ...rel);
+    const list = (dir) => { try { return fs.readdirSync(dir, { withFileTypes: true }); } catch { return []; } };
+    for (const f of list(at('commands'))) if (f.isFile() && f.name.endsWith('.md')) sources.push(`${e.name}/commands/${f.name}`);
+    for (const s of list(at('skills'))) if (s.isDirectory() && fs.existsSync(at('skills', s.name, 'SKILL.md'))) sources.push(`${e.name}/skills/${s.name}/SKILL.md`);
+  }
+  let mentions = 0;
+  const found = [];
+  for (const rel of sources) {
+    const text = fs.readFileSync(path.join(pluginsPath, rel), 'utf8');
+    for (const key of judges) {
+      const re = new RegExp(`subagent_type\\s*[=:]\\s*["']${esc(key.split('/').join(':'))}["']`, 'g');
+      for (const m of text.matchAll(re)) {
+        mentions++;
+        const opens = [...text.slice(0, m.index).matchAll(/\b(?:Task|Agent)\(/g)];
+        const last = opens[opens.length - 1];
+        if (!last) continue; // not inside a call: the floor names it
+        const open = last.index + last[0].length - 1;
+        const args = callArgs(text, open);
+        if (args === null || open + 1 + args.length < m.index) continue; // that call closed before this mention
+        found.push({ file: `plugins/${rel}`, line: text.slice(0, m.index).split('\n').length, target: key, model: callKwargs(args).model });
+      }
+    }
+  }
+  return { mentions, found };
+}
+
+function judgeDispatchProblems(found) {
+  const problems = [];
+  for (const d of found) {
+    const where = `${d.file}:${d.line}`;
+    if (d.model === undefined) problems.push(`${where}: the dispatch of ${d.target.split('/').join(':')} passes no \`model\` — pass \`opus\`: the dispatch value wins over the frontmatter, and a model-floor hook that cannot read the agent's frontmatter bounces it`);
+    else if (d.model !== 'opus') problems.push(`${where}: the dispatch of judgment agent ${d.target.split('/').join(':')} passes model \`${d.model}\`, which overrides its \`opus\` frontmatter — pass \`opus\``);
+  }
+  return problems;
+}
+
+function judgeDispatchGateProblems(pluginsPath, judges = JUDGMENT_AGENTS) {
+  const inv = judgeDispatchInventory(pluginsPath, judges);
+  return [
+    ...shapedCountProblems(inv.found.length, inv.mentions, 'judgment-agent dispatch(es)'),
+    ...judgeDispatchProblems(inv.found),
+  ];
+}
+
+/**
  * Marketplace registration. `entries` is [{ name, dir }] — `dir` the ROOT-relative directory
  * an entry's `source` resolves to (null for a non-path source); `manifests` maps each
  * `plugins/<p>` dir that HAS a plugin.json → { name } when it parsed, or { unreadable: true }.
@@ -1018,6 +1224,157 @@ function main() {
   }
 
   {
+    // (m) agent models: the frontmatter reader, the judgement (each branch with two triggering
+    //     inputs, so "report once, then stop" cannot pass for "report every one"), and the inventory
+    //     plus wiring on a planted tree — a clean repo reports nothing whether or not the gate works.
+    const F = (model, count = model === null ? 0 : 1) => ({ model, count });
+    const BOM = String.fromCharCode(0xfeff);
+    const fmCases = [
+      ['a plain value', '---\nname: a\nmodel: opus\n---\nbody', F('opus')],
+      ['a double-quoted id is unquoted', '---\nmodel: "claude-opus-5-5"\n---\n', F('claude-opus-5-5')],
+      ['a single-quoted value is unquoted', "---\nmodel: 'opus'\n---\n", F('opus')],
+      ['mismatched quotes are kept as they are', '---\nmodel: "opus\'\n---\n', F('"opus\'')],
+      ['a trailing comment is dropped', '---\nmodel: opus # judge\n---\n', F('opus')],
+      ['a # inside quotes is kept', '---\nmodel: "a #b"\n---\n', F('a #b')],
+      ['a quoted value followed by a comment', "---\nmodel: 'opus' # judge\n---\n", F('opus')],
+      ['an empty frontmatter block is frontmatter without a model', '---\n---\nbody', F(null)],
+      ['CRLF line ends', '---\r\ndescription: x\r\nmodel: inherit\r\n---\r\nbody', F('inherit')],
+      ['a leading BOM', `${BOM}---\nmodel: opus\n---\n`, F('opus')],
+      ['trailing spaces after ---', '--- \nmodel: opus\n---  \n', F('opus')],
+      ['the file ends right after the closing ---', '---\nmodel: opus\n---', F('opus')],
+      ['an empty value', '---\nmodel:\n---\n', F('')],
+      ['a duplicate key is counted', '---\nmodel: opus\nmodel: sonnet\n---\n', F('opus', 2)],
+      ['no model line → null', '---\ndescription: x\n---\nbody', F(null)],
+      ['a model line in the body does not count', '---\ndescription: x\n---\nmodel: opus\n', F(null)],
+      ['a `models:` key is not `model:`', '---\nmodels: opus\n---\n', F(null)],
+      ['`model:` inside another value is not a key', '---\ndescription: picks the model: opus\n---\n', F(null)],
+      ['`model:opus` with no space is a YAML scalar, not a key', '---\nmodel:opus\n---\n', F(null)],
+      ['an indented (nested) model is not the top-level key', '---\nmeta:\n  model: opus\n---\n', F(null)],
+      ['no frontmatter → undefined', 'model: opus\n', undefined],
+    ];
+    for (const [what, text, want] of fmCases) {
+      const got = frontmatterModel(text);
+      expectNoProblems(`canary: agent model frontmatter: ${what}`, JSON.stringify(got) === JSON.stringify(want) ? [] : [`expected ${JSON.stringify(want)}, got ${JSON.stringify(got)}`]);
+    }
+    const judgeCases = [
+      ['valid values and a missing model on a non-judge are silent', { 'p/a': F('sonnet'), 'p/b': F('inherit'), 'p/c': F('claude-opus-5-5'), 'p/d': F('haiku'), 'p/e': F('fable'), 'p/f': F('opus[1m]'), 'p/g': F('claude-sonnet-5-5[1m]'), 'p/h': F(null) }, [], 0],
+      ['no frontmatter is reported, each one', { 'p/a': undefined, 'q/a': undefined }, [], 2],
+      ['a value Claude Code does not accept is reported, each one', { 'p/a': F('gpt-4'), 'p/b': F('Opus'), 'p/c': F('claude'), 'p/d': F('inherit[1m]') }, [], 4],
+      ['an empty value is reported, each one', { 'p/a': F(''), 'p/b': F('') }, [], 2],
+      ['a duplicate model key is reported, each one', { 'p/a': F('opus', 2), 'p/b': F('sonnet', 3) }, [], 2],
+      ['a judgment agent below opus is reported, each one', { 'p/j': F('sonnet'), 'p/k': F('inherit'), 'p/l': F('opus'), 'p/m': F('opus[1m]') }, ['p/j', 'p/k', 'p/l', 'p/m'], 3],
+      ['a judgment agent that names no model is reported, each one', { 'p/j': F(null), 'p/k': F(null) }, ['p/j', 'p/k'], 2],
+      ['a judgment agent without frontmatter is reported once, not twice', { 'p/j': undefined }, ['p/j'], 1],
+      ['a judgment agent with an empty model is reported once, not twice', { 'p/j': F('') }, ['p/j'], 1],
+      ['a listed judgment agent that does not exist is reported, each one', { 'p/x': F('opus') }, ['p/gone', 'q/x'], 2],
+    ];
+    // The real-repo checks read JUDGMENT_AGENTS; emptied, shortened or with one entry swapped for an agent
+    // that happens to be opus, they would pass in silence. The list as decided on 2026-11-04 — changing it
+    // is a decision to state here as well.
+    const judgeListWant = 'code-audit-rigor/finding-verifier,dev-workflow/quality-assurance,high-precision-dev/adversary,high-precision-dev/critic,high-precision-dev/disproof-agent,high-precision-dev/verifier,multi-agent-debate/critic,multi-agent-debate/validator';
+    const judgeListGot = [...JUDGMENT_AGENTS].sort().join(',');
+    expectNoProblems('canary: agent model gate — the judgment list is the decided one (8 agents)', judgeListGot === judgeListWant && new Set(JUDGMENT_AGENTS).size === JUDGMENT_AGENTS.length ? [] : [`got ${judgeListGot}`]);
+    for (const [what, models, judges, want] of judgeCases) {
+      const got = agentModelProblems(models, judges);
+      expectNoProblems(`canary: agent model gate — ${what}`, got.length === want ? [] : [`expected ${want}, got ${got.length}: ${JSON.stringify(got)}`]);
+    }
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'vf-agentmodels-'));
+    try {
+      const mk = (rel, body) => { const f = path.join(tmp, rel); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, body); };
+      mk('a/agents/ok.md', '---\ndescription: x\nmodel: opus\n---\n');
+      mk('a/agents/plain.md', '---\ndescription: x\n---\n'); // a non-judge with no model: allowed
+      mk('a/agents/none.md', '---\ndescription: x\n---\n'); // listed as a judge below: must name opus
+      mk('a/agents/bad.md', '---\nmodel: gpt-4\n---\n');
+      mk('b/agents/judge.md', '---\nmodel: sonnet\n---\n');
+      mk('b/agents/notes.txt', 'model: nothing'); // not an agent file
+      mk('c/README.md', 'no agents dir');
+      mk('d/agents', 'a FILE named agents'); // not a directory: skipped, not a crash
+      mk('loose.md', 'not in a plugin dir');
+      mk('b/agents/review/deep.md', '---\nmodel: gpt-5\n---\n'); // nested: Claude Code registers it as b:review:deep
+      fs.symlinkSync(path.join(tmp, 'nowhere.md'), path.join(tmp, 'a', 'agents', 'dangling.md')); // listed, but reading it fails: only the floor can see it
+      const inv = agentModelInventory(tmp);
+      const invGot = [...inv.files].sort().join(',');
+      expectNoProblems('canary: agent model inventory lists every .md under agents/, nested ones included, and nothing else', invGot === 'a/bad,a/dangling,a/none,a/ok,a/plain,b/judge,b/review/deep' ? [] : [`got ${invGot}`]);
+      const probs = agentModelGateProblems(tmp, ['b/judge', 'a/ok', 'a/missing', 'a/none']);
+      const wired = [
+        ['exactly one problem per planted defect', String(probs.length), '6'],
+        ['an agent file that cannot be read trips the floor', String(probs.some((s) => s.startsWith('shaped 6 of 7 agent file(s)'))), 'true'],
+        ['a nested agent is judged too', String(probs.some((s) => s.startsWith('plugins/b/agents/review/deep.md: model `gpt-5`'))), 'true'],
+        ['a judgment agent with no model is reported', String(probs.some((s) => s.startsWith('plugins/a/agents/none.md: a judgment agent names no `model`'))), 'true'],
+        ['the unknown value is reported', String(probs.some((s) => s.startsWith('plugins/a/agents/bad.md: model `gpt-4`'))), 'true'],
+        ['the judgment agent below opus is reported', String(probs.some((s) => s.startsWith('plugins/b/agents/judge.md: a judgment agent'))), 'true'],
+        ['the listed agent that does not exist is reported', String(probs.some((s) => s.startsWith('judgment agent a/missing is listed'))), 'true'],
+        ['the valid judgment agent and the non-judge without a model are not reported', String(probs.some((s) => s.includes('a/agents/ok.md') || s.includes('a/agents/plain.md'))), 'false'],
+      ];
+      for (const [what, got, want] of wired) {
+        expectNoProblems(`canary: agent model wiring — ${what}`, got === want ? [] : [`expected ${want}, got ${got} — ${JSON.stringify(probs)}`]);
+      }
+      // Without a judges argument the gate must judge against JUDGMENT_AGENTS (the real-repo call passes
+      // none): on this tree every listed agent is missing, so each one is named.
+      const byDefault = agentModelGateProblems(tmp).filter((s) => s.includes(' is listed but '));
+      expectNoProblems('canary: agent model wiring — the default judgment list is JUDGMENT_AGENTS', byDefault.length === JUDGMENT_AGENTS.length ? [] : [`expected ${JUDGMENT_AGENTS.length}, got ${byDefault.length}`]);
+    } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+
+    // Judgment-agent dispatches: the call reader, then a planted tree through inventory and wiring.
+    const argCases = [
+      ['a call with a ( inside a string', 'Task(a="x(", b=1)', 4, 'a="x(", b=1'],
+      ['nested parens and a ) inside a string', 'Agent(x=(1,2), y="q)")', 5, 'x=(1,2), y="q)"'],
+      ['a call that never closes', 'Task(a="x"', 4, null],
+    ];
+    for (const [what, text, open, want] of argCases) {
+      const got = callArgs(text, open);
+      expectNoProblems(`canary: dispatch reader — ${what}`, got === want ? [] : [`expected ${JSON.stringify(want)}, got ${JSON.stringify(got)}`]);
+    }
+    const kwCases = [
+      ['= form, a comma and parens inside a string', 'subagent_type="p:j",\n  model="opus",\n  prompt="a, b (c)"', '{"subagent_type":"p:j","model":"opus","prompt":"a, b (c)"}'],
+      [': form', 'subagent_type: "p:j", model: \'sonnet\'', '{"subagent_type":"p:j","model":"sonnet"}'],
+      ['no model argument', 'subagent_type="p:j", prompt="model=opus is only text here"', '{"subagent_type":"p:j","prompt":"model=opus is only text here"}'],
+      ['a comma inside parens outside any string does not split', 'prompt=fmt(a, b), tools=[x, y], model="opus"', '{"prompt":"fmt(a, b)","tools":"[x, y]","model":"opus"}'],
+    ];
+    for (const [what, args, want] of kwCases) {
+      const got = JSON.stringify(callKwargs(args));
+      expectNoProblems(`canary: dispatch reader — ${what}`, got === want ? [] : [`expected ${want}, got ${got}`]);
+    }
+    const tmp2 = fs.mkdtempSync(path.join(os.tmpdir(), 'vf-dispatch-'));
+    try {
+      const mk = (rel, body) => { const f = path.join(tmp2, rel); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, body); };
+      mk('p/commands/run.md', [
+        'The critic (subagent_type: "p:j") is named here in prose, outside any call.',
+        '```', 'Task(', '  subagent_type="p:j",', '  model="opus",', '  prompt="fine"', ')', '```',
+        '```', 'Task(', '  subagent_type="p:j",', '  prompt="no model here (none)"', ')', '```',
+        '```', 'Agent(', '  subagent_type: "p:k",', '  model: "sonnet",', ')', '```',
+        '```', 'Task(', '  subagent_type="p:other",', '  prompt="not a judge"', ')', '```',
+        'Afterwards the prose names subagent_type: "p:k" again, after a call that has already closed.',
+      ].join('\n'));
+      mk('p/skills/s/SKILL.md', 'Task(subagent_type="p:k", model="opus", prompt="ok")');
+      mk('q/commands/x.md', "Task(subagent_type='p:j', model='opus')");
+      mk('q/commands/notes.txt', 'Task(subagent_type="p:j")'); // not a command file
+      const dinv = judgeDispatchInventory(tmp2, ['p/j', 'p/k']);
+      const dGot = dinv.found.map((d) => `${d.file}:${d.line}:${d.target}:${d.model}`).sort().join(' | ');
+      const dWant = 'plugins/p/commands/run.md:11:p/j:undefined | plugins/p/commands/run.md:17:p/k:sonnet | plugins/p/commands/run.md:4:p/j:opus | plugins/p/skills/s/SKILL.md:1:p/k:opus | plugins/q/commands/x.md:1:p/j:opus';
+      expectNoProblems('canary: dispatch inventory finds every judge dispatch in commands and skills, with its model and line', dGot === dWant ? [] : [`got ${dGot}`]);
+      const dprobs = judgeDispatchGateProblems(tmp2, ['p/j', 'p/k']);
+      const dWired = [
+        ['exactly one problem per planted defect', String(dprobs.length), '3'],
+        ['a judge named outside any call (before every call, or after one has closed) trips the floor', String(dprobs.some((s) => s.startsWith('shaped 5 of 7 judgment-agent dispatch(es)'))), 'true'],
+        ['a dispatch with no model is reported with its line', String(dprobs.some((s) => s.startsWith('plugins/p/commands/run.md:11: the dispatch of p:j passes no `model`'))), 'true'],
+        ['a dispatch below opus is reported', String(dprobs.some((s) => s.startsWith('plugins/p/commands/run.md:17: the dispatch of judgment agent p:k passes model `sonnet`'))), 'true'],
+      ];
+      for (const [what, got, want] of dWired) {
+        expectNoProblems(`canary: dispatch wiring — ${what}`, got === want ? [] : [`expected ${want}, got ${got} — ${JSON.stringify(dprobs)}`]);
+      }
+      // A nested judge (agents/review/j.md) is dispatched as r:review:j — every / becomes :, not just the first.
+      mk('r/commands/n.md', 'Task(subagent_type="r:review:j", model="opus")');
+      const nested = judgeDispatchInventory(tmp2, ['r/review/j']).found;
+      expectNoProblems('canary: dispatch inventory finds a nested judge by its p:dir:name', nested.length === 1 && nested[0].model === 'opus' ? [] : [`got ${JSON.stringify(nested)}`]);
+      // Without a judges argument the dispatch gate must use JUDGMENT_AGENTS (the real-repo call passes none).
+      mk('multi-agent-debate/commands/d.md', 'Task(\n  subagent_type="multi-agent-debate:critic",\n  prompt="x"\n)');
+      const dDefault = judgeDispatchGateProblems(tmp2).filter((s) => s.includes('multi-agent-debate:critic passes no `model`'));
+      expectNoProblems('canary: dispatch wiring — the default judgment list is JUDGMENT_AGENTS', dDefault.length === 1 ? [] : [`expected 1, got ${dDefault.length}`]);
+    } finally { fs.rmSync(tmp2, { recursive: true, force: true }); }
+  }
+
+  {
     // (f) denyWrite gate MUST flag an executed file no literal covers, and MUST reject every glob —
     //     a star entry is dropped on Linux and, on macOS, does not deny renaming a subtree in (probed 2026-09-17).
     const pats = ['scripts', 'plugins', 'plugins/x/skills/x/validate.cjs'];
@@ -1169,6 +1526,17 @@ function main() {
     // covers the wiring too. Nothing here is left to mutate silently.
     const pluginDirLabel = 'every plugin dir is a real dir with a manifest, its own CHANGELOG and README; no half-built dirs';
     expectNoProblems(pluginDirLabel, pluginDirGateProblems(P('plugins')));
+
+    // Agent models: a model that is named is one Claude Code accepts, and the judgment agents name opus
+    // (other agents may leave it out). One call, canary (m) covers the collection and the wiring.
+    expectNoProblems('every plugin agent model is one Claude Code accepts; judgment agents name opus', agentModelGateProblems(P('plugins')));
+    // Every dispatch of a judgment agent passes model opus. The count guards the reader: the repo has
+    // judgment dispatches in four plugins, so finding fewer than 8 means it stopped reading them.
+    const realDispatches = judgeDispatchInventory(P('plugins'), JUDGMENT_AGENTS).found.length;
+    expectNoProblems('every dispatch of a judgment agent passes model opus', [
+      ...(realDispatches >= 8 ? [] : [`only ${realDispatches} judgment-agent dispatches found (want >= 8)`]),
+      ...judgeDispatchGateProblems(P('plugins')),
+    ]);
 
     // Each plugin's OWN changelog, anchored to its OWN plugin.json version — the gate above
     // compares against metadata.version, so it structurally cannot cover this. Walks DIRECTORIES

@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-11-04
+
+### Changed
+- `quality-assurance` runs on `opus`. It reviews code and decides whether it meets the project's standards, and it named no `model`: Claude Code then falls back to `CLAUDE_CODE_SUBAGENT_MODEL`, else the main conversation's model, so the review ran on whatever the session or environment happened to be. It now carries `model: opus`, and `/dev-workflow` passes `model="opus"` on its dispatch. The other six agents are unchanged: they still name no `model`, so a `CLAUDE_CODE_SUBAGENT_MODEL` the user set keeps applying to them.
+
 ## [1.0.2] - 2026-04-10
 
 ### Fixed

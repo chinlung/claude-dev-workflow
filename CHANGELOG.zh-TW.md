@@ -4,6 +4,14 @@
 
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
+## [1.13.3] - 2026-11-04
+
+### Changed
+
+- **multi-agent-debate 1.2.1 → 1.3.0：critic 與 validator 改用 `opus`。** 兩者原本都沒寫 `model`，Claude Code 就會退回 `CLAUDE_CODE_SUBAGENT_MODEL`、沒設則用主對話的模型：在 haiku 或 sonnet 的 session 上，辯論的裁決就由 haiku 或 sonnet 做。`/debate` 的兩個派發現在都帶 `model="opus"`；orchestrator 與三個 perspective 仍不寫 `model`，使用者設的 `CLAUDE_CODE_SUBAGENT_MODEL` 對它們照樣有效。詳見該 plugin 的 CHANGELOG [1.3.0]。
+- **dev-workflow 1.0.2 → 1.1.0：`quality-assurance` 改用 `opus`。** 它是程式碼審查、原本沒寫 `model`；`/dev-workflow` 的派發也帶上 `opus`。其餘六個 agent 不變。詳見該 plugin 的 CHANGELOG [1.1.0]。
+- **`scripts/validate-fixtures.cjs`：判定類 agent 必須寫 `opus`，派發它們的呼叫也必須帶 `opus`。** `claude plugin validate` 不檢查這個欄位、也不檢查它的值。閘門讀 `plugins/*/agents/` 底下每個 `.md`（含子資料夾，Claude Code 也會註冊它們）的 frontmatter：有寫的 `model` 必須是別名、`inherit` 或 `claude-*` 模型 ID（可加 `[1m]`），且只能寫一次；一份判定類 agent 清單（八個：code-audit-rigor 的 finding-verifier、dev-workflow 的 quality-assurance、high-precision-dev 的 adversary、critic、disproof-agent、verifier、multi-agent-debate 的 critic 與 validator）內的 agent 必須寫 `opus`；plugin 的 commands／skills 裡派發它們的每個 `Task(`／`Agent(` 呼叫都必須帶 `model` = `opus`，因為派發的值會蓋過 frontmatter。其他 agent 可以不寫 `model`，使用者的 `CLAUDE_CODE_SUBAGENT_MODEL` 因此仍有效。本機 PostToolUse hook 現在改到 `plugins/*/agents/` 底下的 agent 檔也會跑閘門；CONTRIBUTING §4 寫明規則。
+
 ## [1.13.2] - 2026-11-02
 
 ### Changed
