@@ -2,7 +2,7 @@
 
 範圍：`~/.claude/skills/model-router/hooks/register.ts`（claude-config）的 nimble 分類與路由。資料：2026-10-15（cache-aware ratchet 上線）以來 182 個 session 的主迴圈 transcript、1,055 個回合；另從中抽 80 段文字原樣重播給本機 `nimble:latest`。router 每輪的決定只顯示在狀態列、不寫進 transcript，所以「哪一輪被路由」是從實際送出的模型（`message.model`）推回來的。
 
-**狀態（同日更新）**：§2 的 #1～#5 已實作於 claude-config `0b5d4f2`（model-router 0.3.0），#6 依使用者裁定不改；實作與建議的差異、實作中發現的事、仍待驗證的項目見 §4。§1～§3 是審查當時的記錄，保持原樣。
+**狀態（同日更新）**：§2 的 #1～#5 已實作於 claude-config `0b5d4f2`（model-router 0.3.0），#6 依使用者裁定不改；實作與建議的差異、實作中發現的事、仍待驗證的項目見 §4。§1～§3 是審查當時的記錄，保持原樣；其中 §1 的回合數有兩處計法錯誤，修正見 §5（2026-11-03）。
 
 ## 1. 發現
 
@@ -104,3 +104,43 @@ tiers 的 effort 是 sonnet `high`、opus `high`、fable `xhigh`，被路由的�
 2. `turn.start` 的 `e.text` 是否與 transcript 的 user 文字逐字相同——系統前綴辨識的前提；不符時退回照舊分類，不會更糟，但沿用不會觸發。
 3. harness 是否可能把排隊中的通知與使用者剛打的字合併成同一段 `e.text`（歷史資料 0 例，但沒讀 binary 確認）；若會，整段以系統前綴開頭，裡面的請求不會被風險詞篩到。
 4. mod 的測試用 `claude plugin test <dir>` 執行，不在 `run-all.sh`／CI 內（CI 沒有 claude binary），改 router 後要手跑。
+
+## 5. 更正（2026-11-03）
+
+隔天用整理進 claude-config 的工具（`scripts/model-router-review/`）對照 router 的決定紀錄時，發現 §1 的計法有兩處錯，並查到一個實作陷阱。§1～§3 保持原樣，修正後的數字如下。
+
+### 5.1 「回合」多算了兩種東西
+
+- **SDK 啟動的無頭 session**（transcript 的 `entrypoint` 為 `sdk-py`／`sdk-cli`／`sdk-ts`，是 hook 與 plugin 起的子行程，多數是安全審查）：絕大多數只有一個 turn，router 從不經手（決定紀錄裡一筆都沒有）。
+- **進行中的 turn 才到的文字**（Stop hook 回饋、skill 展開的內文、排在模型工作後面的訊息）：模型在下一個請求讀得到，但不開新 turn，`turn.start` 不會觸發。所以 §1.1「`turn.start` 對每個引擎回合都觸發」對這兩類不成立。
+
+新算法：一個 turn 從它的第一個回答開始，到 `turn_duration` 記錄或中斷記錄結束，期間才到的文字不算；沒人回答的文字（`/model` 這類本地指令）不開 turn；SDK session 排除。同一批資料（`turns.mjs --since 2026-10-15 --until 2026-11-03`，203 份 transcript）重算；「舊算法」是把新規則關掉的同一支工具，所以總數比 §1.1 的 1,055 大（資料多了一天多）：
+
+| 回合來源 | 舊算法 | 新算法 |
+|---|---|---|
+| 人打的提示 | 584 | 337 |
+| 子代理 hand-back | 202 | 202 |
+| task notification | 59 | 59 |
+| 展開的 slash 指令 | 88 | 22 |
+| plugin 訊息 | 65 | 41 |
+| **Stop hook 回饋** | **143** | **2** |
+| compaction | 8 | 2 |
+| 合計 | 1,149（含 163 個 SDK、321 個注入） | **665** |
+
+- 系統開的 turn 是 306／665 = **46%**（§1.1 說「四成」），主體是 hand-back 與 task notification，**不是 Stop hook**；表中剩下的 2 個 Stop hook 來自沒有 `turn_duration` 記錄的 claude-desktop transcript（工具對這類檔案退回舊算法），實際上也是注入。fork 出來的 transcript 會重複前一份的 turn，665 裡有 2 個重複。
+- 幾乎不受影響的：cache 還熱時的升級 42 → 40，其中來自系統回合的 21 次不變（§1.1 是 34／20）；全部切換 110 → 108。「系統回合不分類、沿用上一輪」的理由成立，它的對象是 hand-back、task notification 與 plugin 喚醒的 turn。
+- 受影響的：「切過去、下一輪又切回來」14 → 22（§1.2 是 11）——被誤算成 turn 的注入文字夾在中間時，看起來不相鄰。§1.2 的表用新算法：同模型 <5 分鐘 473 個、寫入 >50% 的 3%、平均寫入 15,633（§1.2 是 10,876）；同模型 5–60 分鐘 50 個、56%、252,037；換模型 <5 分鐘 51 個、88%、368,733；換模型 5–60 分鐘 51 個、90%、417,597。一次切換仍是整段 context 重寫一遍（約 37–42 萬 token）。「第一個請求」類從 183 個降到 26 個（原先 157 個是 SDK session）。
+- §1.3 的 TTL 數字（同模型 5–10 分鐘仍熱 64%）用新算法是 16／32（50%），10–20 分鐘 4／9（44%）；「5 分鐘偏保守、10 分鐘合理」的結論不變。
+
+### 5.2 改 mod 的檔案會讓 turn 開頭的 `turn.start` 漏掉
+
+對帳時有一個設成 haiku 的 session（`21e3fbc3`）在 log 視窗內有 2 個 turn 不在決定紀錄裡、以 haiku 送出（還有 2 個在視窗開始之前）。四個全是子代理 hand-back，且每個前面緊貼著 transcript 的一則 `model-router: reloaded (7 hooks…)`。引擎監看 `skills/model-router`，儲存就熱重載；我當時正原地改 router 並跑突變測試。2026-10-15 起 34 則 `model-router: …reloaded` 記錄（含 plugin.json 變動觸發的）中 4 則落在 turn 開頭，4 次全中，其餘 30 次在 turn 之間或結束時、後面的 turn 都有被路由。
+
+- 這不是 hand-back 有一條繞過 `turn.start` 的送達路徑：同樣的 hand-back 在沒有重載時全都有被路由。
+- 穩定狀態沒有這個洞；router 自己防不了（出事時它的程式碼沒被呼叫）。改 mod 時要在副本測、測完一次換進去（寫在 claude-config `refs/subagent-model-tiers.md` §7.1）。
+- 沒查清楚的：重載的確切排程，以及 `turn.start` 被丟掉的內部原因（二進位讀不出來）。「只有沒有 `prompt.submit` 的 turn 會中」是推論：人打的提示先走 `prompt.submit`，可能由它吸收待套用的重載。
+
+### 5.3 順帶觀察
+
+- 11:30 有兩則系統訊息（一則 task notification、一則 hand-back）相隔 19 秒先後到達，模型在同一次請求讀到兩者，只開了一個 turn。這是 §4 待驗證第 3 項「排隊中的訊息合併」的第一個實例（兩則都是系統訊息，不是系統訊息與人打的字合併）；`turn.start` 的 `e.text` 是哪一段仍未驗證。
+- 決定紀錄是所有 session 共用的一個環、沒有 session id，所以「換 pair」類的數字只是上限值（工具的 README 與 §4 待驗證第 1 項已註明）。
