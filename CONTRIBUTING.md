@@ -17,7 +17,7 @@ plugins/<name>/
   skills/<name>/SKILL.md         # skill 型 plugin（同上）
   skills/<name>/reference.md     # 選用：progressive disclosure（重內容下放）
   hooks/hooks.json               # 選用：事件掛鉤；hooks/ 下的腳本會被 hook 執行（見 6.5 節）
-  agents/<name>.md               # 選用：子代理
+  agents/<name>.md               # 選用：子代理（`model` 規則見 4 節的機器閘門）
   tests/*.test.sh                # 選用但強烈建議：CI 與本機 hook 依 glob 自動執行（見 6.5 節）
   .mcp.json                      # 選用：夾帶 MCP server（見第 5 節）
 ```
@@ -52,6 +52,7 @@ plugins/<name>/
 - 全域紀律：動到版本號時，**檢查所有含版本字串的檔案**（plugin.json、marketplace.json entry、兩份 CHANGELOG），不要只改一處。
 - **機器閘門**（`node scripts/validate-fixtures.cjs`，CI 與本地 PostToolUse hook 皆跑）：每個 marketplace entry 版號＝該 plugin 的 `plugin.json`；`metadata.version`＝兩份根 CHANGELOG 最上面的 `## [x.y.z]`；根 CHANGELOG 標題須為 x.y.z、不重複、嚴格遞減。**bump 前先 `git fetch` 對齊 `origin/main`**——在落後的基底上 bump 會與遠端撞號，而 `marketplace.json` 兩邊改成同一值時 git 會靜默自動合併、停在錯的版號（2026-09-17 實例；閘門現在會擋）。已知殘餘：兩個 release 被併進同一個段落，靜態檢查抓不到。另有**plugin CHANGELOG 閘門**：每個 `plugins/<p>/CHANGELOG.md` 最上面的 `## [x.y.z]` 須等於該 plugin 自己的 `plugin.json` 版號，標題同樣須為 x.y.z、不重複、嚴格遞減——根閘門拿 `metadata.version` 比對，結構上看不到 plugin 自己的版號（2026-03-07 實例：dev-workflow 出貨 1.1.0／1.1.1 而 CHANGELOG 頂部仍是 `[1.0.1]`，5 天後才人工發現）。另有**目錄完整性閘門**三條規則：①有 `plugin.json` 的目錄一律要有自己的 `CHANGELOG.md` 與 `README.md`（第 1 節結構範本兩者並列、只把 `.mcp.json`／`reference.md` 標選用；缺 CHANGELOG 會讓上一個閘門無事可查，而刪檔走 `rm`、PostToolUse hook 只看 Edit／Write／MultiEdit 看不到）；②反過來，帶著任一 plugin component（`CHANGELOG.md`／`README.md`／`commands/`／`skills/`／`agents/`／`hooks/`／有 `.claude-plugin/` 但無 `plugin.json`）卻沒有 `plugin.json` 的目錄判為未完成的 plugin 目錄——版本閘門只走 marketplace entries、註冊閘門只收有 manifest 的目錄，兩者都看不見它；③`plugins/` 下的 symlink 一律拒絕——`Dirent.isDirectory()` 是 lstat 語意、對 symlink 回 false，所以**走 `pluginDirs` 的四個閘門**（collision／目錄完整性／plugin changelog／註冊）全都跳過它，而 hook 執行 `plugins/<p>/tests/*.test.sh` 時卻會跟隨它。（版本閘門走 marketplace entries、用會跟隨 symlink 的 API 解析，是唯一看得見的；註冊閘門的 entry name ↔ plugin.json name 比對對 symlink plugin 則是靜默跳過。）另有**註冊閘門**：`plugins/` 下每個有 `plugin.json` 的目錄都必須被某個 marketplace entry 的 `source` 指到（第 2 節那一步漏做即紅——版本閘門只走 entries，沒註冊的 plugin 它根本看不到），且 entry 的 `name` 須等於該 `plugin.json` 的 `name`（前者是使用者安裝用的名字，後者決定 skill／command 的命名空間）。
 - 同一 plugin 內 `commands/<X>.md` 與有效名稱為 `<X>` 的 skill（`SKILL.md` frontmatter `name`，缺省為目錄名）不得並存——兩者解析成同一個 `<plugin>:<X>`，command 會遮蔽 skill、skill 本體永不載入，`claude plugin validate` 不會報（session-reflect 1.0.0 實例）；同一閘門會擋。
+- **agent 的 `model`**（同一支 `validate-fixtures.cjs`）：`agents/` 底下（含子資料夾）每個 `.md` 的 frontmatter 有寫 `model` 就必須是 Claude Code 接受的值（`sonnet`／`opus`／`haiku`／`fable`／`inherit` 或 `claude-*` 模型 ID，可加 `[1m]`），且只能寫一次——`claude plugin validate` 不檢查這個欄位。**判定類 agent**（產出是「有沒有問題」的裁決：審查、驗證、反證、critic）必須寫 `model: opus` 並列進 `JUDGMENT_AGENTS`，commands／skills 裡派發它的呼叫也必須帶 `model` = `opus`（派發的值蓋過 frontmatter）。其他 agent 可以省略 `model`：省略時使用者自己設的 `CLAUDE_CODE_SUBAGENT_MODEL` 仍有效，明寫 `inherit` 反而會蓋過它。新增判定類 agent 時同時改 `JUDGMENT_AGENTS` 與它旁邊的清單 canary。
 
 ## 5.（選用）夾帶 MCP server
 

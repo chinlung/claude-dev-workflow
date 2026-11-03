@@ -220,6 +220,7 @@ Task(
 ```
 Task(
   subagent_type="dev-workflow:quality-assurance",
+  model="opus",
   prompt="任務目錄：{task_directory}\n實作報告：@{task_directory}/04-implementation-report.md\n測試報告：@{task_directory}/05-test-report.md\n\n請執行品質檢查並產生 06-quality-report.md"
 )
 ```

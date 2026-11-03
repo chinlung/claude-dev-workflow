@@ -1,5 +1,6 @@
 ---
 description: 多代理辯證系統的 Critic Agent，負責審查方案並提出挑戰
+model: opus
 capabilities:
   - 客觀審查所有 Agent 的方案
   - 識別方案中的漏洞、風險和不一致

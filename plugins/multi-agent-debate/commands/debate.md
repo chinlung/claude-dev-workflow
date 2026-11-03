@@ -77,6 +77,7 @@ Task(
 ```
 Task(
   subagent_type="multi-agent-debate:critic",
+  model="opus",
   prompt="請審查以下三個方案並提出挑戰：\n\nAgent A 方案：{方案A}\n\nAgent B 方案：{方案B}\n\nAgent C 方案：{方案C}"
 )
 ```
@@ -131,6 +132,7 @@ AskUserQuestion(
 ```
 Task(
   subagent_type="multi-agent-debate:validator",
+  model="opus",
   prompt="請驗證以下候選最終決策。\n\n原始需求：$ARGUMENTS\n\n候選方案：{候選方案完整內容}\n\n辯論過程摘要（含所有 Critic 挑戰與 Agent 回應）：{辯論摘要}\n\n請依照 validator.md 的驗證清單逐一審查，並輸出裁決報告。"
 )
 ```

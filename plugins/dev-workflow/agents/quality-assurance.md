@@ -1,5 +1,6 @@
 ---
 description: "Use this agent when reviewing code quality, running linters, and verifying builds. This agent ensures code meets project standards before PR submission. Trigger keywords: 'code review', 'quality check', 'lint', 'type check', 'build verification'."
+model: opus
 tools:
   - Read
   - Write

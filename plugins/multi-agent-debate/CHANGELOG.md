@@ -5,6 +5,14 @@ All notable changes to the `multi-agent-debate` plugin will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-11-04
+
+### Changed
+
+- **critic and validator run on `opus`.** They decide whether a proposal has a problem (the critic's challenges and scores, the validator's verified / corrected / rejected verdict), and neither file named a `model`: Claude Code then falls back to `CLAUDE_CODE_SUBAGENT_MODEL`, else the main conversation's model, so on a haiku or sonnet session the debate was judged on haiku or sonnet. Both now carry `model: opus`, and `/debate` names `model="opus"` on both dispatches. The orchestrator and the three perspectives still name no `model`, so a `CLAUDE_CODE_SUBAGENT_MODEL` the user set keeps applying to them (an explicit `inherit` would override it: frontmatter comes before that variable in Claude Code's order).
+
+  **Why:** a review that misses a problem is never discovered, so it does not get the cheaper tier (the same reasoning as high-precision-dev 1.6.0). The repo's `scripts/validate-fixtures.cjs` now checks that the judgment agents name `opus` and that every dispatch of them passes `opus`.
+
 ## [1.2.1] - 2026-09-18
 
 ### Added

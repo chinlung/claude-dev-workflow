@@ -76,7 +76,8 @@ check "5 壞輸入 fail-open exit 0" "$rc" '^0$'
 #    .claude/settings.json:denyWrite 閘門讀它;改 denyWrite 或 hook 指令正是該閘門最該跑的時刻
 i=0
 for rel in plugins/x/commands/c.md plugins/x/skills/s/SKILL.md plugins/x/.claude-plugin/plugin.json \
-           plugins/x/CHANGELOG.md .claude-plugin/marketplace.json CHANGELOG.md CHANGELOG.zh-TW.md .claude/settings.json; do
+           plugins/x/CHANGELOG.md .claude-plugin/marketplace.json CHANGELOG.md CHANGELOG.zh-TW.md .claude/settings.json \
+           plugins/x/agents/a.md plugins/x/agents/sub/a.md; do
   i=$((i+1)); r=$WORK/r6-$i; make_root "$r"
   run_hook "$r" "$r/$rel"
   check "6 $rel 觸發 node runner" "$(cat "$r/ran.log" 2>/dev/null)" 'runner'
@@ -94,7 +95,8 @@ done
 #    commands/skills/manifest/CHANGELOG(專案 .claude/、docs/、plugin 內的 marketplace.json)
 i=0
 for rel in plugins/x/skills/s/notes.md docs/CHANGELOG.md \
-           .claude/commands/x.md docs/skills/foo/SKILL.md plugins/x/.claude-plugin/marketplace.json; do
+           .claude/commands/x.md docs/skills/foo/SKILL.md plugins/x/.claude-plugin/marketplace.json \
+           .claude/agents/a.md plugins/x/agents/notes.txt; do
   i=$((i+1)); r=$WORK/r7-$i; make_root "$r"
   run_hook "$r" "$r/$rel"
   if [ -f "$r/ran.log" ]; then

@@ -42,7 +42,7 @@ process.stdin.on('end', () => {
 
   const root = process.env.CLAUDE_PROJECT_DIR || process.cwd();
   // The runner's repo-structure gates (command/skill name collision, version bookkeeping,
-  // plugin changelog bookkeeping, plugin dir completeness)
+  // plugin changelog bookkeeping, plugin dir completeness, agent models and judgment dispatches)
   // read exactly these — without them here a shadowing command or a version drift only
   // surfaces in CI. Matched ROOT-RELATIVE and fully anchored, not by substring: the gates
   // read fixed paths, so anything else is a pure mis-trigger costing a full ~5s suite run —
@@ -54,7 +54,7 @@ process.stdin.on('end', () => {
   // file_path differ in realpath form (/tmp vs /private/tmp) this goes quiet — a missed
   // local trigger, not a false one, and CI still runs the gates.
   const rel = path.relative(root, filePath).split(path.sep).join('/');
-  const structural = /^(plugins\/[^/]+\/(commands\/[^/]+\.md|skills\/[^/]+\/SKILL\.md|\.claude-plugin\/plugin\.json|CHANGELOG\.md)|\.claude-plugin\/marketplace\.json|CHANGELOG(\.zh-TW)?\.md|\.claude\/settings\.json)$/.test(rel);
+  const structural = /^(plugins\/[^/]+\/(commands\/[^/]+\.md|agents\/(?:[^/]+\/)*[^/]+\.md|skills\/[^/]+\/SKILL\.md|\.claude-plugin\/plugin\.json|CHANGELOG\.md)|\.claude-plugin\/marketplace\.json|CHANGELOG(\.zh-TW)?\.md|\.claude\/settings\.json)$/.test(rel);
   // Code and data that sit directly in a skill dir instead of the conventional validators/ +
   // schema/ dirs — e.g. vendored security-audit's validators, their upstream test suites, and
   // report-schema.json, which the runner and tests/*.test.sh run or load. Root-relative like

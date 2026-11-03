@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.13.3] - 2026-11-04
+
+### Changed
+
+- **multi-agent-debate 1.2.1 → 1.3.0: critic and validator run on `opus`.** Neither named a `model`, so Claude Code fell back to `CLAUDE_CODE_SUBAGENT_MODEL`, else the main conversation's model: on a haiku or sonnet session the debate was judged on haiku or sonnet. `/debate` now names `model="opus"` on both dispatches; the orchestrator and the perspectives still name no `model`, so a user's `CLAUDE_CODE_SUBAGENT_MODEL` keeps applying to them. See that plugin's CHANGELOG [1.3.0].
+- **dev-workflow 1.0.2 → 1.1.0: `quality-assurance` runs on `opus`.** It is a code review and named no `model`; `/dev-workflow` now names `opus` on its dispatch too. The other six agents are unchanged. See that plugin's CHANGELOG [1.1.0].
+- **`scripts/validate-fixtures.cjs`: judgment agents must name `opus`, and so must every dispatch of them.** `claude plugin validate` checks neither the field nor its value. The gate reads the frontmatter of every `.md` under `plugins/*/agents/`, nested folders included (Claude Code registers those too): a `model` that is present must be an alias, `inherit` or a `claude-*` model id (optionally `[1m]`) and appear once; the agents in one list of judgment agents (eight: code-audit-rigor's finding-verifier, dev-workflow's quality-assurance, high-precision-dev's adversary, critic, disproof-agent and verifier, multi-agent-debate's critic and validator) must name `opus`; and every `Task(`/`Agent(` call in a plugin's commands or skills that dispatches one of them must pass `model` = `opus`, since the dispatch value overrides the frontmatter. Other agents may leave `model` out, which keeps the user's `CLAUDE_CODE_SUBAGENT_MODEL` in effect. The local PostToolUse hook now also runs the gates when an agent file under `plugins/*/agents/` is edited, and CONTRIBUTING §4 describes the rule.
+
 ## [1.13.2] - 2026-11-02
 
 ### Changed
