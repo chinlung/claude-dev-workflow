@@ -89,7 +89,7 @@ SKIP 判定曾在真實 session 中被「憑摘要句自由心證」繞過（變
 - **聲明檔**：`.claude/openspec-skip.<session>.local.md`，其中一行 `契約面：API=否 資料=否 schema=否 migration=否 相容=否 權限=否 並行=否 跨模組=否 ｜ 理由：<一句>`。檔案不存在、缺任何一個 key、值不是「是／否」都擋；**任何一面是「是」也擋**，並要求啟動 workflow（Phase 1）
 - **歸檔之後**：本 session 經歸檔閘門放行過歸檔時，聲明檔必須比那次歸檔新，歸檔前寫的不算
 - **同一批並行編輯**：聲明檔不存在時全部被擋，寫好後全部重試
-- **界線**：hook 只確認判斷被寫下來、且沒有自相矛盾，不驗證判斷對不對（契約風險是語意判斷，機器判不了）；全面 fail-open——jq 缺失、輸入異常、不明工具形狀等任何錯誤路徑都放行；matcher 只綁核心編輯工具（Edit/Write/MultiEdit/NotebookEdit），MCP 檔案編輯工具（serena、morphllm 等）不在覆蓋面內
+- **界線**：hook 只確認判斷被寫下來、八個 key 都有值、且沒有任何一面是「是」，不驗證判斷對不對（契約風險是語意判斷，機器判不了）；全面 fail-open——jq 缺失、輸入異常、不明工具形狀等任何錯誤路徑都放行；matcher 只綁核心編輯工具（Edit/Write/MultiEdit/NotebookEdit），MCP 檔案編輯工具（serena、morphllm 等）不在覆蓋面內
 - **測試**：`bash plugins/openspec-superpowers-workflow/tests/skip-gate.test.sh`（已接 CI；文件豁免、「任一面是」、歸檔後新舊比較、八個 key 的檢查均經 mutation 驗證）
 
 ## Archive Gate Hook
@@ -100,7 +100,7 @@ Phase 6 的歸檔前核查原本只寫在文字裡；兩個月內 9 個實際歸
 - **放行條件**：`validators/reconcile-check.cjs check` 對該 change 記下的 pass verdict 存在，且之後 proposal、design、tasks、review-notes、specs 都沒有再改（`verify` 比對雜湊）
 - **核查內容**：R1–R9，對應 `RECONCILIATION-CRITERIA.md` 的 C1–C5；其中 R4 要求 review 最後一輪標了 `final`，而 `final` 只能在使用者明說 review 已收斂後才加
 - **繞過**：命令前加 `OPENSPEC_ARCHIVE_OK=1`，只在使用者明確要求時使用
-- **界線**：機械檢查不取代判斷——C1、C2、C5 以 `manual` 列出，仍由代理逐項判斷並寫在回覆裡；全面 fail-open（缺 jq／perl／node、解析不到 change 名稱、change 目錄不存在都放行）
+- **界線**：機械檢查不取代判斷——C1、C2、C5 以 `manual` 列出，仍由代理逐項判斷並寫在回覆裡；全面 fail-open（缺 jq／perl／node、解析不到 change 名稱、change 目錄不存在、`reconcile-check.cjs` 自身崩潰都放行）；只認上述兩種命令形狀，`git mv`、`cp` 加 `rm`、`npx openspec`、從 `changes/` 目錄內用相對路徑 `mv` 等寫法不在覆蓋面內（設計取捨：解析不到名稱即放行）
 - **測試**：`bash plugins/openspec-superpowers-workflow/tests/archive-gate.test.sh`、`bash plugins/openspec-superpowers-workflow/tests/reconcile-check.test.sh`（已接 CI；放行與 deny 路徑、`mv` 解析、繞過字樣、歸檔標記、雜湊失效、各 R 檢查均經 mutation 驗證）
 
 ## 版本

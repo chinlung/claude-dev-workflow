@@ -29,6 +29,7 @@ cwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null) || allow
 file_path=$(printf '%s' "$input" | jq -r '.tool_input.file_path // .tool_input.notebook_path // empty' 2>/dev/null) || allow
 
 proj="${CLAUDE_PROJECT_DIR:-$cwd}"
+proj="${proj%/}"
 [ -n "$proj" ] || allow
 [ -d "$proj/openspec" ] || allow
 

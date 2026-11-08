@@ -83,6 +83,10 @@ check "2 deny 訊息含格式行" "$out" "契約面：API=否"
 out=$(run_gate "$(input_json s2 "$p" "$p/src/b.php")" "$t" "$p")
 check "2b 同批第二個編輯 → 續 deny" "$out" "$DENY"
 
+# 2c) CLAUDE_PROJECT_DIR 帶尾斜線 → 仍視為專案內,照樣 deny(尾斜線不得讓閘門整個失效)
+out=$(run_gate "$(input_json s2 "$p" "$p/src/a.php")" "$t" "$p/")
+check "2c 專案目錄尾斜線 → 仍 deny" "$out" "$DENY"
+
 # 3) 寫了八面全「否」的聲明 → allow
 write_decl "$p" s2 "$ALL_NO"
 out=$(run_gate "$(input_json s2 "$p" "$p/src/a.php")" "$t" "$p")
@@ -169,7 +173,7 @@ out=$(run_gate "$(input_json s16b "$p" "$p/src/b.php")" "$t" "$p")
 check "16b 同 session 另一個檔 → 續 deny" "$out" "$DENY"
 
 # ---- summary ----
-MIN=33
+MIN=34
 if [ "$((PASS + FAIL))" -lt "$MIN" ]; then
   echo "FAIL: ran $((PASS + FAIL)) assertions, expected at least $MIN"; FAIL=$((FAIL+1))
 fi

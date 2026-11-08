@@ -96,11 +96,13 @@ while IFS= read -r name; do
   [ -d "$dir" ] || continue
   # `|| rc=$?`, not a bare assignment: a non-zero exit would fire the ERR trap, which allows.
   rc=0; reason=$(node "$check" verify "$dir" 2>/dev/null) || rc=$?
-  case $rc in
-    0) verified=$((verified + 1)) ;;
-    1) failures+="  - ${name}: ${reason}"$'\n' ;;
-    *) : ;;
-  esac
+  # Node also exits 1 on an uncaught exception, so exit 1 alone is not a verdict: deny only when
+  # stdout is one of verify's documented answers. Anything else (a crash) allows — fail-open.
+  if [ "$rc" = 0 ]; then
+    verified=$((verified + 1))
+  elif [ "$rc" = 1 ] && [[ $reason =~ ^(no-verdict|stale:[A-Za-z]+)$ ]]; then
+    failures+="  - ${name}: ${reason}"$'\n'
+  fi
 done <<< "$names"
 
 if [ -n "$failures" ]; then

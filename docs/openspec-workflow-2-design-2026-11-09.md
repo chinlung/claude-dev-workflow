@@ -112,10 +112,10 @@ OpenSpec 1.16.1 的 `/opsx:archive` 與 bulk-archive 範本不呼叫 CLI：代�
 
 ### 4.4 測試（TDD，先紅後綠）
 
-- `tests/skip-gate.test.sh` 改寫為 v2 語意。現有 11 組情境逐一對應（非 openspec 專案、有 active change、只有 archive、openspec／.claude 內路徑、專案外路徑、無 file_path、session_id 消毒等）；新增：文件豁免、歸檔後情境、聲明檔五種狀態（缺檔、缺 key、非是否值、含「是」、合法）、同批並行全擋、3 次防死鎖。
+- `tests/skip-gate.test.sh` 改寫為 v2 語意。現有 11 組情境逐一對應（非 openspec 專案、有 active change、只有 archive、openspec／.claude 內路徑、專案外路徑、無 file_path、session_id 消毒等）；新增：文件豁免、歸檔後情境、聲明檔五種狀態（缺檔、缺 key、非是否值、含「是」、合法）、同批並行全擋。
 - 新增 `tests/reconcile-check.test.sh`：以 `tests/fixtures/openspec-workflow/` 為底，每個 R 檢查各有通過與失敗 fixture；`snapshot`／`check` 的雜湊流程；雜湊失效。
 - 新增 `tests/archive-gate.test.sh`：命令解析（`--yes`、複合命令、無名稱）、四種 deny 條件、繞過字樣、fail-open 路徑。
-- **突變驗證**：每個閘門至少對執行路徑做突變（移除雜湊比對、移除「任何一面是」判斷、移除文件豁免、移除防死鎖），套件必須轉紅。依 CLAUDE.md，突變打在執行路徑，不是它處理的資料。
+- **突變驗證**：每個閘門至少對執行路徑做突變（移除雜湊比對、移除「任何一面是」判斷、移除文件豁免），套件必須轉紅。依 CLAUDE.md，突變打在執行路徑，不是它處理的資料。
 - 實機：在一個臨時 openspec 專案裡跑真的 `openspec archive`，確認 deny 與放行兩條路徑，以及 `/opsx:archive` 同樣被攔。
 
 ### 4.5 要更新的文字

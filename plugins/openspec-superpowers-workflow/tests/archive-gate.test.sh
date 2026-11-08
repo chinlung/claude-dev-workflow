@@ -129,13 +129,28 @@ mkdir -p "$WORK/nonode"
 for t in jq perl touch; do ln -s "$(command -v "$t")" "$WORK/nonode/$t"; done
 out=$(run_gate "$(input_json s9 "$P" 'openspec archive foo --yes')" "$T" "$P" "$WORK/nonode"); empty "no node on PATH → allow" "$out"
 
+# reconcile-check.cjs 自身崩潰(exit 1 但 stdout 不是 no-verdict / stale)→ 放行,不是以空原因 deny。
+# 以 hook 副本指向壞掉的 validator 副本測:語法錯誤、以及 require 不存在的模組(runtime 例外)。
+crash_tree() {  # crash_tree <目錄> <validator 內容>
+  mkdir -p "$1/hooks" "$1/skills/openspec-superpowers-workflow/validators"
+  cp "$GATE" "$1/hooks/archive-gate.sh"
+  printf '%s\n' "$2" > "$1/skills/openspec-superpowers-workflow/validators/reconcile-check.cjs"
+}
+P=$WORK/p10; T=$WORK/t10; mkdir -p "$T"; verified "$P" foo
+crash_tree "$WORK/crash-syntax" 'this is not javascript ('
+out=$(GATE="$WORK/crash-syntax/hooks/archive-gate.sh" run_gate "$(input_json s10 "$P" 'openspec archive foo --yes')" "$T" "$P")
+empty "validator syntax error → allow" "$out"
+crash_tree "$WORK/crash-runtime" "require('./validate-openspec-workflow.cjs'); console.log('fresh');"
+out=$(GATE="$WORK/crash-runtime/hooks/archive-gate.sh" run_gate "$(input_json s10 "$P" 'openspec archive foo --yes')" "$T" "$P")
+empty "validator runtime exception → allow" "$out"
+
 # hooks.json 註冊兩個帶 if 的 handler
 n=$(jq '[.hooks.PreToolUse[] | select(.matcher == "Bash") | .hooks[] | select((.command | test("archive-gate.sh")) and (.if != null))] | length' "$HOOKS_JSON" 2>/dev/null)
 if [ "$n" = 2 ]; then PASS=$((PASS+1)); echo "PASS: hooks.json registers two archive-gate handlers with if"
 else FAIL=$((FAIL+1)); echo "FAIL: hooks.json archive-gate handlers with if — got [$n]"; fi
 
 # ---- summary ----
-MIN=27
+MIN=29
 if [ "$((PASS + FAIL))" -lt "$MIN" ]; then
   echo "FAIL: ran $((PASS + FAIL)) assertions, expected at least $MIN"; FAIL=$((FAIL+1))
 fi
