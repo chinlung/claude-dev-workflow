@@ -28,8 +28,9 @@ command -v node >/dev/null 2>&1 || allow
 cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null) || allow
 [ -n "$cmd" ] || allow
 case $cmd in *OPENSPEC_ARCHIVE_OK=1*) allow ;; esac
-IFS=$'\t' read -r session_id cwd < <(printf '%s' "$input" | jq -r '[.session_id // "unknown", .cwd // ""] | @tsv' 2>/dev/null) || allow
-session_id="${session_id//[^a-zA-Z0-9._-]/_}"
+# Joined with US (0x1f), not tab: tab is IFS whitespace and would collapse an empty session_id away.
+IFS=$'\x1f' read -r session_id cwd < <(printf '%s' "$input" | jq -r '[.session_id // "", .cwd // ""] | join("\u001f")' 2>/dev/null) || allow
+session_id="${session_id//[^a-zA-Z0-9._-]/_}"; session_id="${session_id:-unknown}"
 proj="${CLAUDE_PROJECT_DIR:-$cwd}"
 [ -n "$proj" ] || allow
 proj="${proj%/}"

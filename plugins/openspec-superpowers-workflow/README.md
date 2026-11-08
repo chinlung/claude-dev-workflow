@@ -86,10 +86,10 @@ SKIP 的唯一依據是上述契約面判定，沒有其他豁免類別（例如
 SKIP 判定曾在真實 session 中被「憑摘要句自由心證」繞過（變更實際觸碰跨模組行為、且落在已 spec 化能力域）。1.4 版的 hook 在第一次編輯擋一次、要求在回覆中逐項核對，但兩個月的紀錄顯示 12 次攔截後沒有一次留下逐項聲明：模型直接重試就放行。現行版本要求把判斷寫成一個 hook 讀得到的檔案：
 
 - **觸發條件**（全部成立才攔）：專案有 `openspec/` 目錄；`openspec/changes/` 無 active change（`archive/` 不算）；本次編輯的是專案內的非文件檔（`openspec/`、`.claude/`、`.md .mdx .txt .rst .adoc`、`docs/`、`doc/` 都不攔）
-- **聲明檔**：`.claude/openspec-skip.<session>.local.md`，其中一行 `契約面：API=否 資料=否 schema=否 migration=否 相容=否 權限=否 並行=否 跨模組=否 ｜ 理由：<一句>`。檔案不存在、缺任何一個 key、值不是「是／否」都擋；**任何一面是「是」也擋**，並要求啟動 workflow（Phase 1）
+- **聲明檔**：`.claude/openspec-skip.<session>.local.md`，其中一行 `契約面：API=否 資料=否 schema=否 migration=否 相容=否 權限=否 並行=否 跨模組=否 ｜ 理由：<一句>`。檔案不存在、`｜` 之前缺任何一個 key、同一 key 出現兩次、值不是整個詞的「是／否」都擋（`理由：` 裡的文字不算）；**任何一面是「是」也擋**，並要求啟動 workflow（Phase 1）
 - **歸檔之後**：本 session 經歸檔閘門放行過歸檔時，聲明檔必須比那次歸檔新，歸檔前寫的不算
 - **同一批並行編輯**：聲明檔不存在時全部被擋，寫好後全部重試
-- **界線**：hook 只確認判斷被寫下來、八個 key 都有值、且沒有任何一面是「是」，不驗證判斷對不對（契約風險是語意判斷，機器判不了）；全面 fail-open——jq 缺失、輸入異常、不明工具形狀等任何錯誤路徑都放行；matcher 只綁核心編輯工具（Edit/Write/MultiEdit/NotebookEdit），MCP 檔案編輯工具（serena、morphllm 等）不在覆蓋面內
+- **界線**：hook 只確認判斷被寫下來、八個 key 各出現一次且值為是／否、且沒有任何一面是「是」，不驗證判斷對不對（契約風險是語意判斷，機器判不了）；全面 fail-open——jq 缺失、輸入異常、不明工具形狀等任何錯誤路徑都放行；matcher 只綁核心編輯工具（Edit/Write/MultiEdit/NotebookEdit），MCP 檔案編輯工具（serena、morphllm 等）不在覆蓋面內
 - **測試**：`bash plugins/openspec-superpowers-workflow/tests/skip-gate.test.sh`（已接 CI；文件豁免、「任一面是」、歸檔後新舊比較、八個 key 的檢查均經 mutation 驗證）
 
 ## Archive Gate Hook

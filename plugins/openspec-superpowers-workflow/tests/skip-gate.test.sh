@@ -87,6 +87,13 @@ check "2b 同批第二個編輯 → 續 deny" "$out" "$DENY"
 out=$(run_gate "$(input_json s2 "$p" "$p/src/a.php")" "$t" "$p/")
 check "2c 專案目錄尾斜線 → 仍 deny" "$out" "$DENY"
 
+# 2d) 輸入缺欄位時欄位不得左移:沒有 cwd、或 session_id 為空字串,仍要 deny
+out=$(run_gate "$(printf '{"session_id":"s2","tool_name":"Edit","tool_input":{"file_path":"%s/src/a.php"}}' "$p")" "$t" "$p")
+check "2d 輸入沒有 cwd → 仍 deny" "$out" "$DENY"
+out=$(run_gate "$(input_json '' "$p" "$p/src/a.php")" "$t" "$p")
+check "2d session_id 為空 → 仍 deny" "$out" "$DENY"
+check "2d 空 session_id 的聲明檔路徑用 unknown" "$out" "$(decl "$p" unknown)"
+
 # 3) 寫了八面全「否」的聲明 → allow
 write_decl "$p" s2 "$ALL_NO"
 out=$(run_gate "$(input_json s2 "$p" "$p/src/a.php")" "$t" "$p")
@@ -147,6 +154,29 @@ write_decl "$p" s14 '契約面：API=可能 資料=否 schema=否 migration=否 
 out=$(run_gate "$(input_json s14 "$p" "$p/src/a.php")" "$t" "$p")
 check "14 值不是是／否 → deny" "$out" "$DENY"
 
+# 14b) 值只認整個詞、key 只認 ｜ 之前且只能出現一次
+write_decl "$p" s14b '契約面：API=否定 資料=否 schema=否 migration=否 相容=否 權限=否 並行=否 跨模組=否 ｜ 理由：x'
+out=$(run_gate "$(input_json s14b "$p" "$p/src/a.php")" "$t" "$p")
+check "14b API=否定 → deny" "$out" "格式不符：API"
+write_decl "$p" s14c '契約面：API=否 資料=否 schema=否 migration=否 相容=否 權限=否 並行=否 跨模組=否 API=是 ｜ 理由：x'
+out=$(run_gate "$(input_json s14c "$p" "$p/src/a.php")" "$t" "$p")
+check "14c 同一 key 出現兩次 → deny" "$out" "格式不符：API"
+write_decl "$p" s14d '契約面：資料=否 schema=否 migration=否 相容=否 權限=否 並行=否 跨模組=否 ｜ 理由：不改 API=否'
+out=$(run_gate "$(input_json s14d "$p" "$p/src/a.php")" "$t" "$p")
+check "14d key 只在理由裡 → deny" "$out" "格式不符：API"
+write_decl "$p" s14e '契約面：API=否 資料=否 schema=否 schema=否 migration=否 相容=否 權限=否 並行=否 跨模組=否 ｜ 理由：x'
+out=$(run_gate "$(input_json s14e "$p" "$p/src/a.php")" "$t" "$p")
+check "14e 同值重複的 key → deny" "$out" "格式不符：schema"
+write_decl "$p" s14f '契約面：API=否 資料=否 migration=否 相容=否 權限=否 並行=否 跨模組=否 ｜ 理由：不動 schema=否'
+out=$(run_gate "$(input_json s14f "$p" "$p/src/a.php")" "$t" "$p")
+check "14f 第二個 key 只在理由裡 → deny" "$out" "格式不符：schema"
+write_decl "$p" s14g '契約面：XAPI=否 資料=否 schema=否 migration=否 相容=否 權限=否 並行=否 跨模組=否 ｜ 理由：x'
+out=$(run_gate "$(input_json s14g "$p" "$p/src/a.php")" "$t" "$p")
+check "14g key 是另一個詞的字尾 → deny" "$out" "格式不符：API"
+write_decl "$p" s14h '契約面：API=否 資料=否 schema=否 migration=否 相容=否 權限=否 並行=否 舊跨模組=否 ｜ 理由：x'
+out=$(run_gate "$(input_json s14h "$p" "$p/src/a.php")" "$t" "$p")
+check "14h 中文 key 是另一個詞的字尾 → deny" "$out" "格式不符：跨模組"
+
 # 15) 任何一面「是」→ deny,要求啟動 workflow
 write_decl "$p" s15 '契約面：API=否 資料=否 schema=否 migration=否 相容=否 權限=否 並行=是 跨模組=否 ｜ 理由：x'
 out=$(run_gate "$(input_json s15 "$p" "$p/src/a.php")" "$t" "$p")
@@ -174,7 +204,7 @@ out=$(run_gate "$(input_json s16b "$p" "$p/src/b.php")" "$t" "$p")
 check "16b 同 session 另一個檔 → 續 deny" "$out" "$DENY"
 
 # ---- summary ----
-MIN=34
+MIN=44
 if [ "$((PASS + FAIL))" -lt "$MIN" ]; then
   echo "FAIL: ran $((PASS + FAIL)) assertions, expected at least $MIN"; FAIL=$((FAIL+1))
 fi

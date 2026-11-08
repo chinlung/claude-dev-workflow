@@ -70,6 +70,12 @@ P=$WORK/p2; T=$WORK/t2; mkdir -p "$T"; verified "$P" foo
 out=$(run_gate "$(input_json s2 "$P" 'openspec archive foo --yes')" "$T" "$P")
 empty "verified CLI archive → allow" "$out"
 exists "allow leaves the archived marker" "$T/claude-openspec-archived-s2"
+# 欄位不得左移:session_id 為空字串時標記仍要落在 unknown;沒有 cwd 時仍要能判定
+out=$(run_gate "$(input_json '' "$P" 'openspec archive foo --yes')" "$T" "$P")
+empty "empty session_id → allow" "$out"
+exists "empty session_id → marker named unknown" "$T/claude-openspec-archived-unknown"
+out=$(run_gate "$(jq -cn --arg cmd 'openspec archive foo --yes' '{session_id:"s2c",tool_name:"Bash",tool_input:{command:$cmd}}')" "$T" "$P")
+exists "input without cwd → marker still written" "$T/claude-openspec-archived-s2c"
 
 # 核查後改 design.md → deny，stale:design
 printf 'More.\n' >> "$P/openspec/changes/foo/design.md"
@@ -146,7 +152,7 @@ if [ "$n" = 2 ]; then PASS=$((PASS+1)); echo "PASS: hooks.json registers two arc
 else FAIL=$((FAIL+1)); echo "FAIL: hooks.json archive-gate handlers with if — got [$n]"; fi
 
 # ---- summary ----
-MIN=29
+MIN=32
 if [ "$((PASS + FAIL))" -lt "$MIN" ]; then
   echo "FAIL: ran $((PASS + FAIL)) assertions, expected at least $MIN"; FAIL=$((FAIL+1))
 fi

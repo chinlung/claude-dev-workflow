@@ -26,9 +26,11 @@ input=$(cat)
 if [ -n "${CLAUDE_PROJECT_DIR:-}" ] && [ ! -d "${CLAUDE_PROJECT_DIR%/}/openspec" ]; then allow; fi
 command -v jq >/dev/null 2>&1 || allow
 
-IFS=$'\t' read -r session_id cwd file_path < <(printf '%s' "$input" | jq -r '[.session_id // "unknown", .cwd // "", (.tool_input.file_path // .tool_input.notebook_path // "")] | @tsv' 2>/dev/null) || allow
+# One jq call for the three fields, joined with US (0x1f): a non-whitespace IFS character keeps empty
+# fields in place, where tab (IFS whitespace) would collapse `sid<tab><tab>path` into two fields.
+IFS=$'\x1f' read -r session_id cwd file_path < <(printf '%s' "$input" | jq -r '[.session_id // "", .cwd // "", (.tool_input.file_path // .tool_input.notebook_path // "")] | join("\u001f")' 2>/dev/null) || allow
 # file names keep safe characters only: a "/" in the id would put the file elsewhere
-session_id="${session_id//[^a-zA-Z0-9._-]/_}"
+session_id="${session_id//[^a-zA-Z0-9._-]/_}"; session_id="${session_id:-unknown}"
 
 proj="${CLAUDE_PROJECT_DIR:-$cwd}"
 proj="${proj%/}"
@@ -70,16 +72,21 @@ fi
 
 # `|| line=""`: grep finding nothing exits 1, which would fire the ERR trap and allow
 line=$(grep -m1 -E '^契約面[：:]' "$decl" 2>/dev/null) || line=""
+# Only the part before ｜ carries verdicts (理由 is free text). Each key must appear exactly once as a
+# whole word with the value 是 or 否: `API=否定`, a second `API=是`, or `API=否` inside 理由 all fail.
+verdicts="${line#契約面[：:]}"; verdicts="${verdicts%%｜*}"; verdicts=" ${verdicts%%|*}"
 bad=(); hit=()
 for key in "${keys[@]}"; do
-  if [[ $line =~ ${key}=(是|否) ]]; then
-    [ "${BASH_REMATCH[1]}" = 是 ] && hit+=("$key")
-  else
-    bad+=("$key")
+  n=0; val=""; rest=$verdicts
+  while [[ $rest =~ [[:space:]]${key}=([^[:space:]]*)(.*)$ ]]; do
+    n=$((n + 1)); val=${BASH_REMATCH[1]}; rest=${BASH_REMATCH[2]}
+  done
+  if [ "$n" != 1 ] || { [ "$val" != 是 ] && [ "$val" != 否 ]; }; then bad+=("$key")
+  elif [ "$val" = 是 ]; then hit+=("$key")
   fi
 done
 if [ "${#bad[@]}" -gt 0 ]; then
-  deny "⛔ openspec：聲明檔格式不符：${bad[*]}（缺少，或值不是「是／否」）。檔案：${decl}，需要一行：${template}"
+  deny "⛔ openspec：聲明檔格式不符：${bad[*]}（缺少、出現兩次，或值不是「是／否」；理由裡的文字不算）。檔案：${decl}，需要一行：${template}"
 fi
 if [ "${#hit[@]}" -gt 0 ]; then
   deny "⛔ openspec：聲明標為「是」：${hit[*]}。碰到契約面的變更要走 openspec-superpowers-workflow：先開 change（Phase 1），再動程式碼。"
