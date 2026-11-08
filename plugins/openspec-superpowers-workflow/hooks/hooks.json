@@ -11,6 +11,23 @@
             "timeout": 10
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/archive-gate.sh\"",
+            "timeout": 10,
+            "if": "Bash(openspec archive *)"
+          },
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/archive-gate.sh\"",
+            "timeout": 10,
+            "if": "Bash(mv *)"
+          }
+        ]
       }
     ]
   }
