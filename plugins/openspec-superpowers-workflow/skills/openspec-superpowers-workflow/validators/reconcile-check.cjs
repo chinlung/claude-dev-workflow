@@ -7,7 +7,9 @@
 //   verify   <change-dir>        exit 0 when that verdict exists and none of those files changed
 // State: <project>/.claude/openspec-reconcile.<change>.local.json. The archive gate hook calls
 // `verify`; the checks that need judgment (C1, C2, C5) are printed as `manual`, not decided here.
-// Exit codes: 0 pass / fresh, 1 fail / stale, 2 usage or a path outside openspec/changes/.
+// Exit codes: 0 pass / fresh, 1 check failed, 2 usage or a path outside openspec/changes/,
+// 3 verify found no verdict or a stale one — a code node never produces by itself, so the archive
+// gate can tell "the change is not ready" from "the checker crashed" (exit 1) by exit code alone.
 // Design: docs/openspec-workflow-2-design-2026-11-09.md §4.1. Tests: tests/reconcile-check.test.sh
 
 const fs = require('fs');
@@ -29,7 +31,9 @@ function resolveChange(arg) {
   const read = (rel) => {
     try { return fs.readFileSync(path.join(changeDir, rel), 'utf8').replace(/\r\n/g, '\n'); } catch { return null; }
   };
-  return { changeDir, projRoot, name, read, statePath: path.join(projRoot, '.claude', `openspec-reconcile.${name}.local.json`) };
+  let parsedRounds;
+  const reviewRounds = () => (parsedRounds ??= rounds(read(ARTIFACTS.reviewNotes)));
+  return { changeDir, projRoot, name, read, reviewRounds, statePath: path.join(projRoot, '.claude', `openspec-reconcile.${name}.local.json`) };
 }
 
 const sha256 = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
@@ -95,7 +99,7 @@ function checkR2(ctx) {
 }
 
 function checkR3(ctx) {
-  const rs = rounds(ctx.read(ARTIFACTS.reviewNotes));
+  const rs = ctx.reviewRounds();
   const detail = [];
   let lastRoundBad = false;
   rs.forEach((r, i) => {
@@ -109,7 +113,7 @@ function checkR3(ctx) {
 }
 
 function checkR4(ctx) {
-  const rs = rounds(ctx.read(ARTIFACTS.reviewNotes));
+  const rs = ctx.reviewRounds();
   if (rs.length === 0) return result('warn', ['review-notes.md has no ## Round section']);
   const last = rs[rs.length - 1].heading;
   if (/final/i.test(last)) return result('pass');
@@ -156,8 +160,11 @@ function checkR7(ctx) {
 
 function checkR8(ctx) {
   const entries = [];
-  for (const r of rounds(ctx.read(ARTIFACTS.reviewNotes))) {
-    for (const e of r.entries) if (/^-\s*\[CONSTITUTION\]\s*Y\b/.test(e)) entries.push(e);
+  for (const r of ctx.reviewRounds()) {
+    for (const e of r.entries) {
+      const m = e.match(ENTRY);
+      if (m && m[1] === 'CONSTITUTION' && m[2] === 'Y') entries.push(e);
+    }
   }
   if (entries.length === 0) return result('pass');
   return result('manual', ["confirm each rule below is in openspec/config.yaml (context: or rules:) and not in this change's spec files", ...entries]);
@@ -189,10 +196,10 @@ function main(argv) {
   }
   if (cmd === 'verify') {
     const verdict = readState(ctx).verdict;
-    if (!verdict || verdict.result !== 'pass' || !verdict.hashes) { console.log('no-verdict'); return 1; }
+    if (!verdict || verdict.result !== 'pass' || !verdict.hashes) { console.log('no-verdict'); return 3; }
     const now = hashes(ctx);
     for (const key of Object.keys(now)) {
-      if (verdict.hashes[key] !== now[key]) { console.log(`stale:${key}`); return 1; }
+      if (verdict.hashes[key] !== now[key]) { console.log(`stale:${key}`); return 3; }
     }
     console.log('fresh');
     return 0;
@@ -217,5 +224,4 @@ function main(argv) {
   return outcome === 'pass' ? 0 : 1;
 }
 
-if (require.main === module) process.exitCode = main(process.argv.slice(2));
-module.exports = { main };
+process.exitCode = main(process.argv.slice(2));

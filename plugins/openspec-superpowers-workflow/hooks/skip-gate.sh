@@ -11,8 +11,9 @@
 # Not gated: openspec/ and .claude/ (workflow and declaration writes), paths outside the project,
 # and documentation (.md .mdx .txt .rst .adoc, docs/, doc/).
 # Every edit in one parallel batch is denied while the file is missing, so v1's batch window and
-# session flag are gone. The hook checks that a verdict was written and does not contradict itself;
-# it cannot check that the verdict is right. Fail-open: any unexpected condition allows.
+# session flag are gone. The hook checks that a verdict was written, that every surface has a value
+# and that none is 是; it cannot check that the verdict is right. Fail-open: any unexpected
+# condition allows.
 # Design: docs/openspec-workflow-2-design-2026-11-09.md §4.2. Tests: tests/skip-gate.test.sh
 set -uo pipefail
 
@@ -20,26 +21,25 @@ allow() { exit 0; }
 trap allow ERR
 
 input=$(cat)
+# Cheapest exit first: this hook runs on every edit, and most projects have no openspec/ (cwd is
+# only needed when CLAUDE_PROJECT_DIR is unset, so this decides the same way as the check below).
+if [ -n "${CLAUDE_PROJECT_DIR:-}" ] && [ ! -d "${CLAUDE_PROJECT_DIR%/}/openspec" ]; then allow; fi
 command -v jq >/dev/null 2>&1 || allow
 
-session_id=$(printf '%s' "$input" | jq -r '.session_id // "unknown"' 2>/dev/null) || allow
+IFS=$'\t' read -r session_id cwd file_path < <(printf '%s' "$input" | jq -r '[.session_id // "unknown", .cwd // "", (.tool_input.file_path // .tool_input.notebook_path // "")] | @tsv' 2>/dev/null) || allow
 # file names keep safe characters only: a "/" in the id would put the file elsewhere
 session_id="${session_id//[^a-zA-Z0-9._-]/_}"
-cwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null) || allow
-file_path=$(printf '%s' "$input" | jq -r '.tool_input.file_path // .tool_input.notebook_path // empty' 2>/dev/null) || allow
 
 proj="${CLAUDE_PROJECT_DIR:-$cwd}"
 proj="${proj%/}"
 [ -n "$proj" ] || allow
 [ -d "$proj/openspec" ] || allow
 
+# gated: files inside the project that are not workflow files, declarations or documentation
 case "$file_path" in
-  "$proj/openspec/"*|"$proj/.claude/"*) allow ;;
+  "$proj/openspec/"*|"$proj/.claude/"*|"$proj/docs/"*|"$proj/doc/"*|*.md|*.mdx|*.txt|*.rst|*.adoc) allow ;;
   "$proj/"*) : ;;
   *) allow ;;
-esac
-case "$file_path" in
-  *.md|*.mdx|*.txt|*.rst|*.adoc|"$proj/docs/"*|"$proj/doc/"*) allow ;;
 esac
 
 # an active change (any directory under changes/ other than archive/) means the workflow is running
@@ -51,7 +51,9 @@ fi
 
 decl="$proj/.claude/openspec-skip.${session_id}.local.md"
 marker="${TMPDIR:-/tmp}/claude-openspec-archived-${session_id}"
-template='契約面：API=否 資料=否 schema=否 migration=否 相容=否 權限=否 並行=否 跨模組=否 ｜ 理由：<一句話>'
+# the eight surfaces, defined once: the template the agent is told to write and the keys checked below
+keys=(API 資料 schema migration 相容 權限 並行 跨模組)
+template='契約面：'; for key in "${keys[@]}"; do template+="${key}=否 "; done; template+='｜ 理由：<一句話>'
 
 deny() {
   jq -cn --arg r "$1" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
@@ -69,7 +71,7 @@ fi
 # `|| line=""`: grep finding nothing exits 1, which would fire the ERR trap and allow
 line=$(grep -m1 -E '^契約面[：:]' "$decl" 2>/dev/null) || line=""
 bad=(); hit=()
-for key in API 資料 schema migration 相容 權限 並行 跨模組; do
+for key in "${keys[@]}"; do
   if [[ $line =~ ${key}=(是|否) ]]; then
     [ "${BASH_REMATCH[1]}" = 是 ] && hit+=("$key")
   else

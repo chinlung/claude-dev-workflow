@@ -45,7 +45,7 @@
 - Produces（CLI，Task 3 依賴 `verify`）：
   - `node reconcile-check.cjs snapshot <change-dir>` → exit 0，stdout 印狀態檔路徑。
   - `node reconcile-check.cjs check <change-dir> [--json]` → exit 0 無 fail／1 有 fail／2 用法或路徑錯誤。`--json` 輸出 `{change, result:"pass"|"fail", checks:[{id:"R1".."R9", status:"pass"|"fail"|"warn"|"manual", detail:[string]}]}`。result 為 pass 時把 `verdict:{result:"pass", at, hashes:{proposal,design,tasks,reviewNotes,specs}}` 合併寫進狀態檔。
-  - `node reconcile-check.cjs verify <change-dir>` → exit 0 狀態檔有 pass verdict 且五個雜湊與現況相同；exit 1 並在 stdout 印一行原因（`no-verdict`／`stale:<artifact>`）；exit 2 用法錯誤。
+  - `node reconcile-check.cjs verify <change-dir>` → exit 0 狀態檔有 pass verdict 且五個雜湊與現況相同；exit 3 並在 stdout 印一行原因（`no-verdict`／`stale:<artifact>`；用 node 自己不會產生的退出碼，hook 才能靠退出碼區分「change 未就緒」與「checker 崩潰」的 exit 1）；exit 2 用法錯誤。
 - 路徑規則：`<change-dir>` 的上層名稱必須是 `changes`、再上層必須是 `openspec`，否則 exit 2；專案根 = `path.resolve(changeDir, '../../..')`；`<change>` = `path.basename(changeDir)`。
 - `specs` 雜湊 = 依相對路徑排序後，對每個 `specs/**/spec.md` 串接 `relpath + "\0" + content + "\0"` 取 sha256 hex。其餘四個是檔案內容的 sha256 hex；檔案不存在時記 `"missing"`。
 
@@ -76,7 +76,7 @@
   - R6：一個 `- [ ] x` → R6 warn、exit 0；`- [ ] x skip: 不做` → R6 pass。
   - R7：design 含「原本是 A」→ R7 warn、exit 0。
   - R8：`[CONSTITUTION] Y` 條目 → R8 manual 且 detail 含該條目文字。
-  - `verify`：pass 之後 → exit 0；之後改 `design.md` → exit 1 且 stdout 為 `stale:design`；沒有狀態檔 → exit 1 且 `no-verdict`。
+  - `verify`：pass 之後 → exit 0；之後改 `design.md` → exit 3 且 stdout 為 `stale:design`；沒有狀態檔 → exit 3 且 `no-verdict`。
   - 路徑：`check /tmp/x`（上層不是 `changes`）→ exit 2。
   - 既有 validator：`node validate-openspec-workflow.cjs tests/fixtures/openspec-workflow/valid-change` 仍 exit 0；`require()` 它不會印出 usage 也不 exit。
 - [ ] **Step 2: Run test to verify it fails** — Run: `bash plugins/openspec-superpowers-workflow/tests/reconcile-check.test.sh`；Expected: FAIL（`reconcile-check.cjs` 不存在）。

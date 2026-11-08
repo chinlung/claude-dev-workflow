@@ -17,22 +17,19 @@ allow() { exit 0; }
 trap allow ERR
 
 input=$(cat) || allow
+# Cheapest exit first: a project without openspec/ has nothing to gate (cwd is only needed when
+# CLAUDE_PROJECT_DIR is unset, so this decides the same way as the proj check below).
+if [ -n "${CLAUDE_PROJECT_DIR:-}" ] && [ ! -d "${CLAUDE_PROJECT_DIR%/}/openspec" ]; then allow; fi
 command -v jq >/dev/null 2>&1 || allow
 command -v perl >/dev/null 2>&1 || allow
 command -v node >/dev/null 2>&1 || allow
 
-here=${BASH_SOURCE[0]%/*}
-[ "$here" = "${BASH_SOURCE[0]}" ] && here=.
-check_dir=$(cd "$here/../skills/openspec-superpowers-workflow/validators" 2>/dev/null && pwd) || allow
-check="$check_dir/reconcile-check.cjs"
-[ -f "$check" ] || allow
-
+# The command stays its own jq call: it may hold tabs and newlines, which @tsv would escape.
 cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null) || allow
 [ -n "$cmd" ] || allow
 case $cmd in *OPENSPEC_ARCHIVE_OK=1*) allow ;; esac
-session_id=$(printf '%s' "$input" | jq -r '.session_id // "unknown"' 2>/dev/null) || allow
+IFS=$'\t' read -r session_id cwd < <(printf '%s' "$input" | jq -r '[.session_id // "unknown", .cwd // ""] | @tsv' 2>/dev/null) || allow
 session_id="${session_id//[^a-zA-Z0-9._-]/_}"
-cwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null) || allow
 proj="${CLAUDE_PROJECT_DIR:-$cwd}"
 [ -n "$proj" ] || allow
 proj="${proj%/}"
@@ -48,14 +45,14 @@ my @lines = split /\n/, $c, -1; my @keep; my $delim;
 for my $l (@lines) {
   if (defined $delim) { my $t = $l; $t =~ s/^\t+//; undef $delim if $t eq $delim; next; }
   push @keep, $l;
-  $delim = $2 if $l =~ /<<(-?)\s*['"]?([A-Za-z_]\w*)['"]?/;
+  $delim = $1 if $l =~ /<<-?\s*['"]?([A-Za-z_]\w*)['"]?/;
 }
 $c = join "\n", @keep;
 my @segs = ([]); my $tok; my $i = 0; my $n = length $c;
 sub endtok { push @{$segs[-1]}, $tok if defined $tok; undef $tok; }
 while ($i < $n) {
   my $ch = substr($c, $i, 1);
-  if ($ch eq "'") { my $j = index($c, "'", $i + 1); $j = $n if $j < 0; $tok .= substr($c, $i + 1, $j - $i - 1); $tok //= ''; $i = $j + 1; next; }
+  if ($ch eq "'") { my $j = index($c, "'", $i + 1); $j = $n if $j < 0; $tok .= substr($c, $i + 1, $j - $i - 1); $i = $j + 1; next; }
   if ($ch eq '"') {
     my $j = $i + 1; $tok //= '';
     while ($j < $n && substr($c, $j, 1) ne '"') { if (substr($c, $j, 1) eq "\\") { $j++; } $tok .= substr($c, $j, 1); $j++; }
@@ -89,6 +86,11 @@ PERL
 names=$(AG_CMD=$cmd perl -e "$parser" 2>/dev/null) || allow
 [ -n "$names" ] || allow
 
+here=$(dirname "${BASH_SOURCE[0]}")
+check_dir=$(cd "$here/../skills/openspec-superpowers-workflow/validators" 2>/dev/null && pwd) || allow
+check="$check_dir/reconcile-check.cjs"
+[ -f "$check" ] || allow
+
 failures=""; verified=0
 while IFS= read -r name; do
   [ -n "$name" ] || continue
@@ -96,13 +98,12 @@ while IFS= read -r name; do
   [ -d "$dir" ] || continue
   # `|| rc=$?`, not a bare assignment: a non-zero exit would fire the ERR trap, which allows.
   rc=0; reason=$(node "$check" verify "$dir" 2>/dev/null) || rc=$?
-  # Node also exits 1 on an uncaught exception, so exit 1 alone is not a verdict: deny only when
-  # stdout is one of verify's documented answers. Anything else (a crash) allows — fail-open.
-  if [ "$rc" = 0 ]; then
-    verified=$((verified + 1))
-  elif [ "$rc" = 1 ] && [[ $reason =~ ^(no-verdict|stale:[A-Za-z]+)$ ]]; then
-    failures+="  - ${name}: ${reason}"$'\n'
-  fi
+  # verify answers with exit 3 (no verdict, or stale); node's own crash exit is 1, so anything but
+  # 0 and 3 is the checker failing, not the change — fail-open.
+  case $rc in
+    0) verified=1 ;;
+    3) failures+="  - ${name}: ${reason}"$'\n' ;;
+  esac
 done <<< "$names"
 
 if [ -n "$failures" ]; then
@@ -114,5 +115,5 @@ ${failures}no-verdict＝還沒跑過 check，或上一次 check 沒有通過；s
   exit 0
 fi
 
-if [ "$verified" -gt 0 ]; then touch "${TMPDIR:-/tmp}/claude-openspec-archived-${session_id}" 2>/dev/null || true; fi
+if [ "$verified" = 1 ]; then touch "${TMPDIR:-/tmp}/claude-openspec-archived-${session_id}" 2>/dev/null || true; fi
 allow

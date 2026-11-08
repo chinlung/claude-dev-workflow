@@ -119,10 +119,10 @@ has "R8: detail names the entry" "$WORK/out.json" "rate limited"
 P=$WORK/p14; D=$(make_change "$P" foo); check "$D"
 node "$CHECK" verify "$D" > "$WORK/v.out" 2>&1; eq "verify: fresh verdict exit 0" 0 "$?"
 printf 'More.\n' >> "$D/design.md"
-node "$CHECK" verify "$D" > "$WORK/v.out" 2>&1; eq "verify: edited design exit 1" 1 "$?"
+node "$CHECK" verify "$D" > "$WORK/v.out" 2>&1; eq "verify: edited design exit 3" 3 "$?"
 eq "verify: edited design reason" "stale:design" "$(head -1 "$WORK/v.out")"
 P=$WORK/p15; D=$(make_change "$P" foo)
-node "$CHECK" verify "$D" > "$WORK/v.out" 2>&1; eq "verify: no state exit 1" 1 "$?"
+node "$CHECK" verify "$D" > "$WORK/v.out" 2>&1; eq "verify: no state exit 3" 3 "$?"
 eq "verify: no state reason" "no-verdict" "$(head -1 "$WORK/v.out")"
 
 # 路徑：上層不是 changes → exit 2
@@ -130,8 +130,8 @@ mkdir -p "$WORK/x"; node "$CHECK" check "$WORK/x" > /dev/null 2>&1; eq "path: no
 
 # 既有 validator：CLI 不變；require 不印 usage、不結束行程
 node "$VALIDATOR" "$FIXTURES/valid-change" > /dev/null 2>&1; eq "validator CLI still exit 0" 0 "$?"
-out=$(node -e 'const m = require(process.argv[1]); process.stdout.write(typeof m.validate)' "$VALIDATOR" 2>&1)
-eq "validator require exports validate silently" "function" "$out"
+out=$(node -e 'const m = require(process.argv[1]); process.stdout.write(typeof m.findSpecFiles)' "$VALIDATOR" 2>&1)
+eq "validator require exports findSpecFiles without running main" "function" "$out"
 
 # ---- summary ----
 MIN=34

@@ -50,7 +50,7 @@
 ```
 node reconcile-check.cjs snapshot <change-dir>      # Phase 6 開始時跑一次
 node reconcile-check.cjs check    <change-dir> [--json]
-exit 0 = 機械檢查全過；1 = 有 fail；2 = 用法錯誤。
+exit 0 = 機械檢查全過；1 = 有 fail；2 = 用法錯誤；`verify` 的「無 verdict／已過期」回 3（node 崩潰固定是 1，hook 只擋 3，其餘放行）。
 ```
 
 `snapshot` 把 `tasks.md` 的雜湊記到 `<專案>/.claude/openspec-reconcile.<change>.local.json`。`check` 做下面的檢查，每項輸出 `pass`／`fail`／`warn`／`manual`：

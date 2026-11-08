@@ -22,11 +22,7 @@ PASS=0; FAIL=0
 input_json() { jq -cn --arg s "$1" --arg c "$2" --arg cmd "$3" '{session_id:$s,cwd:$c,hook_event_name:"PreToolUse",tool_name:"Bash",tool_input:{command:$cmd}}'; }
 # run_gate <input_json> <tmpdir> <project_dir> [PATH 覆寫]
 run_gate() {
-  if [ -n "${4:-}" ]; then
-    printf '%s' "$1" | env PATH="$4" TMPDIR="$2" CLAUDE_PROJECT_DIR="$3" "$BASH_BIN" "$GATE" 2>/dev/null || true
-  else
-    printf '%s' "$1" | TMPDIR="$2" CLAUDE_PROJECT_DIR="$3" "$BASH_BIN" "$GATE" 2>/dev/null || true
-  fi
+  printf '%s' "$1" | env ${4:+PATH="$4"} TMPDIR="$2" CLAUDE_PROJECT_DIR="$3" "$BASH_BIN" "$GATE" 2>/dev/null || true
 }
 # contains <名稱> <實際輸出> <固定字串>
 contains() {

@@ -158,14 +158,15 @@ check "15b API=是 → deny" "$out" "$DENY"
 
 # 16) 歸檔後:聲明必須比歸檔標記新
 p=$WORK/p16; make_proj "$p"; t=$WORK/t16; mkdir -p "$t"
-touch "$t/claude-openspec-archived-s16"
+# mtime 用 touch -t 回填,不用 sleep 等時鐘(POSIX,BSD／GNU 同義)
+touch -t 202001010000 "$t/claude-openspec-archived-s16"
 out=$(run_gate "$(input_json s16 "$p" "$p/src/a.php")" "$t" "$p")
 check "16 歸檔後沒有聲明 → deny" "$out" "$DENY"
 check "16 歸檔後版本的訊息" "$out" "已歸檔"
-sleep 1; write_decl "$p" s16 "$ALL_NO"
+write_decl "$p" s16 "$ALL_NO"
 out=$(run_gate "$(input_json s16 "$p" "$p/src/a.php")" "$t" "$p")
 check_empty "16 歸檔後寫的聲明 → allow" "$out"
-write_decl "$p" s16b "$ALL_NO"; sleep 1; touch "$t/claude-openspec-archived-s16b"
+write_decl "$p" s16b "$ALL_NO"; touch -t 202001010000 "$(decl "$p" s16b)"; touch "$t/claude-openspec-archived-s16b"
 out=$(run_gate "$(input_json s16b "$p" "$p/src/a.php")" "$t" "$p")
 check "16b 歸檔前寫的聲明 → deny" "$out" "$DENY"
 check "16b 歸檔前的聲明 → 歸檔後版本的訊息" "$out" "已歸檔"
