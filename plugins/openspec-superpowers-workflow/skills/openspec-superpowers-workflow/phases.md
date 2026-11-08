@@ -72,7 +72,8 @@ The OpenSpec validator enforces that **every `### Requirement:` block MUST conta
           [CODE] is therefore always N, even when the fix is already committed.
           [CONSTITUTION] Y = a NEW cross-feature rule to add to the project constitution; do not log "existing rules were followed".
         Tag by the artifact the fix lands in (spec → REQUIREMENT, design.md → DESIGN, code only → CODE), not by the nature of the problem.
-        Never edit proposal.md / specs/ / design.md / tasks.md during review — record here, reconcile in Phase 6. -->
+        Never edit proposal.md / specs/ / design.md / tasks.md during review — record here, reconcile in Phase 6.
+        Add `final` to the last Round heading only after the user says review has converged — the archive gate checks it. -->
    ```
 4. **Fast local pre-check (optional, lenient)**: run this plugin's bundled validator on the change folder to catch a missing artifact (any of `proposal.md` / `design.md` / `tasks.md` / `review-notes.md`, or no `specs/**/spec.md`) or an empty SHALL/MUST first paragraph *before* the authoritative CLI — it is fast and needs no OpenSpec install:
    ```bash
@@ -211,6 +212,8 @@ context.
 
 **Repeat Phase 5 until all reviews pass.**
 
+**Marking review as converged.** When the user says review has converged (no further rounds), add `final` to the last `## Round` heading, e.g. `## Round 3 - Security Review (2026-11-09, final)`. Only the user can make this call: never add `final` on your own judgment. The archive gate (Phase 6) refuses to archive a change whose last round is not marked `final`.
+
 ---
 
 ## Phase 6: Reconcile & Archive (OpenSpec leads)
@@ -219,7 +222,13 @@ context.
 
 ### Step 6a: Reconcile specs
 
-Read `openspec/changes/<feature-name>/review-notes.md` and process only items marked **Y**:
+**First**, record the current `tasks.md`, so the archive gate can prove it was not touched during reconciliation (C3):
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/skills/openspec-superpowers-workflow/validators/reconcile-check.cjs snapshot openspec/changes/<feature-name>
+```
+
+Then read `openspec/changes/<feature-name>/review-notes.md` and process only items marked **Y**:
 
 1. **[REQUIREMENT] Y items** → Update `proposal.md` and `specs/`
 2. **[DESIGN] Y items** → Update `design.md`
@@ -238,12 +247,16 @@ Present the rewritten spec files for user review before archiving.
 
 ### Step 6b5: Reconciliation Criteria Gate（歸檔前核查）
 
-在使用者確認 reconciled specs 之後、執行歸檔命令之前，**必須**依照 `RECONCILIATION-CRITERIA.md` 執行以下核查：
+在使用者確認 reconciled specs 之後、執行歸檔命令之前，**必須**執行：
 
-1. 閱讀 `RECONCILIATION-CRITERIA.md`（位於 `skills/openspec-superpowers-workflow/RECONCILIATION-CRITERIA.md`）
-2. 閱讀 `OUTPUT-CONTRACTS.md`（位於 `skills/openspec-superpowers-workflow/OUTPUT-CONTRACTS.md`）中的 Phase 6 覆蓋定義，確認四個面向均已核查
-3. 逐一執行 C1–C5 核查項目
-4. 輸出核查結果表格（含裁決）和 Phase 6 覆蓋核查摘要
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/skills/openspec-superpowers-workflow/validators/reconcile-check.cjs check openspec/changes/<feature-name>
+```
+
+1. 腳本機械檢查 R1–R8（`RECONCILIATION-CRITERIA.md` 列出每個 C 項對應的 R 編號）。`fail` 一律修正後重跑；`warn` 逐項說明怎麼處理。
+2. `manual` 項（C1、C2、C5）需要你判斷：照 `RECONCILIATION-CRITERIA.md` 核查，在回覆中輸出核查結果表格與裁決。
+3. 讀 `OUTPUT-CONTRACTS.md` 的 Phase 6 覆蓋定義，確認四個面向均已核查。
+4. 腳本 exit 0 時會記下一份綁定各檔雜湊的 pass verdict；之後再改任何一個被核查的檔，verdict 就失效，必須重跑 `check`。
 
 **路由規則（依裁決結果）：**
 
@@ -254,7 +267,7 @@ Present the rewritten spec files for user review before archiving.
 | `rejected` | 不得歸檔；向使用者報告具體問題並等待處置指示 |
 | `needs_user_decision` | 停止歸檔流程，向使用者提出具體問題並等待裁決 |
 
-**此 gate 不可跳過。** 未取得 `verified` 裁決，不得執行 `/opsx:archive`。
+**此 gate 不可跳過。** 未取得 `verified` 裁決，不得執行 `/opsx:archive`。歸檔閘門 hook 會在歸檔命令前執行 `reconcile-check.cjs verify`，沒有新鮮的 pass verdict 就擋下。
 
 ### Step 6c: Archive
 
@@ -263,6 +276,7 @@ Run `/opsx:archive <feature-name>` (or `openspec archive <feature-name> --yes` i
 - Move the change folder to `openspec/changes/archive/<YYYY-MM-DD>-<feature-name>/` — the archive command auto-prefixes with the archive date, so the folder name is NOT just the feature name
 - `review-notes.md` is preserved inside the archive for historical reference
 - Note: archive will warn if tasks.md has incomplete items (`Warning: N incomplete task(s) found`); this is expected when Phase 4 was partially skipped or done out-of-band — use `--yes` to proceed
+- The archive gate hook runs before both `openspec archive` and the OpenSpec 1.16 `/opsx:archive` template's `mkdir` + `mv` into `changes/archive/`, and denies either one without a fresh pass verdict from Step 6b5. Prefix the command with `OPENSPEC_ARCHIVE_OK=1` to bypass it, and only when the user explicitly asks
 
 ### Step 6d: Constitution updates (if any)
 

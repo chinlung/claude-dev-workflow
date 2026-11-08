@@ -79,7 +79,7 @@ check "2 deny 以 exit 0 交付 JSON 決策" "$rc" "0"
 check "2 deny 訊息含聲明檔路徑" "$out" "$(decl "$p" s2)"
 check "2 deny 訊息含格式行" "$out" "契約面：API=否"
 
-# 2b) 同一批並行編輯:沒有聲明時第二個編輯照樣 deny(取代舊的批次窗)
+# 2b) 同一批並行編輯:沒有聲明時第二個編輯照樣 deny
 out=$(run_gate "$(input_json s2 "$p" "$p/src/b.php")" "$t" "$p")
 check "2b 同批第二個編輯 → 續 deny" "$out" "$DENY"
 

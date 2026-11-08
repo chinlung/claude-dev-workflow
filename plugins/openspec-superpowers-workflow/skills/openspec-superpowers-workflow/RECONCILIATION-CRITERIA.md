@@ -1,6 +1,18 @@
 # RECONCILIATION-CRITERIA.md
 
-> **用途**：Phase 6 歸檔前的獨立核查門檻。在執行 `/opsx:archive` 之前，必須依照此文件逐一核查，並取得 `verified` 裁決，才能進行歸檔。
+> **用途**：Phase 6 歸檔前的獨立核查門檻。在執行 `/opsx:archive` 之前，先跑 `reconcile-check.cjs check`（見 `phases.md` 6b5），再依此文件處理需要判斷的項目，取得 `verified` 裁決後才能歸檔。歸檔閘門 hook 會驗證 `check` 留下的 pass verdict。
+
+## 與 `reconcile-check.cjs` 的對應
+
+| 核查 | 腳本機械檢查 | 仍需你判斷 |
+|---|---|---|
+| C1 | R3：最後一輪每條都有合法 tag 與 Y/N、沒有 `[CODE] Y`（較早輪次只警告） | 每條 Y 是否真的落到對應 artifact（腳本以 R9 manual 提示） |
+| C2 | R8：列出所有 `[CONSTITUTION] Y` 條目 | 這些規則是否已進 `openspec/config.yaml`、且不在 feature spec |
+| C3 | R5：`tasks.md` 與 Phase 6 開始時的 snapshot 比對（沒有 snapshot 時改比 git HEAD） | — |
+| C4 | R2：每個 `### Requirement:` 第一段含 SHALL／MUST | — |
+| C5 | R7：提示疑似補丁語言（只警告） | 整份是否連貫、沒有前後矛盾（腳本以 R9 manual 提示） |
+
+腳本另外檢查：R1 必要檔案存在、R4 最後一輪標了 `final`（只有使用者明說 review 已收斂後才能加）、R6 未勾選的 task 是否附 `skip:` 理由（本版只警告）。
 
 ---
 
