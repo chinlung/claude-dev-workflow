@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.14.0] - 2026-11-09
+
+### Changed
+
+- **openspec-superpowers-workflow 1.5.0 → 2.0.0** (BREAKING) — rules that lived only in prose now have a machine check, and the playbook follows what two months of real sessions showed. **Archiving:** a new PreToolUse hook, `archive-gate`, denies `openspec archive` and the `/opsx:archive` template's `mv` into `changes/archive/` unless `reconcile-check.cjs check` left a fresh pass verdict (hashes of proposal, design, tasks, review-notes and specs); `OPENSPEC_ARCHIVE_OK=1` bypasses it. Review is closed by the user adding `final` to the last round, and Phase 6 does not start without it. **skip-gate** no longer denies once and trusts prose: with no active change a code edit needs a declaration file with the eight contract surfaces, and any surface marked 是 sends the work to Phase 1. **`tasks.md` is the execution record:** one checkbox per `### Task N`, ticked in Phase 4, and an unchecked task needs `skip: <reason>`; R6 fails and `snapshot` refuses otherwise. **Phase 2** asks at most two questions, writes the rest as assumptions and checks the draft against the new `DESIGN-RED-FLAGS.md`. **OpenSpec 1.16:** the docs say `/opsx:apply` has a CLI, list every `/opsx:*` command with its phase, and make `executing-plans` the default for Phase 4; `tests/cli-claims.test.sh` checks them against the real CLI, and CI installs the pinned version (`tests/openspec-version`). New `scripts/openspec-archive-stats.cjs` counts tasks left unchecked at archive. See that plugin's CHANGELOG [2.0.0].
+- **CI runs on Node 22** (was 20): OpenSpec 1.16 requires Node 22.12 or newer. The existing suites are zero-dependency CJS and bash and pass unchanged.
+- `docs/` gains the 2026-11-09 analysis (pstack porting candidates, lifecycle and placement review, optimization roadmap) and the design and plan documents of the two work packages above.
+
 ## [1.13.3] - 2026-11-04
 
 ### Changed
