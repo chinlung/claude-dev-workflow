@@ -46,59 +46,88 @@ if [ "$tool" = Bash ]; then
   # pattern never matches the following <) and its last two are skipped with it.
   IFS= read -r -d '' parser <<'PERL' || true
 use strict; use warnings;
-my $c = $ENV{PMG_CMD} // '';
-my @lines = split /\n/, $c, -1; my @keep; my $delim; my @body;
-for my $l (@lines) {
-  if (defined $delim) { push @body, $l; my $t = $l; $t =~ s/^\t+//; if ($t eq $delim) { undef $delim; @body = (); } next; }
-  push @keep, $l;
-  my $s = $l; $s =~ s/<<<//g;
-  $delim = $1 if $s =~ /<<-?\s*['"]?([A-Za-z_]\w*)['"]?/;
-}
-push @keep, @body;   # a heredoc that never closes is not one: its lines are commands (fail closed)
-$c = join "\n", @keep;
-my @segs = ([]); my $tok; my $i = 0; my $n = length $c;
-sub endtok { push @{$segs[-1]}, $tok if defined $tok; undef $tok; }
-while ($i < $n) {
-  my $ch = substr($c, $i, 1);
-  if ($ch eq "'") { my $j = index($c, "'", $i + 1); $j = $n if $j < 0; $tok .= substr($c, $i + 1, $j - $i - 1); $i = $j + 1; next; }
-  if ($ch eq '"') {
-    my $j = $i + 1; $tok //= '';
-    while ($j < $n && substr($c, $j, 1) ne '"') { if (substr($c, $j, 1) eq "\\") { $j++; } $tok .= substr($c, $j, 1); $j++; }
-    $i = $j + 1; next;
-  }
-  if ($ch eq "\\") { $tok .= substr($c, $i + 1, 1); $i += 2; next; }
-  if ($ch =~ /[;&|()`\n]/) { endtok(); push @segs, []; $i++; next; }
-  if ($ch =~ /\s/) { endtok(); $i++; next; }
-  $tok .= $ch; $i++;
-}
-endtok();
-for my $s (@segs) {
-  # gh anywhere in the segment, by basename: wrappers (command, env, time, sudo, xargs…) and a full
-  # path to gh still reach it; a stray `echo gh pr merge` is read as a merge too (the safe side)
-  my @t = @$s; shift @t while @t && !(($t[0] =~ m{([^/]+)$})[0] eq 'gh');
-  next unless @t >= 2;
-  my ($repo, $num, $sha) = ('-', '-', '-');
-  if ($t[1] eq 'pr' && @t > 2 && $t[2] eq 'merge') {
-    my @a = @t[3 .. $#t];
-    for (my $k = 0; $k < @a; $k++) {
-      my $x = $a[$k];
-      if ($x eq '--repo' || $x eq '-R') { $repo = $a[++$k] // '-'; next; }
-      if ($x =~ /^--repo=(.+)$/) { $repo = $1; next; }
-      if ($x eq '--match-head-commit') { $sha = $a[++$k] // '-'; next; }
-      if ($x =~ /^--match-head-commit=(.+)$/) { $sha = $1; next; }
-      if ($x =~ m{^https://github\.com/([^/]+/[^/]+)/pull/(\d+)}) { $repo = $1; $num = $2; next; }
-      if ($x =~ /^\d+$/ && $num eq '-') { $num = $x; next; }
+# Text the shell still runs although it sits inside a string: $( … ) and backticks within double
+# quotes or an unquoted heredoc body. Each is scanned again as a command.
+sub subs_of {
+  my ($s) = @_; my @out; my $i = 0; my $n = length $s;
+  while ($i < $n) {
+    my $ch = substr($s, $i, 1);
+    if ($ch eq "\\") { $i += 2; next; }
+    if ($ch eq '`') { my $j = index($s, '`', $i + 1); $j = $n if $j < 0; push @out, substr($s, $i + 1, $j - $i - 1); $i = $j + 1; next; }
+    if (substr($s, $i, 2) eq '$(') {
+      my ($d, $j) = (1, $i + 2);
+      while ($j < $n && $d) { my $c = substr($s, $j, 1); $d++ if $c eq '('; $d-- if $c eq ')'; $j++; }
+      push @out, substr($s, $i + 2, $d ? $n - $i - 2 : $j - $i - 3); $i = $j; next;
     }
-    print "$repo $num $sha\n";
-  } elsif ($t[1] eq 'api') {
-    my $found = 0;
-    for my $x (@t[2 .. $#t]) {
-      if ($x =~ m{^/?repos/([^/]+/[^/]+)/pulls/(\d+)/merge/?(?:\?.*)?$}) { print "$1 $2 -\n"; $found = 1; last; }
+    $i++;
+  }
+  return @out;
+}
+my %takes = map { $_ => 1 } qw(--subject -t --body -b --body-file -F --author-email -A);   # gh pr merge options with a value
+my @queue = ($ENV{PMG_CMD} // ''); my $rounds = 0;
+while (@queue && $rounds++ < 50) {
+  my $c = shift @queue;
+  my @lines = split /\n/, $c, -1; my @keep; my $delim; my $quoted; my @body;
+  for my $l (@lines) {
+    if (defined $delim) {
+      push @body, $l; my $t = $l; $t =~ s/^\t+//;
+      if ($t eq $delim) { push @queue, map { subs_of($_) } @body unless $quoted; undef $delim; @body = (); }
+      next;
     }
-    # a merge this parser cannot pin to a PR (a GraphQL mergePullRequest, an odd endpoint): unreadable
-    print "- - -\n" if !$found && grep { /mergePullRequest|AutoMerge|\/merge/i } @t[2 .. $#t];
+    push @keep, $l;
+    my $s = $l; $s =~ s/<<<//g;
+    if ($s =~ /<<-?\s*(['"\\]?)([A-Za-z_]\w*)/) { $delim = $2; $quoted = $1 ne ''; }
+  }
+  push @keep, @body;   # a heredoc that never closes is not one: its lines are commands (fail closed)
+  $c = join "\n", @keep;
+  my @segs = ([]); my $tok; my $i = 0; my $n = length $c;
+  my $endtok = sub { push @{$segs[-1]}, $tok if defined $tok; undef $tok; };
+  while ($i < $n) {
+    my $ch = substr($c, $i, 1);
+    if ($ch eq "'") { my $j = index($c, "'", $i + 1); $j = $n if $j < 0; $tok .= substr($c, $i + 1, $j - $i - 1); $i = $j + 1; next; }
+    if ($ch eq '"') {
+      my $j = $i + 1; my $dq = ''; $tok //= '';
+      while ($j < $n && substr($c, $j, 1) ne '"') { if (substr($c, $j, 1) eq "\\") { $dq .= "\\"; $j++; } $dq .= substr($c, $j, 1); $tok .= substr($c, $j, 1); $j++; }
+      push @queue, subs_of($dq);
+      $i = $j + 1; next;
+    }
+    if ($ch eq "\\") { $tok .= substr($c, $i + 1, 1); $i += 2; next; }
+    if ($ch =~ /[;&|()`\n]/) { $endtok->(); push @segs, []; $i++; next; }
+    if ($ch =~ /\s/) { $endtok->(); $i++; next; }
+    $tok .= $ch; $i++;
+  }
+  $endtok->();
+  for my $s (@segs) {
+    # gh anywhere in the segment, by basename: wrappers (command, env, time, sudo, xargs…) and a full
+    # path to gh still reach it; a stray `echo gh pr merge` is read as a merge too (the safe side)
+    my @t = @$s; shift @t while @t && !(($t[0] =~ m{([^/]+)$})[0] eq 'gh');
+    next unless @t >= 2;
+    my ($repo, $num, $sha, $two) = ('-', '-', '-', 0);
+    if ($t[1] eq 'pr' && @t > 2 && $t[2] eq 'merge') {
+      my @a = @t[3 .. $#t];
+      for (my $k = 0; $k < @a; $k++) {
+        my $x = $a[$k];
+        if ($takes{$x}) { $k++; next; }
+        if ($x eq '--repo' || $x eq '-R') { $repo = $a[++$k] // '-'; next; }
+        if ($x =~ /^--repo=(.+)$/) { $repo = $1; next; }
+        if ($x eq '--match-head-commit') { $sha = $a[++$k] // '-'; next; }
+        if ($x =~ /^--match-head-commit=(.+)$/) { $sha = $1; next; }
+        if ($x =~ m{^https://github\.com/([^/]+/[^/]+)/pull/(\d+)}) { $two = 1 if $num ne '-'; $repo = $1; $num = $2; next; }
+        if ($x =~ /^\d+$/) { $two = 1 if $num ne '-'; $num = $x; next; }
+      }
+      $num = '-' if $two;   # two PR numbers: which one gh merges is not this parser's guess
+      print "$repo $num $sha\n";
+    } elsif ($t[1] eq 'api') {
+      my $found = 0;
+      for my $x (@t[2 .. $#t]) {
+        if ($x =~ m{^/?repos/([^/]+/[^/]+)/pulls/(\d+)/merge/?(?:\?.*)?$}) { print "$1 $2 -\n"; $found = 1; last; }
+      }
+      # a merge this parser cannot pin to a PR (a GraphQL mergePullRequest, an odd endpoint): unreadable
+      print "- - -\n" if !$found && grep { /mergePullRequest|AutoMerge|\/merge/i } @t[2 .. $#t];
+    }
   }
 }
+print "- - -\n" if @queue;   # more nested substitutions than this scan follows: unreadable, deny
 PERL
   targets=$(PMG_CMD=$cmd perl -e "$parser" 2>/dev/null) || deny "無法解析命令。"
   [ -n "$targets" ] || allow

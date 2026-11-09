@@ -346,8 +346,18 @@ t0=$(date +%s)
 PATH="$tmp/shim:$PATH" PR_CLOSEOUT_DEADLINE_MS=1500 run_cli 7 "slow GitHub hits the deadline" ready example/repo 1
 t1=$(date +%s); if [ $((t1 - t0)) -le 4 ]; then ok; else failed "[deadline] took $((t1 - t0))s, expected under 4s"; fi
 
+# a deletion is a change too: review-branch records a reviewed deletion as blob "deleted"
+mkrepo4; git -C "$R4" switch -q main; echo z > "$R4/z.sh"; git -C "$R4" add z.sh; $G -C "$R4" commit -q -m z
+git -C "$R4" update-ref refs/remotes/origin/main HEAD; git -C "$R4" switch -q feat/x; git -C "$R4" -c user.name=t -c user.email=t@t rebase -q main
+record4 feat/x "a.sh=$(blob4 a.sh)" "b.md=$(blob4 b.md)"
+git -C "$R4" rm -q z.sh; $G -C "$R4" commit -q -m "drop z"
+cov_case 6 "a deletion the review never saw"
+jqeq "unreviewed deletion: named" '.coverage.unreviewed' '["z.sh"]'
+record4 feat/x "a.sh=$(blob4 a.sh)" "b.md=$(blob4 b.md)" "z.sh=deleted"
+cov_case 0 "a deletion the review saw"
+
 # ── summary and mutants ──────────────────────────────────────────────────────────────────────────
-MIN_PASS=152
+MIN_PASS=155
 if [ "$pass" -lt "$MIN_PASS" ] && [ "${STOP_ON_FAIL:-0}" != 1 ]; then failed "only $pass checks passed, expected at least $MIN_PASS"; fi
 echo "pr-closeout: $pass passed, $fail failed"
 
@@ -400,7 +410,8 @@ if [ "${NO_MUTANTS:-0}" != 1 ]; then
   mutant settled       "[skipped as unchanged since an earlier round]" "s/\(f\.status === 'reviewed' \|\| \(f\.status === 'skipped' && Number\.isInteger\(f\.unchangedSince\)\)\)/f.status === 'reviewed'/"
   mutant not-doc       "[a skill file is not a document]" "s/DOC_PATH\.test\(file\) && !NOT_DOC_PATH\.test\(file\)/DOC_PATH.test(file)/"
   mutant deadline      "[deadline]"                        "s/, timeout: left, killSignal: 'SIGKILL'//"
-  MUT_WANT_N=35
+  mutant deletions     "[a deletion the review never saw]" "s/const changed = git\(repoDir, \['diff', '--name-only', '-z', /const changed = git(repoDir, ['diff', '--name-only', '-z', '--diff-filter=d', /"
+  MUT_WANT_N=36
   if [ "$mut_n" != "$MUT_WANT_N" ]; then echo "FAIL: $mut_n of $MUT_WANT_N mutants ran"; mut_bad=1; fi
   [ "$mut_bad" = 0 ] || fail=$((fail + 1))
 fi

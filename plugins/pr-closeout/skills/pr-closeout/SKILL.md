@@ -66,7 +66,12 @@ exit 0 才算合併成功：`merged_at` 有值、合併的 head 是你的那一�
 
 ### 4. 刪分支
 
-確認 `landed` exit 0 之後，先刪本地分支（squash 後要用 `-D`，`-d` 刪得掉也不代表已合併），再刪遠端分支（`git push origin --delete <branch>`）。刪遠端分支是對外動作，使用者沒有明說時要先確認。刪完再跑一次：
+確認 `landed` exit 0 之後才刪分支，兩種刪除都不可逆：
+
+1. **本地分支。** 先核對本地 tip 就是 `landed` 驗過的 head：`git rev-parse <branch>` 必須等於 `--expect-head` 的 SHA。不相等表示本地還有沒推送的 commit，`landed` 只核對 GitHub 那一側看不到它，這時停下來告訴使用者，不要刪。相等才用 `git branch -D <branch>`；squash 後 `-d` 會拒絕，而 `-d` 刪得掉也不代表已合併。
+2. **遠端分支。** `git push origin --delete <branch>`。這是對外動作，使用者沒有明說時要先確認。
+
+刪完再跑一次：
 
 ```bash
 node ${CLAUDE_PLUGIN_ROOT}/scripts/pr-closeout.mjs landed <owner/repo> <pr> --expect-head <SHA> --repo-dir <repo> --branch <branch>

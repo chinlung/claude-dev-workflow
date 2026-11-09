@@ -99,6 +99,28 @@ called "" "api no merge: ready not called"
 FAKE_RC=0 gate allow "a heredoc that never closes" "$(bash_in $'cat <<EOF\ngh pr merge 3 --repo o/r')"
 called "ready o/r 3" "open heredoc: args"
 
+# command substitution runs inside double quotes and unquoted heredocs: what it runs counts
+FAKE_RC=0 gate allow "substitution in double quotes" "$(bash_in 'echo "merged: $(gh pr merge 3 --repo o/r --squash)"')"
+called "ready o/r 3" "dq substitution: args"
+FAKE_RC=0 gate allow "substitution in an assignment" "$(bash_in 'x="$(gh pr merge 4 -R o/r)"')"
+called "ready o/r 4" "assignment substitution: args"
+FAKE_RC=0 gate allow "backticks in double quotes" "$(bash_in 'echo "`gh pr merge 6 --repo o/r`"')"
+called "ready o/r 6" "dq backticks: args"
+FAKE_RC=0 gate allow "substitution in an unquoted heredoc" "$(bash_in $'cat <<EOF\n$(gh pr merge 5 --repo o/r)\nEOF')"
+called "ready o/r 5" "heredoc substitution: args"
+gate allow "substitution text in a quoted heredoc" "$(bash_in $'cat <<\'EOF\'\n$(gh pr merge 5 --repo o/r)\nEOF')"
+called "" "quoted heredoc: ready not called"
+gate allow "merge as plain text in double quotes" "$(bash_in 'echo "run gh pr merge 3 --repo o/r later"')"
+called "" "dq plain text: ready not called"
+
+# options that take a value must not lend it as the PR number, and two numbers are not one PR
+FAKE_RC=0 gate allow "--subject takes a value" "$(bash_in 'gh pr merge --subject 5 7 --repo o/r --squash')"
+called "ready o/r 7" "subject value: args"
+FAKE_RC=0 gate allow "-b takes a value" "$(bash_in 'gh pr merge -b 9 3 -R o/r')"
+called "ready o/r 3" "-b value: args"
+gate deny "two PR numbers" "$(bash_in 'gh pr merge 5 7 --repo o/r')"
+called "" "two numbers: ready not called"
+
 # ── not a merge: allowed without asking ──────────────────────────────────────────────────────────
 gate allow "merge in a commit message" "$(bash_in 'git commit -m "gh pr merge later"')"
 called "" "commit message: ready not called"
@@ -110,7 +132,7 @@ gate allow "merge inside a heredoc body" "$(bash_in $'cat > n.md <<EOF\ngh pr me
 called "" "heredoc: ready not called"
 gate allow "nothing about merge" "$(bash_in 'ls -la')"
 
-MIN_PASS=64
+MIN_PASS=82
 if [ "$pass" -lt "$MIN_PASS" ] && [ "${STOP_ON_FAIL:-0}" != 1 ]; then failed "only $pass checks passed, expected at least $MIN_PASS"; fi
 echo "pr-merge-gate: $pass passed, $fail failed"
 
@@ -137,10 +159,15 @@ if [ "${NO_MUTANTS:-0}" != 1 ]; then
   mutant mcp           "[MCP: args]"                  's/elif \[\[ \$tool == mcp__\*merge_pull_request \]\]/elif false/'
   mutant wrappers      "[command gh: args]"           's/shift \@t while \@t && !\(\(\$t\[0\] =~ m\{\(\[\^\/\]\+\)\$\}\)\[0\] eq '"'"'gh'"'"'\);/shift \@t while \@t && \$t[0] =~ \/^[A-Za-z_]\\w*=\/;/'
   mutant backticks     "[backticks: args]"            's/\[;&\|\(\)`\\n\]/[;&|()\\n]/'
-  mutant open-heredoc  "[open heredoc: args]"         's/^push \@keep, \@body;.*$//'
+  mutant open-heredoc  "[open heredoc: args]"         's/^  push \@keep, \@body;.*$//'
   mutant api-unread    "[graphql mergePullRequest]"   's/print "- - -\\n" if !\$found/print "" if !\$found/'
   mutant prefilter-case "[graphql auto-merge]"        's/\*\[Mm\]\[Ee\]\[Rr\]\[Gg\]\[Ee\]\*/*merge*/'
-  MUT_WANT_N=12
+  mutant dq-subs       "[dq substitution: args]"      's/^      push \@queue, subs_of\(\$dq\);$//'
+  mutant heredoc-subs  "[heredoc substitution: args]" 's/push \@queue, map \{ subs_of\(\$_\) \} \@body unless \$quoted; //'
+  mutant quoted-hd     "[quoted heredoc: ready not called]" 's/ unless \$quoted;/;/'
+  mutant takes-value   "[--subject takes a value]"   's/if \(\$takes\{\$x\}\) \{ \$k\+\+; next; \}//'
+  mutant two-numbers   "[two PR numbers]"             's/\$num = '"'"'-'"'"' if \$two;//'
+  MUT_WANT_N=17
   if [ "$mut_n" != "$MUT_WANT_N" ]; then echo "FAIL: $mut_n of $MUT_WANT_N mutants ran"; mut_bad=1; fi
   [ "$mut_bad" = 0 ] || fail=$((fail + 1))
 fi

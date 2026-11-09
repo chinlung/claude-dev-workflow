@@ -162,13 +162,15 @@ export function coverage(repoDir, { headRefName, headOid, baseRef, accept = [] }
   let mb = git(repoDir, ['merge-base', `origin/${baseRef}`, headOid]);
   if (!mb.ok) mb = git(repoDir, ['merge-base', baseRef, headOid]);
   if (!mb.ok) return unknown(`no merge base with ${baseRef}`);
-  const changed = git(repoDir, ['diff', '--name-only', '-z', '--diff-filter=d', mb.out.trim(), headOid]);
+  const changed = git(repoDir, ['diff', '--name-only', '-z', mb.out.trim(), headOid]);
   if (!changed.ok) return unknown('git diff failed');
   const out = { status: 'covered', unreviewed: [], docsOnly: [], accepted: [] };
   for (const file of changed.out.split('\0').filter(Boolean)) {
     const lt = git(repoDir, ['ls-tree', '-z', headOid, '--', file]);
     const m = /^(\d+) \w+ ([0-9a-f]+)\t/.exec(lt.out);
-    if (m && reviewed.get(file) === blobKey(m[1], m[2])) continue;
+    // a file gone at the head is a deletion: review-branch records a reviewed one as blob "deleted"
+    const key = m ? blobKey(m[1], m[2]) : 'deleted';
+    if (reviewed.get(file) === key) continue;
     const ok = accept.find((a) => a.path === file);
     if (DOC_PATH.test(file) && !NOT_DOC_PATH.test(file)) out.docsOnly.push(file);
     else if (ok) out.accepted.push({ path: file, reason: ok.reason });
