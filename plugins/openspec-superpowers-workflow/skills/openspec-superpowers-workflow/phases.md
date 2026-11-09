@@ -115,9 +115,9 @@ The OpenSpec validator enforces that **every `### Requirement:` block MUST conta
 2. Use `openspec/changes/<feature-name>/proposal.md` and `specs/` as input context
 3. **Question budget** (it covers the whole phase and overrides the brainstorming skill's default pacing):
    - Classify before you ask. Anything you can find out by reading code, running a command or looking at output is a fact, not a question: go and look.
-   - Ask at most **2** questions in total, and only ones whose answer changes *what* gets built (scope, behavior, who is affected), not *how*.
+   - Ask at most **2** questions in total, and only ones whose answer changes *what* gets built (scope, behavior, who is affected), not *how*. Write `design.md` in the same reply anyway, taking your recommended answer to each question as the assumption, and put the questions at the end of the reply. Do not hold the file back until they are answered.
    - Everything else is an assumption: write it into `design.md` under `## Open Questions`, each with the default you chose.
-   - If the user says to skip the questions (any wording, e.g. "skip the questions", "跳過提問", "just write design.md"), ask nothing and write `design.md` now.
+   - If the user says to skip the questions (any wording, e.g. "skip the questions", "跳過提問", "just write design.md"), ask nothing and write `design.md` now. A conflict you notice (for example between the spec and the design) goes into the reply as a statement with the default you chose, not as a question.
    - If a fork can be settled by trying it, build a throwaway prototype in `$TMPDIR` or a scratch directory outside `openspec/`, and write the decision plus the evidence (one line) into `design.md`. A prototype is a disposable experiment, not a second design file, so it does not break the sidecar rule below.
 4. Work through the areas a design must cover — boundary conditions and error handling, impact on the existing system, performance and scalability, security — and end each as a decision or an assumption in `design.md`, not as a question.
 5. Before overwriting `design.md`, read `DESIGN-RED-FLAGS.md` and check the draft against it. Write each flag that applies, and what you did about it, under `## Trade-offs`.
@@ -257,7 +257,7 @@ context.
 
 ### Step 6a: Reconcile specs
 
-**First**, settle `tasks.md`: tick every task that is done and add ` — skip: <reason>` to every one that is not (only the box and the skip suffix, never the task description). Then record it, so the archive gate can prove it was not touched during reconciliation (C3). `snapshot` refuses (exit 1, no state file) while any unchecked task has no skip reason:
+**First**, settle `tasks.md`: tick every task that is done and add ` — skip: <reason>` to every one that is not (only the box and the skip suffix, never the task description). If nothing needs settling, do not open or rewrite the file. Then record it, so the archive gate can prove it was not touched during reconciliation (C3). `snapshot` refuses (exit 1, no state file) while any unchecked task has no skip reason:
 
 ```bash
 node ${CLAUDE_PLUGIN_ROOT}/skills/openspec-superpowers-workflow/validators/reconcile-check.cjs snapshot openspec/changes/<feature-name>
