@@ -4,7 +4,7 @@
 //   snapshot <change-dir>        record the hash of tasks.md (run when Phase 6 starts; refused, exit 1, while R6 fails)
 //   check    <change-dir> [--json]  run R1–R9; with no fail, record a pass verdict pinned to the
 //                                    hashes of proposal, design, tasks, review-notes and specs
-//   verify   <change-dir>        exit 0 when that verdict exists and none of those files changed
+//   verify   <change-dir>        exit 0 when that verdict exists, was recorded under the current RULES, and none of those files changed
 // State: <project>/.claude/openspec-reconcile.<change>.local.json. The archive gate hook calls
 // `verify`; the checks that need judgment (C1, C2, C5) are printed as `manual`, not decided here.
 // Exit codes: 0 pass / fresh, 1 check failed, 2 usage or a path outside openspec/changes/,
@@ -20,6 +20,9 @@ const { REQUIRED_FILES, findSpecFiles, checkRequirementBlocks } = require('./val
 const { parseTaskLines } = require('./task-line.cjs');
 
 const ARTIFACTS = { proposal: 'proposal.md', design: 'design.md', tasks: 'tasks.md', reviewNotes: 'review-notes.md' };
+// Bump when a check gets stricter: a pass verdict is pinned to the rules that produced it, so verify rejects one
+// recorded under older rules even when no artifact changed (2 = R6 fails on an unfinished task without a skip reason).
+const RULES = 2;
 const USAGE = 'Usage: reconcile-check.cjs snapshot|check|verify <openspec/changes/<name>> [--json]';
 
 function resolveChange(arg) {
@@ -209,6 +212,7 @@ function main(argv) {
   if (cmd === 'verify') {
     const verdict = readState(ctx).verdict;
     if (!verdict || verdict.result !== 'pass' || !verdict.hashes) { console.log('no-verdict'); return 3; }
+    if (verdict.rules !== RULES) { console.log('stale:rules'); return 3; }
     const now = hashes(ctx);
     for (const key of Object.keys(now)) {
       if (verdict.hashes[key] !== now[key]) { console.log(`stale:${key}`); return 3; }
@@ -221,7 +225,7 @@ function main(argv) {
   const state = readState(ctx);
   state.change = ctx.name;
   // A failed check withdraws any earlier verdict: the gate must not pass on a result that no longer holds.
-  if (outcome === 'pass') state.verdict = { result: 'pass', at: new Date().toISOString(), hashes: hashes(ctx) };
+  if (outcome === 'pass') state.verdict = { result: 'pass', rules: RULES, at: new Date().toISOString(), hashes: hashes(ctx) };
   else delete state.verdict;
   writeState(ctx, state);
   if (rest.includes('--json')) {

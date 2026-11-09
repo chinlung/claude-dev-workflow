@@ -98,7 +98,7 @@ SKIP 判定曾在真實 session 中被「憑摘要句自由心證」繞過（變
 Phase 6 的歸檔前核查原本只寫在文字裡；兩個月內 9 個實際歸檔的 session，對核查清單的讀取次數是 0，另有 4 個 session 在 review 收斂前就先歸檔。archive-gate 讓歸檔必須先有一份新鮮的核查結果：
 
 - **攔哪些命令**：`openspec archive <name>`，以及 OpenSpec 1.16 `/opsx:archive` 範本的 `mkdir` + `mv <changes>/<name> <changes>/archive/<date-name>`（bulk 時命令裡每個 change 都要通過）。`hooks.json` 以 `if` 只在 `openspec archive *` 與 `mv *` 時啟動
-- **放行條件**：`validators/reconcile-check.cjs check` 對該 change 記下的 pass verdict 存在，且之後 proposal、design、tasks、review-notes、specs 都沒有再改（`verify` 比對雜湊）
+- **放行條件**：`validators/reconcile-check.cjs check` 對該 change 記下的 pass verdict 存在、是現行核查規則版本寫的（plugin 升級讓規則變嚴時，舊結果回報 `stale:rules`，要重跑 check），且之後 proposal、design、tasks、review-notes、specs 都沒有再改（`verify` 比對雜湊）
 - **核查內容**：R1–R9，對應 `RECONCILIATION-CRITERIA.md` 的 C1–C5；其中 R4 要求 review 最後一輪標了 `final`，而 `final` 只能在使用者明說 review 已收斂後才加
 - **繞過**：命令前加 `OPENSPEC_ARCHIVE_OK=1`，只在使用者明確要求時使用
 - **界線**：機械檢查不取代判斷——C1、C2、C5 以 `manual` 列出，仍由代理逐項判斷並寫在回覆裡；全面 fail-open（缺 jq／perl／node、解析不到 change 名稱、change 目錄不存在、`reconcile-check.cjs` 自身崩潰都放行）；只認上述兩種命令形狀，`git mv`、`cp` 加 `rm`、`npx openspec`、從 `changes/` 目錄內用相對路徑 `mv` 等寫法不在覆蓋面內（設計取捨：解析不到名稱即放行）

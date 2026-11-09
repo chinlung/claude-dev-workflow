@@ -125,6 +125,14 @@ P=$WORK/p11i; D=$(make_change "$P" foo); check "$D"
 status "R6: every box checked pass" R6 pass
 P=$WORK/p11j; D=$(make_change "$P" foo); printf -- '- [x] 1.2 done, skip: not needed after all\n' >> "$D/tasks.md"; check "$D"
 status "R6: checked line mentioning skip pass" R6 pass
+# 理由可以用標點、引號、反引號開頭，冒號後任一處有字母或數字就算；全形冒號也接受（codex r2）
+for reason in 'skip: （範圍外）' 'skip: "not required"' 'skip: `docs/x.md` tracks it' 'skip：範圍外'; do
+  P=$WORK/p11-$RANDOM; D=$(make_change "$P" foo); printf -- '- [ ] 1.2 later — %s\n' "$reason" >> "$D/tasks.md"; check "$D"
+  status "R6: reason [$reason] pass" R6 pass
+done
+P=$WORK/p11u; D=$(make_change "$P" foo); printf -- '- [ ] 1.2 later — skip：...\n' >> "$D/tasks.md"; check "$D"
+status "R6: full-width colon with only punctuation fail" R6 fail
+
 # OpenSpec 1.16 的 task 定義（final review r1）：清單符號 - * + 1. 1) 都算，框內不是 x/X 的都算未完成，連結 bullet 不算
 for form in '* [ ] 1.2 b' '+ [ ] 1.2 b' '1. [ ] 1.2 b' '1) [ ] 1.2 b' '- [~] 1.2 deferred' '- [] 1.2 b'; do
   P=$WORK/p11-$RANDOM; D=$(make_change "$P" foo); printf '%s\n' "$form" >> "$D/tasks.md"; check "$D"
@@ -170,6 +178,16 @@ P=$WORK/p13; D=$(make_change "$P" foo); printf -- '- [CONSTITUTION] Y - every ex
 status "R8: constitution entry manual" R8 manual
 has "R8: detail names the entry" "$WORK/out.json" "rate limited"
 
+# verify：verdict 必須是現行規則版本寫的（codex r2：舊規則的 pass 不得在規則升級後繼續放行）
+P=$WORK/p13b; D=$(make_change "$P" foo); check "$D"; SF="$P/.claude/openspec-reconcile.foo.local.json"
+eq "check records the rules version in the verdict" true "$(jq '.verdict.rules | type == "number"' "$SF")"
+jq 'del(.verdict.rules)' "$SF" > "$SF.tmp" && mv "$SF.tmp" "$SF"
+node "$CHECK" verify "$D" > "$WORK/v.out" 2>&1; eq "verify: verdict without a rules version exit 3" 3 "$?"
+eq "verify: verdict without a rules version reason" "stale:rules" "$(head -1 "$WORK/v.out")"
+check "$D"; jq '.verdict.rules = 1' "$SF" > "$SF.tmp" && mv "$SF.tmp" "$SF"
+node "$CHECK" verify "$D" > "$WORK/v.out" 2>&1; eq "verify: verdict from an older rules version exit 3" 3 "$?"
+eq "verify: verdict from an older rules version reason" "stale:rules" "$(head -1 "$WORK/v.out")"
+
 # verify：通過後 0；改 design.md 後 1 + stale:design；沒有狀態檔 1 + no-verdict
 P=$WORK/p14; D=$(make_change "$P" foo); check "$D"
 node "$CHECK" verify "$D" > "$WORK/v.out" 2>&1; eq "verify: fresh verdict exit 0" 0 "$?"
@@ -189,7 +207,7 @@ out=$(node -e 'const m = require(process.argv[1]); process.stdout.write(typeof m
 eq "validator require exports findSpecFiles without running main" "function" "$out"
 
 # ---- summary ----
-MIN=65
+MIN=75
 if [ "$((PASS + FAIL))" -lt "$MIN" ]; then
   echo "FAIL: ran $((PASS + FAIL)) assertions, expected at least $MIN"; FAIL=$((FAIL+1))
 fi
