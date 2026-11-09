@@ -98,6 +98,13 @@ while (@queue && $rounds++ < 50) {
   }
   $endtok->();
   for my $s (@segs) {
+    # a command string handed to a shell runs too: `bash -c '…'`, `sh -lc '…'`, `eval …`
+    for (my $k = 0; $k < @$s; $k++) {
+      my $w = ($s->[$k] =~ m{([^/]+)$})[0] // '';
+      if ($w =~ /^(?:ba|z|da|k)?sh$/) {
+        for (my $m = $k + 1; $m < @$s; $m++) { if ($s->[$m] =~ /^-[A-Za-z]*c[A-Za-z]*$/) { push @queue, $s->[$m + 1] if defined $s->[$m + 1]; last; } }
+      } elsif ($w eq 'eval') { push @queue, join ' ', @$s[$k + 1 .. $#$s]; last; }
+    }
     # gh anywhere in the segment, by basename: wrappers (command, env, time, sudo, xargs…) and a full
     # path to gh still reach it; a stray `echo gh pr merge` is read as a merge too (the safe side)
     my @t = @$s; shift @t while @t && !(($t[0] =~ m{([^/]+)$})[0] eq 'gh');
@@ -143,14 +150,24 @@ script=${PR_CLOSEOUT_SCRIPT:-"${CLAUDE_PLUGIN_ROOT:-$here/..}/scripts/pr-closeou
 command -v node >/dev/null 2>&1 || deny "需要 node 才能執行 pr-closeout ready。"
 [ -f "$script" ] || deny "找不到 pr-closeout 腳本：$script"
 
+# One budget for every ready run (PR_MERGE_GATE_BUDGET seconds, default 25) under the hook's 30 s
+# timeout in hooks.json: each run gets what is left as its deadline, and too little left is a deny —
+# a hook the harness gives up on must never be how a merge gets through. Milliseconds via perl:
+# /bin/bash 3.2 has no EPOCHREALTIME.
+now_ms() { perl -MTime::HiRes=time -e 'printf "%d", time * 1000'; }
+budget_ms=$(( ${PR_MERGE_GATE_BUDGET:-25} * 1000 )); start_ms=$(now_ms)
 while read -r repo num sha; do
   [ -n "$repo" ] || continue
+  left=$(( budget_ms - ($(now_ms) - start_ms) ))
+  if [ "$left" -lt 1000 ]; then
+    deny "時間不夠，無法在 hook 的時限內確認 $repo#$num 能否合併。一次只合併一個 PR 再試。"
+  fi
   if [ "$repo" = - ] || [ "$num" = - ]; then
     deny "看得出是 merge，但讀不出是哪個 repo 的哪個 PR。請明寫：gh pr merge <號碼> --repo <owner/repo>。"
   fi
   args=(ready "$repo" "$num")
   [ "$sha" = - ] || args+=(--expect-head "$sha")
-  out=$(node "$script" "${args[@]}" 2>/dev/null); rc=$?
+  out=$(PR_CLOSEOUT_DEADLINE_MS=$left node "$script" "${args[@]}" 2>/dev/null); rc=$?
   [ "$rc" = 0 ] && continue
   summary=$(printf '%s' "$out" | jq -r '"gate: \(.gate // "-")\n" + ([.hits[]? | "  - \(.code)\(if .gate then " (" + .gate + ")" else "" end)：\(.detail)"] | join("\n"))' 2>/dev/null)
   deny "$repo#$num 還不能合併（pr-closeout ready exit $rc）。

@@ -90,9 +90,10 @@ It checks four things and exits 0 or 6 (gates `not-merged`, `head-mismatch`, `no
 
 `hooks/pr-merge-gate.sh` runs before Bash commands and the GitHub MCP `merge_pull_request` tool.
 
-- **What it finds.** `gh pr merge` (a number or URL, `--repo`/`-R`, `--match-head-commit`) and `gh api …/pulls/<n>/merge`, in command position, behind wrappers or a full path to `gh`.
+- **What it finds.** `gh pr merge` (a number or URL, `--repo`/`-R`, `--match-head-commit`) and `gh api …/pulls/<n>/merge`, in command position, behind wrappers or a full path to `gh`, inside `$( )` or backticks that still run within double quotes or an unquoted heredoc, and inside a string handed to `bash -c`, `sh -c` or `eval`.
 - **What it does.** It runs `ready` for that PR; only exit 0 lets the merge through. The deny message lists what `ready` found.
 - **When it denies.** A merge it cannot pin to a PR is denied, a GraphQL `mergePullRequest` among them. So is a missing jq, node or script.
+- **Time.** All `ready` runs of one command share a 25 s budget (`PR_MERGE_GATE_BUDGET`) under the hook's 30 s timeout; when too little is left the merge is denied rather than left to a timed-out hook.
 - **Bypass.** Put `PR_CLOSEOUT_OK=1` in the command to bypass once. The MCP tool has no bypass; use `gh`.
 - **Cost for other commands.** A command that is not a merge leaves at a builtin `case`, with no subprocess.
 

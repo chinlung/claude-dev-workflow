@@ -90,9 +90,10 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/pr-closeout.mjs landed <owner/repo> <pr> \
 
 `hooks/pr-merge-gate.sh` 在 Bash 命令與 GitHub MCP 的 `merge_pull_request` 之前執行。
 
-- **攔什麼。** 命令位置上的 `gh pr merge`（號碼或 URL、`--repo`／`-R`、`--match-head-commit`）與 `gh api …/pulls/<n>/merge`，包括包在 wrapper 後面或用完整路徑呼叫的 `gh`。
+- **攔什麼。** 命令位置上的 `gh pr merge`（號碼或 URL、`--repo`／`-R`、`--match-head-commit`）與 `gh api …/pulls/<n>/merge`，包括包在 wrapper 後面或用完整路徑呼叫的 `gh`，雙引號或未加引號的 heredoc 裡仍會執行的 `$( )`、反引號，以及交給 `bash -c`、`sh -c`、`eval` 的命令字串。
 - **怎麼判。** 對那個 PR 跑 `ready`，exit 0 才放行；擋下時會附上 `ready` 查到的內容。
 - **何時擋下。** 讀不出是哪個 PR 的 merge 一律擋下，包括 GraphQL 的 `mergePullRequest`。缺 jq、node 或腳本時也擋下。
+- **時間。** 同一條命令裡所有 `ready` 共用 25 秒的預算（`PR_MERGE_GATE_BUDGET`），在 hook 的 30 秒時限之內；剩餘時間不夠時直接擋下，不交給逾時的 hook 決定。
 - **略過。** 在命令前加 `PR_CLOSEOUT_OK=1` 可以略過一次。MCP 工具沒有略過的方式，要略過請改用 `gh`。
 - **對其他命令的成本。** 不是 merge 的命令，在 shell 內建的 `case` 判斷後就放行，不啟動任何子程序。
 

@@ -14,6 +14,7 @@ command -v node >/dev/null 2>&1 || { echo "pr-merge-gate.test: node is required"
 cat > "$tmp/fake-ready.mjs" <<'JS'
 import fs from 'node:fs';
 fs.appendFileSync(process.env.FAKE_LOG, process.argv.slice(2).join(' ') + '\n');
+if (process.env.FAKE_SLEEP) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Number(process.env.FAKE_SLEEP));
 const rc = Number(process.env.FAKE_RC || 0);
 const gate = process.env.FAKE_GATE || null;
 process.stdout.write(JSON.stringify({ exit: rc, gate, hits: rc ? [{ code: 'x', gate, detail: 'fake detail' }] : [] }));
@@ -121,6 +122,18 @@ called "ready o/r 3" "-b value: args"
 gate deny "two PR numbers" "$(bash_in 'gh pr merge 5 7 --repo o/r')"
 called "" "two numbers: ready not called"
 
+# a command string handed to a shell runs too: bash -c, sh -lc, eval
+FAKE_RC=0 gate allow "inside bash -c" "$(bash_in "timeout 60 bash -c 'gh pr merge 3 --repo o/r --squash'")"
+called "ready o/r 3" "bash -c: args"
+FAKE_RC=0 gate allow "inside sh -lc" "$(bash_in "sh -lc 'gh pr merge 5 -R o/r'")"
+called "ready o/r 5" "sh -lc: args"
+FAKE_RC=0 gate allow "inside eval" "$(bash_in 'eval "gh pr merge 4 --repo o/r"')"
+called "ready o/r 4" "eval: args"
+# every ready run shares one budget under the hook's own timeout: too little left is a deny
+FAKE_RC=0 FAKE_SLEEP=1500 PR_MERGE_GATE_BUDGET=2 gate deny "two merges, budget spent" "$(bash_in 'gh pr merge 3 --repo o/r; gh pr merge 4 --repo o/r')"
+reason_has "budget spent: says so" "時間"
+called "ready o/r 3" "budget spent: only the first ran"
+
 # ── not a merge: allowed without asking ──────────────────────────────────────────────────────────
 gate allow "merge in a commit message" "$(bash_in 'git commit -m "gh pr merge later"')"
 called "" "commit message: ready not called"
@@ -132,7 +145,7 @@ gate allow "merge inside a heredoc body" "$(bash_in $'cat > n.md <<EOF\ngh pr me
 called "" "heredoc: ready not called"
 gate allow "nothing about merge" "$(bash_in 'ls -la')"
 
-MIN_PASS=82
+MIN_PASS=91
 if [ "$pass" -lt "$MIN_PASS" ] && [ "${STOP_ON_FAIL:-0}" != 1 ]; then failed "only $pass checks passed, expected at least $MIN_PASS"; fi
 echo "pr-merge-gate: $pass passed, $fail failed"
 
@@ -143,7 +156,7 @@ mutant() {   # <label> <substring of the case that must kill it> <perl substitut
   if cmp -s "$m" "$HOOK"; then echo "MUTANT [$label] substitution did not apply"; mut_bad=1; return; fi
   HOOK="$m" NO_MUTANTS=1 STOP_ON_FAIL=1 perl -e 'alarm 120; exec @ARGV' bash "$0" > "$log" 2>&1; rc=$?
   mut_n=$((mut_n + 1))
-  first=$(command grep -m1 '^FAIL' "$log")
+  first=$(command grep -a -m1 '^FAIL' "$log")   # -a: a truncated multibyte char must not make GNU grep call the log binary
   if [ "$rc" = 0 ]; then echo "MUTANT [$label] suite stayed green"; mut_bad=1
   elif [ -z "$first" ]; then echo "MUTANT [$label] crashed before any case failed"; mut_bad=1
   elif [[ $first != *"$want"* ]]; then echo "MUTANT [$label] killed by [${first:0:90}], expected [$want]"; mut_bad=1
@@ -167,7 +180,10 @@ if [ "${NO_MUTANTS:-0}" != 1 ]; then
   mutant quoted-hd     "[quoted heredoc: ready not called]" 's/ unless \$quoted;/;/'
   mutant takes-value   "[--subject takes a value]"   's/if \(\$takes\{\$x\}\) \{ \$k\+\+; next; \}//'
   mutant two-numbers   "[two PR numbers]"             's/\$num = '"'"'-'"'"' if \$two;//'
-  MUT_WANT_N=17
+  mutant shell-c       "[bash -c: args]"              's/if \(\$s->\[\$m\] =~ \/\^-\[A-Za-z\]\*c\[A-Za-z\]\*\$\/\) \{ push \@queue, \$s->\[\$m \+ 1\] if defined \$s->\[\$m \+ 1\]; last; \}//'
+  mutant eval          "[eval: args]"                 's/elsif \(\$w eq '"'"'eval'"'"'\)/elsif (0)/'
+  mutant budget        "[two merges, budget spent]"   's/if \[ "\$left" -lt 1000 \]; then/if false; then/'
+  MUT_WANT_N=20
   if [ "$mut_n" != "$MUT_WANT_N" ]; then echo "FAIL: $mut_n of $MUT_WANT_N mutants ran"; mut_bad=1; fi
   [ "$mut_bad" = 0 ] || fail=$((fail + 1))
 fi

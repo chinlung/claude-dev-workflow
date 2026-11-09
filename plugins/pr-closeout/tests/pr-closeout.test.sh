@@ -368,7 +368,7 @@ mutant() {   # <label> <substring of the case that must kill it> <perl substitut
   if cmp -s "$m" "$SCRIPT"; then echo "MUTANT [$label] substitution did not apply"; mut_bad=1; return; fi
   SCRIPT="$m" NO_MUTANTS=1 STOP_ON_FAIL=1 bounded 300 bash "$0" > "$log" 2>&1; rc=$?
   mut_n=$((mut_n + 1))
-  first=$(command grep -m1 '^FAIL' "$log")
+  first=$(command grep -a -m1 '^FAIL' "$log")   # -a: a truncated multibyte char must not make GNU grep call the log binary
   if [ "$rc" = 0 ]; then echo "MUTANT [$label] suite stayed green"; mut_bad=1
   elif [ -z "$first" ]; then echo "MUTANT [$label] crashed before any case failed"; mut_bad=1
   elif [[ $first != *"$want"* ]]; then echo "MUTANT [$label] killed by [${first:0:90}], expected [$want]"; mut_bad=1

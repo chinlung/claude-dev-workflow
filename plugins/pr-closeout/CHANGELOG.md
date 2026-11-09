@@ -32,16 +32,17 @@ All notable changes to the `pr-closeout` plugin will be documented in this file.
   - With `--branch`: no open PR remains, and neither does the remote or the local branch.
 
   Its gates are `not-merged`, `head-mismatch`, `not-on-base` and `branch-remains`.
-- **Merge gate hook.** `hooks/pr-merge-gate.sh` is a PreToolUse hook on Bash and on the GitHub MCP merge tool. It finds `gh pr merge` (number, URL, `--repo`/`-R`, `--match-head-commit`) and `gh api …/pulls/<n>/merge` in command position, including behind wrappers, full paths and backticks, and inside `$( )` or backticks that still run within double quotes or an unquoted heredoc (options that take a value, such as `--subject`, never lend it as the PR number; two PR numbers are denied), and runs `ready` for that PR; only exit 0 passes.
+- **Merge gate hook.** `hooks/pr-merge-gate.sh` is a PreToolUse hook on Bash and on the GitHub MCP merge tool. It finds `gh pr merge` (number, URL, `--repo`/`-R`, `--match-head-commit`) and `gh api …/pulls/<n>/merge` in command position, including behind wrappers, full paths and backticks, and inside `$( )` or backticks that still run within double quotes or an unquoted heredoc (options that take a value, such as `--subject`, never lend it as the PR number; two PR numbers are denied), and inside a command string handed to `bash -c`, `sh -lc` or `eval`, and runs `ready` for that PR; only exit 0 passes.
   - A merge whose PR it cannot read is denied, a GraphQL `mergePullRequest` among them.
   - Missing jq, node or the script also denies.
   - `PR_CLOSEOUT_OK=1` bypasses once.
+  - All `ready` runs of one command share a 25 s budget (`PR_MERGE_GATE_BUDGET`) under the hook's 30 s timeout; too little left is a deny.
   - Commands that are not a merge leave at a builtin `case`.
 - **Skill.** `skills/pr-closeout` maps the six closeout steps to these commands, says what to do for each exit and gate, and carries the CI failure rules: re-run a flake once, read the log on the second failure, check `baseBehind` when the failure is in code the PR did not touch.
 
 ### Notes
 
-- Tests: `tests/pr-closeout.test.sh` (155 checks, 36 mutants) and `tests/pr-merge-gate.test.sh` (82 checks, 17 mutants). Each mutant must fail on the case written for it.
+- Tests: `tests/pr-closeout.test.sh` (155 checks, 36 mutants) and `tests/pr-merge-gate.test.sh` (91 checks, 20 mutants). Each mutant must fail on the case written for it.
 - Verified against real PRs before release:
   - `ready` on a merged PR reported `not-open` and listed the five code files a fix commit added after the last review-branch round.
   - `landed` on another merged PR reported exit 0 with the branch gone everywhere.
