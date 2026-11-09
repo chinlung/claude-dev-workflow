@@ -19,6 +19,7 @@
 // Design: docs/pr-closeout-skill-design-2026-11-09.md. Tests: tests/pr-closeout.test.sh
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
 const USAGE = `Usage:
@@ -151,9 +152,53 @@ function contextState(c) {
   return 'failed';
 }
 
-export function assess(raw, { expectHead } = {}) {
+// The per-user list of checks that must appear on a repo's PRs (D6). Personal data, so it lives
+// outside this plugin: $PR_CLOSEOUT_CONFIG, else ~/.claude/pr-closeout/required-checks.json.
+// Shape: {"<owner>/<repo>": {"required": ["<check>"], "minSeconds": {"<check>": <n>}}}.
+// No file: nothing is required. An unreadable or misshapen file: { error } (a query failure).
+export function loadConfig() {
+  const file = process.env.PR_CLOSEOUT_CONFIG || path.join(os.homedir(), '.claude', 'pr-closeout', 'required-checks.json');
+  if (!fs.existsSync(file)) return { file, repos: {} };
+  let c;
+  try { c = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return { file, error: `config ${file} is not JSON` }; }
+  const bad = (why) => ({ file, error: `config ${file}: ${why}` });
+  if (!c || typeof c !== 'object' || Array.isArray(c)) return bad('not an object');
+  for (const [slug, e] of Object.entries(c)) {
+    if (!e || typeof e !== 'object') return bad(`${slug} is not an object`);
+    if (e.required !== undefined && !(Array.isArray(e.required) && e.required.every((x) => typeof x === 'string'))) return bad(`${slug}.required is not a list of names`);
+    if (e.minSeconds !== undefined && !(e.minSeconds && typeof e.minSeconds === 'object' && Object.values(e.minSeconds).every((n) => typeof n === 'number' && n >= 0))) return bad(`${slug}.minSeconds is not a map of numbers`);
+  }
+  return { file, repos: c };
+}
+
+const seconds = (c) => (Date.parse(c.completedAt) - Date.parse(c.startedAt)) / 1000;
+
+// Facts that inform the model's judgment and never change the exit: how earlier PRs were merged,
+// how far the base moved, who commented where.
+function extras(raw, pr) {
+  const prev = Array.isArray(raw.prevPulls) ? raw.prevPulls.find((x) => x && x.merged_at && x.number !== pr) : null;
+  const parents = raw.prevCommit && Array.isArray(raw.prevCommit.parents) ? raw.prevCommit.parents.length : null;
+  const method = !prev || parents === null ? 'unknown' : parents === 1 ? 'squash' : parents === 2 ? 'merge' : 'unknown';
+  const list = (x) => (Array.isArray(x) ? x : []);
+  const authors = new Set();
+  for (const k of ['pullsComments', 'pullsReviews', 'issuesComments']) {
+    for (const c of list(raw[k])) if (c && c.user && c.user.login) authors.add(c.user.login);
+  }
+  return {
+    precedent: { pr: prev ? prev.number : null, parents: prev ? parents : null, method },
+    baseBehind: raw.compare && Number.isInteger(raw.compare.behind_by) ? raw.compare.behind_by : null,
+    comments: {
+      pullsComments: list(raw.pullsComments).length, pullsReviews: list(raw.pullsReviews).length,
+      issuesComments: list(raw.issuesComments).length, authors: [...authors].sort(),
+    },
+  };
+}
+
+export function assess(raw, { expectHead, owner, repo, pr, config } = {}) {
   const p = prOf(raw.graphql);
   const hits = [];
+  if (config && config.error) hits.push({ code: 'query-failed', detail: config.error });
+  const policy = (config && config.repos && config.repos[`${owner}/${repo}`]) || {};
   const unknown = (field, value) => hits.push({ code: 'query-failed', detail: `unknown ${field}: ${JSON.stringify(value)}` });
   const known = (field, value) => (KNOWN[field].has(value) ? true : (unknown(field, value), false));
   const gate = (g, detail) => hits.push({ code: 'merge-gate', gate: g, detail });
@@ -188,7 +233,14 @@ export function assess(raw, { expectHead } = {}) {
 
   const commit = p.commits && p.commits.nodes && p.commits.nodes[0] && p.commits.nodes[0].commit;
   if (!commit) unknown('commits', p.commits);
-  const rollup = commit ? commit.statusCheckRollup : null;   // null: the head has no checks at all
+  // null means the head has no checks at all; a missing field or a non-object is an answer this
+  // script does not understand (fail-closed), not "no checks"
+  let rollup = null;
+  if (commit) {
+    const r = commit.statusCheckRollup;   // undefined (missing) is neither null nor an object
+    if (r !== null && typeof r !== 'object') unknown('statusCheckRollup', r === undefined ? '(missing)' : r);
+    else rollup = r;
+  }
   let checks = [];
   if (rollup) {
     const cx = rollup.contexts;
@@ -200,6 +252,14 @@ export function assess(raw, { expectHead } = {}) {
         conclusion: c && (c.conclusion || c.state || null), startedAt: c && c.startedAt, completedAt: c && c.completedAt,
       }));
     }
+  }
+  // a required check that never ran (paths-ignore, a skipped workflow) is a failed check, not a green one
+  const missing = (policy.required || []).filter((name) => !checks.some((c) => c.name === name));
+  if (missing.length) hits.push({ code: 'checks-failed', detail: missing.map((n) => `required check missing: ${n}`).join('; ') });
+  const suspectedSkip = Object.entries(policy.minSeconds || {})
+    .filter(([name, min]) => checks.some((c) => c.name === name && c.state === 'ok' && c.startedAt && c.completedAt && seconds(c) < min))
+    .map(([name]) => name);
+  if (rollup) {
     const failedChecks = checks.filter((c) => c.state === 'failed');
     const pendingChecks = checks.filter((c) => c.state === 'pending');
     const rollupKnown = known('rollup', rollup.state);
@@ -233,6 +293,8 @@ export function assess(raw, { expectHead } = {}) {
     baseRefName: p.baseRefName ?? null,
     threads,
     checks,
+    suspectedSkip,
+    ...extras(raw, pr),
   };
 }
 
@@ -281,7 +343,7 @@ export function main(argv) {
   const head = { pr: { owner: o.owner, repo: o.repo, number: o.pr } };
   try {
     const raw = fetchAll(o);
-    return emit({ ...head, ...assess(raw, o) });
+    return emit({ ...head, ...assess(raw, { ...o, config: loadConfig() }) });
   } catch (e) {
     if (!(e instanceof QueryError)) throw e;
     return emit({ ...head, exit: 7, gate: null, hits: [{ code: 'query-failed', detail: e.message }] });

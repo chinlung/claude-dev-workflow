@@ -13,6 +13,8 @@ tmp=$(mktemp -d "${TMPDIR:-/tmp}/prc-test.XXXXXX") || exit 1
 trap 'rm -rf "$tmp"' EXIT
 command -v node >/dev/null 2>&1 || { echo "pr-closeout.test: node is required"; exit 1; }
 command -v jq >/dev/null 2>&1 || { echo "pr-closeout.test: jq is required"; exit 1; }
+# never the real per-user list: every case below names the config it means
+export PR_CLOSEOUT_CONFIG="$tmp/no-config.json"
 
 pass=0; fail=0
 CASE_TIMEOUT=${CASE_TIMEOUT:-20}
@@ -139,6 +141,9 @@ gate_case 7 ""                "unknown merge state"       "$P.mergeStateStatus =
 gate_case 7 ""                "mergeable missing"         "del($P.mergeable)"
 gate_case 7 ""                "unknown review decision"   "$P.reviewDecision = \"MAYBE\""
 gate_case 7 ""                "more threads than one page" "$P.reviewThreads.pageInfo.hasNextPage = true"
+gate_case 7 ""                "rollup field missing"      "del($RU)"
+gate_case 7 ""                "rollup not an object"      "$RU = \"SUCCESS\""
+gate_case 0 ""                "no checks at all (null rollup)" "$RU = null"
 gate_case 0 ""                "clean"                     "$P.mergeStateStatus = \"CLEAN\""
 gate_case 0 ""                "has hooks"                 "$P.mergeStateStatus = \"HAS_HOOKS\""
 gate_case 0 ""                "unstable, every listed check green" "$P.mergeStateStatus = \"UNSTABLE\""
@@ -151,8 +156,44 @@ jqeq "hits lists all: both codes" '[.hits[].code] | sort' '["conflict","unresolv
 gate_case 3 ""                "blocked with an unresolved thread" "$P.mergeStateStatus = \"BLOCKED\" | $P.reviewThreads.nodes = [$THREAD]"
 gate_case 7 ""                "query failure outranks a gate" "$P.state = \"MERGED\" | $P.reviewThreads.pageInfo.hasNextPage = true"
 
+# ── Task 3: required checks, suspected skips, precedent, base, comments ──────────────────────────
+printf '%s' '{"example/repo":{"required":["security-review","validate-fixtures"],"minSeconds":{"security-review":30}}}' > "$tmp/cfg.json"
+printf '%s' '{"other/repo":{"required":["security-review"]}}' > "$tmp/cfg-other.json"
+printf '{not json' > "$tmp/cfg-bad.json"
+withcfg() { local c=$1; shift; PR_CLOSEOUT_CONFIG="$c" "$@"; }
+withcfg "$tmp/cfg.json" ready_case 4 "required missing: security-review" "$(fixture t3a "del($CX[0])")"
+has "required missing: named" "$(cat "$tmp/out.json")" "required check missing: security-review"
+withcfg "$tmp/cfg.json" ready_case 4 "required missing: validate-fixtures" "$(fixture t3b "del($CX[1])")"
+withcfg "$tmp/cfg.json" ready_case 0 "required all present" "$(fixture t3c)"
+withcfg "$tmp/cfg-other.json" ready_case 0 "repo not on the list" "$(fixture t3d "del($CX[0])")"
+withcfg "$tmp/absent.json" ready_case 0 "no config file" "$(fixture t3e "del($CX[0])")"
+withcfg "$tmp/cfg-bad.json" ready_case 7 "config not JSON" "$(fixture t3f)"
+printf '%s' '{"example/repo":{"required":"security-review"}}' > "$tmp/cfg-shape.json"
+withcfg "$tmp/cfg-shape.json" ready_case 7 "config of the wrong shape" "$(fixture t3g)"
+withcfg "$tmp/cfg.json" ready_case 0 "suspected skip" "$(fixture t3h "$CX[0].completedAt = \"2026-11-09T00:00:12Z\"")"
+jqeq "suspected skip: named" '.suspectedSkip' '["security-review"]'
+withcfg "$tmp/cfg.json" ready_case 0 "long enough" "$(fixture t3i "$CX[0].completedAt = \"2026-11-09T00:00:45Z\"")"
+jqeq "long enough: none" '.suspectedSkip' '[]'
+fx=$(fixture t3j); ready_case 0 "precedent squash" "$fx"
+jqeq "precedent squash: method" '[.precedent.pr, .precedent.parents, .precedent.method]' '[8,1,"squash"]'
+fx=$(fixture t3k); jq '.parents += [{sha:"5555555555555555555555555555555555555555"}]' "$BASE/prev-commit.json" > "$fx/prev-commit.json"
+ready_case 0 "precedent merge" "$fx"
+jqeq "precedent merge: method" '.precedent.method' '"merge"'
+fx=$(fixture t3l); echo '[]' > "$fx/prev-pulls.json"; rm -f "$fx/prev-commit.json"
+ready_case 0 "no precedent" "$fx"
+jqeq "no precedent: unknown" '.precedent.method' '"unknown"'
+fx=$(fixture t3m); echo '{"behind_by":3,"ahead_by":1}' > "$fx/compare.json"
+ready_case 0 "base behind" "$fx"
+jqeq "base behind: count" '.baseBehind' '3'
+fx=$(fixture t3n)
+echo '[{"user":{"login":"bot-a"},"body":"inline"}]' > "$fx/pulls-comments.json"
+echo '[{"user":{"login":"rev"},"state":"COMMENTED","body":"r"}]' > "$fx/pulls-reviews.json"
+echo '[{"user":{"login":"bot-a"},"body":"summary $(touch /tmp/never)"}]' > "$fx/issues-comments.json"
+ready_case 0 "comments counted" "$fx"
+jqeq "comments: counts and authors" '[.comments.pullsComments, .comments.pullsReviews, .comments.issuesComments, .comments.authors]' '[1,1,1,["bot-a","rev"]]'
+
 # ── summary and mutants ──────────────────────────────────────────────────────────────────────────
-MIN_PASS=62
+MIN_PASS=87
 if [ "$pass" -lt "$MIN_PASS" ] && [ "${STOP_ON_FAIL:-0}" != 1 ]; then failed "only $pass checks passed, expected at least $MIN_PASS"; fi
 echo "pr-closeout: $pass passed, $fail failed"
 
@@ -186,7 +227,12 @@ if [ "${NO_MUTANTS:-0}" != 1 ]; then
   mutant unknown       "[unknown merge state]"             "s/KNOWN\[field\]\.has\(value\) \? true :/true ? true :/"
   mutant soft-rank     "[blocked with an unresolved thread]" "s/SOFT_GATES\.has\(h\.gate\) \? 6 :/SOFT_GATES.has(h.gate) ? 1 :/"
   mutant unsorted      "[query failure outranks a gate]"   "s/^  hits\.sort\(.*\n//"
-  MUT_WANT_N=16
+  mutant required      "[required missing: security-review]" "s/if \(missing\.length\) hits\.push/if (false) hits.push/"
+  mutant min-seconds   "[suspected skip: named]"           "s/seconds\(c\) < min/seconds(c) < 0/"
+  mutant config-error  "[config not JSON]"                 "s/if \(config && config\.error\) hits\.push/if (false) hits.push/"
+  mutant precedent     "[precedent squash: method]"        "s/parents === 1 \? 'squash' : parents === 2 \? 'merge'/parents === 1 ? 'merge' : parents === 2 ? 'squash'/"
+  mutant rollup-field   "[rollup field missing]"            "s/if \(r !== null && typeof r !== 'object'\) unknown/if (false) unknown/"
+  MUT_WANT_N=21
   if [ "$mut_n" != "$MUT_WANT_N" ]; then echo "FAIL: $mut_n of $MUT_WANT_N mutants ran"; mut_bad=1; fi
   [ "$mut_bad" = 0 ] || fail=$((fail + 1))
 fi
