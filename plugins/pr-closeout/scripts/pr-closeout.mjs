@@ -122,6 +122,54 @@ export function fetchAll({ owner, repo, pr, fixture }) {
   return raw;
 }
 
+// ── local clone: review coverage ─────────────────────────────────────────────────────────────────
+function git(dir, args) {
+  const r = spawnSync('git', ['-C', dir, ...args], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: { ...process.env, GIT_NO_REPLACE_OBJECTS: '1' } });
+  return { ok: r.status === 0 && !r.error, out: r.stdout || '' };
+}
+const DOC_PATH = /\.(md|mdx|txt|rst|adoc)$|^docs?\//;
+// review-branch records a file as <hash>, <hash>+x (executable) or link:<hash> (symlink)
+function blobKey(mode, hash) {
+  if (mode === '100755') return `${hash}+x`;
+  if (mode === '120000') return `link:${hash}`;
+  return hash;
+}
+
+// Did the last review-branch round see exactly the bytes this PR merges? Compared file by file,
+// not by commit: review-branch reviews the working tree, so its recorded head need not hold what
+// it read. status: covered | unreviewed | unknown (no record, another branch, head not here…).
+export function coverage(repoDir, { headRefName, headOid, baseRef, accept = [] }) {
+  const unknown = (reason) => ({ status: 'unknown', reason, unreviewed: [], docsOnly: [], accepted: [] });
+  if (!repoDir) return unknown('no --repo-dir');
+  const gd = git(repoDir, ['rev-parse', '--absolute-git-dir']);
+  if (!gd.ok) return unknown(`${repoDir} is not a git repository`);
+  if (!headOid || !git(repoDir, ['cat-file', '-e', `${headOid}^{commit}`]).ok) return unknown('the PR head is not in the local clone (fetch it)');
+  const stateFile = path.join(gd.out.trim(), 'review-branch-last.json');
+  if (!fs.existsSync(stateFile)) return unknown('no review-branch record');
+  let state;
+  try { state = JSON.parse(fs.readFileSync(stateFile, 'utf8')); } catch { return unknown('review-branch record is not JSON'); }
+  if (!state || state.branch !== headRefName) return unknown(`review-branch record is for ${state && state.branch}, not ${headRefName}`);
+  const reviewed = new Map((Array.isArray(state.scopedFiles) ? state.scopedFiles : [])
+    .filter((f) => f && f.status === 'reviewed' && typeof f.blob === 'string').map((f) => [f.file, f.blob]));
+  let mb = git(repoDir, ['merge-base', `origin/${baseRef}`, headOid]);
+  if (!mb.ok) mb = git(repoDir, ['merge-base', baseRef, headOid]);
+  if (!mb.ok) return unknown(`no merge base with ${baseRef}`);
+  const changed = git(repoDir, ['diff', '--name-only', '-z', '--diff-filter=d', mb.out.trim(), headOid]);
+  if (!changed.ok) return unknown('git diff failed');
+  const out = { status: 'covered', unreviewed: [], docsOnly: [], accepted: [] };
+  for (const file of changed.out.split('\0').filter(Boolean)) {
+    const lt = git(repoDir, ['ls-tree', '-z', headOid, '--', file]);
+    const m = /^(\d+) \w+ ([0-9a-f]+)\t/.exec(lt.out);
+    if (m && reviewed.get(file) === blobKey(m[1], m[2])) continue;
+    const ok = accept.find((a) => a.path === file);
+    if (DOC_PATH.test(file)) out.docsOnly.push(file);
+    else if (ok) out.accepted.push({ path: file, reason: ok.reason });
+    else out.unreviewed.push(file);
+  }
+  if (out.unreviewed.length) out.status = 'unreviewed';
+  return out;
+}
+
 // ── verdict ──────────────────────────────────────────────────────────────────────────────────────
 const KNOWN = {
   state: new Set(['OPEN', 'CLOSED', 'MERGED']),
@@ -194,9 +242,12 @@ function extras(raw, pr) {
   };
 }
 
-export function assess(raw, { expectHead, owner, repo, pr, config } = {}) {
+export function assess(raw, { expectHead, owner, repo, pr, config, cover } = {}) {
   const p = prOf(raw.graphql);
   const hits = [];
+  if (cover && cover.status === 'unreviewed') {
+    hits.push({ code: 'merge-gate', gate: 'unreviewed', detail: `not covered by the last review: ${cover.unreviewed.join(', ')}` });
+  }
   if (config && config.error) hits.push({ code: 'query-failed', detail: config.error });
   const policy = (config && config.repos && config.repos[`${owner}/${repo}`]) || {};
   const unknown = (field, value) => hits.push({ code: 'query-failed', detail: `unknown ${field}: ${JSON.stringify(value)}` });
@@ -295,6 +346,7 @@ export function assess(raw, { expectHead, owner, repo, pr, config } = {}) {
     checks,
     suspectedSkip,
     ...extras(raw, pr),
+    coverage: cover || null,
   };
 }
 
@@ -343,7 +395,11 @@ export function main(argv) {
   const head = { pr: { owner: o.owner, repo: o.repo, number: o.pr } };
   try {
     const raw = fetchAll(o);
-    return emit({ ...head, ...assess(raw, { ...o, config: loadConfig() }) });
+    const p = prOf(raw.graphql);
+    const cover = o.repoDir
+      ? coverage(o.repoDir, { headRefName: p.headRefName, headOid: p.headRefOid, baseRef: p.baseRefName, accept: o.accept })
+      : null;
+    return emit({ ...head, ...assess(raw, { ...o, config: loadConfig(), cover }) });
   } catch (e) {
     if (!(e instanceof QueryError)) throw e;
     return emit({ ...head, exit: 7, gate: null, hits: [{ code: 'query-failed', detail: e.message }] });

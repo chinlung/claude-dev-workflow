@@ -192,8 +192,66 @@ echo '[{"user":{"login":"bot-a"},"body":"summary $(touch /tmp/never)"}]' > "$fx/
 ready_case 0 "comments counted" "$fx"
 jqeq "comments: counts and authors" '[.comments.pullsComments, .comments.pullsReviews, .comments.issuesComments, .comments.authors]' '[1,1,1,["bot-a","rev"]]'
 
+# ── Task 4: reviewed bytes equal merged bytes ────────────────────────────────────────────────────
+G="git -c user.name=t -c user.email=t@t -c commit.gpgsign=false"
+R4="$tmp/r4"
+mkrepo4() {   # main with c.txt; branch feat/x adds a.sh and b.md; origin/main set by hand
+  rm -rf "$R4"; git init -q -b main "$R4"
+  echo base > "$R4/c.txt"; git -C "$R4" add c.txt; $G -C "$R4" commit -q -m base
+  git -C "$R4" update-ref refs/remotes/origin/main HEAD
+  git -C "$R4" switch -q -c feat/x
+  echo a > "$R4/a.sh"; echo doc > "$R4/b.md"; git -C "$R4" add a.sh b.md; $G -C "$R4" commit -q -m feat
+}
+blob4() { git -C "$R4" ls-tree HEAD -- "$1" | awk '{print $3}'; }
+# record4 <branch> <file>=<blob>...: review-branch's state for the round that reviewed these blobs
+record4() {
+  local branch=$1; shift
+  printf '%s\n' "$@" | jq -R 'split("=") | {file: .[0], blob: .[1], status: "reviewed"}' | jq -s --arg b "$branch" '{branch: $b, head: "x", scopedFiles: .}' > "$R4/.git/review-branch-last.json"
+}
+# cov_case <want> <label> [args]: ready against the r4 repo, the PR's head being r4's HEAD
+cov_case() {
+  local want=$1 label=$2 sha; shift 2
+  sha=$(git -C "$R4" rev-parse HEAD)
+  ready_case "$want" "$label" "$(fixture "t4-$RANDOM" "$P.headRefOid = \"$sha\" | $P.headRefName = \"feat/x\"")" --repo-dir "$R4" "$@"
+}
+mkrepo4; record4 feat/x "a.sh=$(blob4 a.sh)" "b.md=$(blob4 b.md)"
+cov_case 0 "reviewed blobs are the merged blobs"
+jqeq "covered" '.coverage.status' '"covered"'
+old=$(blob4 a.sh); echo a2 > "$R4/a.sh"; $G -C "$R4" commit -q -am fix
+cov_case 6 "a file changed after the review"
+jqeq "unreviewed: gate" '.gate' '"unreviewed"'
+jqeq "unreviewed: named" '.coverage.unreviewed' '["a.sh"]'
+mkrepo4; record4 feat/x "a.sh=$(blob4 a.sh)" "b.md=$(blob4 b.md)"
+echo c > "$R4/c.sh"; git -C "$R4" add c.sh; $G -C "$R4" commit -q -m new
+cov_case 6 "a file the review never saw"
+jqeq "never seen: named" '.coverage.unreviewed' '["c.sh"]'
+mkrepo4; h=$(blob4 a.sh); record4 feat/x "a.sh=$h" "b.md=$(blob4 b.md)"
+chmod +x "$R4/a.sh"; git -C "$R4" add a.sh; $G -C "$R4" commit -q -m mode
+cov_case 6 "executable bit added after the review"
+record4 feat/x "a.sh=$h+x" "b.md=$(blob4 b.md)"
+cov_case 0 "executable recorded as +x"
+mkrepo4; record4 feat/x "a.sh=$(blob4 a.sh)" "b.md=$(blob4 b.md)"
+echo doc2 > "$R4/b.md"; $G -C "$R4" commit -q -am docs
+cov_case 0 "only a document changed after the review"
+jqeq "docs only: listed" '.coverage.docsOnly' '["b.md"]'
+mkrepo4
+cov_case 0 "no review record"
+jqeq "no record: unknown" '.coverage.status' '"unknown"'
+record4 feat/other "a.sh=$(blob4 a.sh)"
+cov_case 0 "record from another branch"
+jqeq "other branch: unknown" '.coverage.status' '"unknown"'
+record4 feat/x "a.sh=$(blob4 a.sh)" "b.md=$(blob4 b.md)"
+ready_case 0 "head not in the local clone" "$(fixture t4h "$P.headRefOid = \"9999999999999999999999999999999999999999\" | $P.headRefName = \"feat/x\"")" --repo-dir "$R4"
+jqeq "head not here: unknown" '.coverage.status' '"unknown"'
+mkrepo4; record4 feat/x "a.sh=$(blob4 a.sh)" "b.md=$(blob4 b.md)"
+echo a2 > "$R4/a.sh"; $G -C "$R4" commit -q -am fix
+cov_case 0 "accepted with a reason" --accept-unreviewed "a.sh=codex r3 reviewed it"
+jqeq "accepted: recorded" '[.coverage.status, .coverage.accepted[0].path, .coverage.accepted[0].reason]' '["covered","a.sh","codex r3 reviewed it"]'
+cov_case 7 "accepted without a reason" --accept-unreviewed "a.sh="
+cov_case 6 "accepting another file does not cover this one" --accept-unreviewed "z.sh=not this one"
+
 # ── summary and mutants ──────────────────────────────────────────────────────────────────────────
-MIN_PASS=87
+MIN_PASS=108
 if [ "$pass" -lt "$MIN_PASS" ] && [ "${STOP_ON_FAIL:-0}" != 1 ]; then failed "only $pass checks passed, expected at least $MIN_PASS"; fi
 echo "pr-closeout: $pass passed, $fail failed"
 
@@ -232,7 +290,12 @@ if [ "${NO_MUTANTS:-0}" != 1 ]; then
   mutant config-error  "[config not JSON]"                 "s/if \(config && config\.error\) hits\.push/if (false) hits.push/"
   mutant precedent     "[precedent squash: method]"        "s/parents === 1 \? 'squash' : parents === 2 \? 'merge'/parents === 1 ? 'merge' : parents === 2 ? 'squash'/"
   mutant rollup-field   "[rollup field missing]"            "s/if \(r !== null && typeof r !== 'object'\) unknown/if (false) unknown/"
-  MUT_WANT_N=21
+  mutant mode-norm     "[executable bit added after the review]" "s/if \(mode === '100755'\) return/if (false) return/"
+  mutant docs-exempt   "[only a document changed after the review]" "s/if \(DOC_PATH\.test\(file\)\) out\.docsOnly/if (false) out.docsOnly/"
+  mutant reason-req    "[accepted without a reason]"       "s/if \(!p \|\| !reason\) throw/if (!p) throw/"
+  mutant branch-check  "[other branch: unknown]" "s/state\.branch !== headRefName\) return/false) return/"
+  mutant accept-any    "[accepting another file does not cover this one]" "s/accept\.find\(\(a\) => a\.path === file\)/accept[0]/"
+  MUT_WANT_N=26
   if [ "$mut_n" != "$MUT_WANT_N" ]; then echo "FAIL: $mut_n of $MUT_WANT_N mutants ran"; mut_bad=1; fi
   [ "$mut_bad" = 0 ] || fail=$((fail + 1))
 fi
