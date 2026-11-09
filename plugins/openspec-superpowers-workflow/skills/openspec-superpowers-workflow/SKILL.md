@@ -55,7 +55,7 @@ If the project is not initialized, run `openspec init .` (note: use `.` for the 
 
 1. Identify which phase the user is in — read `PHASE-IDENTIFICATION.md` when this is a new OpenSpec workflow, the request may span multiple phases, an `openspec/changes/<name>/` folder exists but status is unclear, or the phase is ambiguous.
 2. Read `phases.md` for the detailed playbook of that phase — includes exact actions, sync-back rules, review-notes.md format, and anti-patterns.
-3. For Phase 2/3/4 handoffs where Superpowers produces design/tasks/code, read `SUPERPOWERS-HANDOFF.md` before syncing back to OpenSpec.
+3. For Phase 2/3/4 handoffs where Superpowers produces design/tasks/code, read `SUPERPOWERS-HANDOFF.md` before syncing back to OpenSpec. Before overwriting `design.md` in Phase 2, also read `DESIGN-RED-FLAGS.md` and check the draft against it; Phase 2 asks at most two questions in total (see `phases.md`).
 4. Follow it exactly. If switching phases mid-conversation, re-read the relevant section.
 
 See `phases.md` for: full Phase 1-6 actions, `review-notes.md` tag semantics and examples, decision quick-reference table, and the anti-patterns list. See `RECONCILIATION-CRITERIA.md` for the Phase 6 pre-archive gate checklist. See `PHASE-IDENTIFICATION.md` for the phase decision tree. See `SUPERPOWERS-HANDOFF.md` for sync-back templates and sidecar-file anti-patterns. See `OUTPUT-CONTRACTS.md` for the durable output contract per phase, coverage definitions, valid/invalid requirement-writing examples, and the deferred-item convention.

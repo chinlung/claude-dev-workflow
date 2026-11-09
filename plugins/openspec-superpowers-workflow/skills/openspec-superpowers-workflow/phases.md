@@ -98,12 +98,15 @@ The OpenSpec validator enforces that **every `### Requirement:` block MUST conta
 **Actions**:
 1. Activate Superpowers `/brainstorming` skill
 2. Use `openspec/changes/<feature-name>/proposal.md` and `specs/` as input context
-3. Conduct Socratic questioning to refine:
-   - Boundary conditions and error handling
-   - Impact on existing system
-   - Performance and scalability concerns
-   - Security considerations
-4. Produce a refined design document
+3. **Question budget** (it covers the whole phase and overrides the brainstorming skill's default pacing):
+   - Classify before you ask. Anything you can find out by reading code, running a command or looking at output is a fact, not a question: go and look.
+   - Ask at most **2** questions in total, and only ones whose answer changes *what* gets built (scope, behavior, who is affected), not *how*.
+   - Everything else is an assumption: write it into `design.md` under `## Open Questions`, each with the default you chose.
+   - If the user says to skip the questions (any wording, e.g. "skip the questions", "跳過提問", "just write design.md"), ask nothing and write `design.md` now.
+   - If a fork can be settled by trying it, build a throwaway prototype in `$TMPDIR` or a scratch directory outside `openspec/`, and write the decision plus the evidence (one line) into `design.md`. A prototype is a disposable experiment, not a second design file, so it does not break the sidecar rule below.
+4. Work through the areas a design must cover — boundary conditions and error handling, impact on the existing system, performance and scalability, security — and end each as a decision or an assumption in `design.md`, not as a question.
+5. Before overwriting `design.md`, read `DESIGN-RED-FLAGS.md` and check the draft against it. Write each flag that applies, and what you did about it, under `## Trade-offs`.
+6. Produce the refined design document
 
 **Sync back (CRITICAL)**:
 After brainstorming completes, OVERWRITE `openspec/changes/<feature-name>/design.md` with the refined design.

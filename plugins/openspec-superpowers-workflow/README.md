@@ -17,7 +17,7 @@
 | Phase | 主導工具 | 動作 | 產出 |
 |-------|---------|------|------|
 | 1. Spec Definition | OpenSpec | `openspec new change` + 填入 proposal / specs | `proposal.md`、`specs/<capability>/spec.md`（使用者審核） |
-| 2. Design Refinement | Superpowers `brainstorming` | Socratic 問答精煉設計 | **覆寫** `design.md` |
+| 2. Design Refinement | Superpowers `brainstorming` | 先列假設、全 phase 至多 2 題提問，對照設計紅旗後精煉設計 | **覆寫** `design.md` |
 | 3. Task Planning | Superpowers `writing-plans` | 切出 2-5 分鐘粒度任務 | **覆寫** `tasks.md` |
 | 4. Implementation | Superpowers `subagent-driven-development` + TDD | RED → GREEN → REFACTOR | 程式碼 |
 | 5. Review & Feedback | 人類主導 | 分類 `[REQUIREMENT\|DESIGN\|CODE\|CONSTITUTION]` + Y/N | `review-notes.md`，**spec 一律不動** |
@@ -42,6 +42,7 @@ skills/openspec-superpowers-workflow/
 ├── SUPERPOWERS-HANDOFF.md      # 140 行：Phase 2/3/4 sync-back 範本、sidecar 檔 anti-pattern
 ├── OUTPUT-CONTRACTS.md         # 218 行：各 Phase 產出契約、requirement 寫法正反例、deferred 項慣例
 ├── RECONCILIATION-CRITERIA.md  # 116 行：Phase 6 歸檔前核查清單
+├── DESIGN-RED-FLAGS.md         # 八條設計紅旗（Phase 2 覆寫 design.md 前自檢）
 └── validators/
     ├── validate-openspec-workflow.cjs  # change folder 寬鬆 pre-check（見下方 Validator）
     └── reconcile-check.cjs             # Phase 6 歸檔前核查（snapshot／check／verify，見下方 Archive gate）

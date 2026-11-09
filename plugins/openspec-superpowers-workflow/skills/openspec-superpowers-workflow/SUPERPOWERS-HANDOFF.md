@@ -20,7 +20,7 @@ Superpowers 產出**永遠 OVERWRITE** OpenSpec 的對應檔案，**不建立任
 ```
 啟動 /brainstorming skill
 輸入：proposal.md 和 specs/ 的內容
-執行 Socratic 提問流程
+提問預算：整個 Phase 2 至多 2 題，其餘寫成 design.md 的 `## Open Questions`（見 phases.md Phase 2）；覆寫前對照 DESIGN-RED-FLAGS.md
 ```
 
 ### Sync back（必要步驟，不可省略）
