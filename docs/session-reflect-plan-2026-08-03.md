@@ -1,5 +1,7 @@
 # session-reflect Plugin Implementation Plan
 
+> **狀態（2026-11-09 回填）：** 已完成，4 個 task 全部隨 PR #6 合併（main `fff7c8e`）。勾選框於收尾後回填。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 新增 `session-reflect` plugin——Stop hook 廉價閘門 + 主 Claude 兩段 triage,session 收尾自動回顧並提出最多 5 個經驗證的改進建議,互動勾選執行,未選入 backlog。
@@ -32,7 +34,7 @@
 - Consumes: 無(首個 task)
 - Produces: `reflect-gate.sh`——stdin 收 Stop hook JSON(`session_id`, `transcript_path`, `stop_hook_active`),stdout 輸出 `{"decision": "approve"}` 或 `{"decision": "block", "reason": "..."}`;block reason 內含「呼叫 session-reflect plugin 的 reflect skill」指令(Task 3 的 skill 依此命名)
 
-- [ ] **Step 1: 寫失敗測試**
+- [x] **Step 1: 寫失敗測試**
 
 寫入 `plugins/session-reflect/tests/gate.test.sh`(記得 `chmod +x`):
 
@@ -167,12 +169,12 @@ echo "gate.test.sh: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1
 ```
 
-- [ ] **Step 2: 跑測試確認全部失敗**
+- [x] **Step 2: 跑測試確認全部失敗**
 
 Run: `bash plugins/session-reflect/tests/gate.test.sh`
 Expected: 全部 FAIL 或直接錯誤(`reflect-gate.sh` 不存在)
 
-- [ ] **Step 3: 寫 gate script**
+- [x] **Step 3: 寫 gate script**
 
 寫入 `plugins/session-reflect/hooks/reflect-gate.sh`(記得 `chmod +x`):
 
@@ -230,12 +232,12 @@ touch "$flag_file"
 echo '{"decision": "block", "reason": "🔍 Session 收尾回顧:請呼叫 session-reflect plugin 的 reflect skill 執行回顧。先快速 triage:routine 或無實質內容,直接回報「本次 session 無需回顧:<理由>」即可結束。"}'
 ```
 
-- [ ] **Step 4: 跑測試確認全綠**
+- [x] **Step 4: 跑測試確認全綠**
 
 Run: `bash plugins/session-reflect/tests/gate.test.sh`
 Expected: `14 passed, 0 failed`(10 案例:c6/c7 各 2 條斷言、c8 有 3 條,合計 14)
 
-- [ ] **Step 5: 接 CI**
+- [x] **Step 5: 接 CI**
 
 `.github/workflows/validate.yml` 的 steps 結尾(`Run fixture / mutation / consistency suite` step 之後)加:
 
@@ -246,7 +248,7 @@ Expected: `14 passed, 0 failed`(10 案例:c6/c7 各 2 條斷言、c8 有 3 條,�
 
 (ubuntu-latest 內建 jq,無需安裝步驟。)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add plugins/session-reflect/tests/gate.test.sh plugins/session-reflect/hooks/reflect-gate.sh .github/workflows/validate.yml
@@ -267,7 +269,7 @@ Claude-Session: https://claude.ai/code/<session-id>"
 - Consumes: Task 1 的 `hooks/reflect-gate.sh`
 - Produces: plugin manifest(name `session-reflect`, version `1.0.0`)——Task 4 的 marketplace 條目引用同名同版本
 
-- [ ] **Step 1: 寫 hooks.json**
+- [x] **Step 1: 寫 hooks.json**
 
 寫入 `plugins/session-reflect/hooks/hooks.json`:
 
@@ -291,7 +293,7 @@ Claude-Session: https://claude.ai/code/<session-id>"
 }
 ```
 
-- [ ] **Step 2: 寫 plugin.json**
+- [x] **Step 2: 寫 plugin.json**
 
 寫入 `plugins/session-reflect/.claude-plugin/plugin.json`:
 
@@ -318,12 +320,12 @@ Claude-Session: https://claude.ai/code/<session-id>"
 }
 ```
 
-- [ ] **Step 3: 驗證 JSON 合法**
+- [x] **Step 3: 驗證 JSON 合法**
 
 Run: `jq . plugins/session-reflect/hooks/hooks.json plugins/session-reflect/.claude-plugin/plugin.json`
 Expected: 兩份 JSON 正常輸出,exit 0
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add plugins/session-reflect/hooks/hooks.json plugins/session-reflect/.claude-plugin/plugin.json
@@ -344,7 +346,7 @@ Claude-Session: https://claude.ai/code/<session-id>"
 - Consumes: Task 1 block reason 中的指令句(「呼叫 session-reflect plugin 的 reflect skill」)
 - Produces: skill `session-reflect:reflect`(hook 與 command 的共同入口);backlog 檔契約 `.claude/reflect-backlog.md`(`[pending]`/`[rejected]` 區塊格式,見 skill 內文)
 
-- [ ] **Step 1: 寫 SKILL.md**
+- [x] **Step 1: 寫 SKILL.md**
 
 寫入 `plugins/session-reflect/skills/reflect/SKILL.md`:
 
@@ -427,7 +429,7 @@ description: Use when the session-reflect Stop hook requests a session wrap-up r
 - 寫入失敗時:回報失敗原因,建議內容直接完整印在對話中(至少不丟失),不中斷流程
 ```
 
-- [ ] **Step 2: 寫 command**
+- [x] **Step 2: 寫 command**
 
 寫入 `plugins/session-reflect/commands/reflect.md`:
 
@@ -441,12 +443,12 @@ description: 手動觸發 session 收尾回顧——triage 後提出經驗證的
 手動觸發與 hook 觸發流程完全相同:triage 判定 routine 時照樣回報「無需回顧」即可。
 ```
 
-- [ ] **Step 3: 人工驗證 skill 可載入**
+- [x] **Step 3: 人工驗證 skill 可載入**
 
 Run: `head -5 plugins/session-reflect/skills/reflect/SKILL.md`
 Expected: frontmatter 以 `---` 開頭,含 `name: reflect` 與 `description:`(skill 為 prompt 內容,無法 unit-test;品質由 playbook 內機械規則約束,見設計文件「驗證」節)
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add plugins/session-reflect/skills/reflect/SKILL.md plugins/session-reflect/commands/reflect.md
@@ -468,7 +470,7 @@ Claude-Session: https://claude.ai/code/<session-id>"
 - Consumes: Task 2 的 plugin name/version(`session-reflect` / `1.0.0`)
 - Produces: 無(終端 task)
 
-- [ ] **Step 1: marketplace.json 加條目與版本**
+- [x] **Step 1: marketplace.json 加條目與版本**
 
 `plugins` 陣列尾端(security-audit 之後)加:
 
@@ -492,7 +494,7 @@ Claude-Session: https://claude.ai/code/<session-id>"
 
 並將 `metadata.version` 改為 `"1.10.0"`。
 
-- [ ] **Step 2: CHANGELOG.md 加節**(檔頭說明之後、`[1.9.1]` 之前)
+- [x] **Step 2: CHANGELOG.md 加節**(檔頭說明之後、`[1.9.1]` 之前)
 
 ```markdown
 ## [1.10.0] - 2026-08-03
@@ -506,7 +508,7 @@ Claude-Session: https://claude.ai/code/<session-id>"
 - Marketplace minor bump 1.9.1 → 1.10.0 (new plugin).
 ```
 
-- [ ] **Step 3: CHANGELOG.zh-TW.md 加對應節**
+- [x] **Step 3: CHANGELOG.zh-TW.md 加對應節**
 
 ```markdown
 ## [1.10.0] - 2026-08-03
@@ -520,7 +522,7 @@ Claude-Session: https://claude.ai/code/<session-id>"
 - Marketplace minor bump 1.9.1 → 1.10.0(新增 plugin)。
 ```
 
-- [ ] **Step 4: README.md 三處更新**
+- [x] **Step 4: README.md 三處更新**
 
 表格(Security Audit 列之後)加:
 
@@ -542,7 +544,7 @@ Plugin 章節(依既有各 plugin 章節的位置慣例,在最後一個 plugin �
 Session-end reflective review. A fail-open Stop-hook gate triages cheaply (routine or thin sessions pass through untouched), then the `reflect` skill sweeps the session from four lenses — out-of-scope findings, pre-existing issues, adjacent optimizations, knowledge gaps. Every candidate must carry a concrete evidence anchor and survive both an inline four-filter self-review and an adversarial verifier subagent before you see it. Up to 5 suggestions are offered as a multi-select choice: chosen ones execute immediately while context is hot; unchosen ones persist to `.claude/reflect-backlog.md` for later (`/reflect` re-opens the review anytime). Complements Session Learning: that plugin saves *lessons*, this one proposes *actions*.
 ```
 
-- [ ] **Step 5: README.zh-TW.md 對應三處更新**
+- [x] **Step 5: README.zh-TW.md 對應三處更新**
 
 表格列:
 
@@ -560,7 +562,7 @@ Session 收尾回顧系統。fail-open 的 Stop hook 閘門先廉價 triage(rout
 
 (zh-TW README 章節錨點若與英文版不同,以該檔既有錨點格式為準。)
 
-- [ ] **Step 6: 全套驗證**
+- [x] **Step 6: 全套驗證**
 
 ```bash
 jq . .claude-plugin/marketplace.json > /dev/null && echo marketplace-ok
@@ -570,12 +572,12 @@ bash plugins/session-reflect/tests/gate.test.sh
 
 Expected: `marketplace-ok`;fixture suite 全綠(125 passed 基準不退化);gate 測試 `14 passed, 0 failed`
 
-- [ ] **Step 7: plugin 結構驗證**
+- [x] **Step 7: plugin 結構驗證**
 
 派發 `plugin-dev:plugin-validator` agent 驗證 `plugins/session-reflect/` 結構(manifest 欄位、hooks.json schema、目錄慣例)。
 Expected: 無 error 級問題(warning 逐項判斷後處置)
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add .claude-plugin/marketplace.json CHANGELOG.md CHANGELOG.zh-TW.md README.md README.zh-TW.md

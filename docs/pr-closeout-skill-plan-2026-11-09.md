@@ -1,5 +1,7 @@
 # PR 收尾 skill 實作計畫
 
+> **狀態（2026-11-09 回填）：** 已完成，Task 1–9 隨 PR #43 合併（main `8d83c02`）；Task 10 在個人設定 repo 完成。與計畫的偏差：個人設定 repo 的必跑 check 實際名稱是 `suites`，不是 Task 10 寫的 `tests`。勾選框於收尾後回填。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal：** 把收尾 SOP 的事實讀取做成 `pr-closeout.mjs`（`ready`／`landed`），用 merge 閘門 hook 強制合併前跑過它，並把 SOP 升級成 skill。
@@ -50,11 +52,11 @@
   - 每個鍵是解析後的 JSON；查詢失敗時丟出 `QueryError(message)`。
 - Produces：CLI 介面 `pr-closeout.mjs ready <owner/repo> <pr> [--expect-head <sha>] [--repo-dir <path>] [--fixture <dir>] [--accept-unreviewed <path>=<reason>]...`，stdout 印一個 JSON。
 
-- [ ] **Step 1：寫測試。** `fixture base`：對 base fixture 跑 `ready example/repo 1 --fixture <base>`，期望 exit 0，JSON 的 `.exit == 0`、`.hits == []`。
-- [ ] **Step 2：寫測試。** `query fails`：fixture 缺 `graphql.json`，期望 exit 7，`.hits[0].code == "query-failed"`。
-- [ ] **Step 3：寫測試。** `gh fails, curl fallback`：PATH 前面放一個 `gh` shim，`api` 子命令一律 exit 1，`auth token` 回固定字串 `TOKEN_SENTINEL`；再放一個 `curl` shim，把 `--data` 原樣存檔，回傳 base fixture 的內容。期望 exit 0，stdout 與 stderr 都不含 `TOKEN_SENTINEL`。
-- [ ] **Step 4：跑測試，確認紅。** 執行 `bash <repo>/plugins/pr-closeout/tests/pr-closeout.test.sh`。期望看到 FAIL，原因是腳本還不存在。
-- [ ] **Step 5：實作 `fetchAll`。**
+- [x] **Step 1：寫測試。** `fixture base`：對 base fixture 跑 `ready example/repo 1 --fixture <base>`，期望 exit 0，JSON 的 `.exit == 0`、`.hits == []`。
+- [x] **Step 2：寫測試。** `query fails`：fixture 缺 `graphql.json`，期望 exit 7，`.hits[0].code == "query-failed"`。
+- [x] **Step 3：寫測試。** `gh fails, curl fallback`：PATH 前面放一個 `gh` shim，`api` 子命令一律 exit 1，`auth token` 回固定字串 `TOKEN_SENTINEL`；再放一個 `curl` shim，把 `--data` 原樣存檔，回傳 base fixture 的內容。期望 exit 0，stdout 與 stderr 都不含 `TOKEN_SENTINEL`。
+- [x] **Step 4：跑測試，確認紅。** 執行 `bash <repo>/plugins/pr-closeout/tests/pr-closeout.test.sh`。期望看到 FAIL，原因是腳本還不存在。
+- [x] **Step 5：實作 `fetchAll`。**
   - 網路模式查詢順序：
     1. GraphQL：`gh api graphql -f query=… -F n=…`。
     2. 失敗時改用 `gh auth token`，經 `execFile` 傳給 curl 的 `-H "Authorization: bearer …"`，token 走參數陣列、不經 shell。
@@ -64,8 +66,8 @@
     - `reviewThreads(first:100)`：pageInfo 與節點的 isResolved、isOutdated、path、line，以及 `comments(first:1)` 的作者 login。
     - head commit 的 statusCheckRollup：state 與 `contexts(first:100)`，含 pageInfo。CheckRun 取 name、status、conclusion、startedAt、completedAt；StatusContext 取 context、state。
   - 有下一頁時丟 `QueryError("more than 100 …")`。
-- [ ] **Step 6：跑測試，確認綠。** 指令同 Step 4，期望 3 條都 pass。
-- [ ] **Step 7：commit。** 訊息：`feat(pr-closeout): query layer with gh, curl fallback and fixtures`。
+- [x] **Step 6：跑測試，確認綠。** 指令同 Step 4，期望 3 條都 pass。
+- [x] **Step 7：commit。** 訊息：`feat(pr-closeout): query layer with gh, curl fallback and fixtures`。
 
 ### Task 2：GitHub 狀態判定（exit 表）
 
@@ -79,7 +81,7 @@
   - `exit` 依 Global Constraints 的優先序，取 `hits` 中最優先的一條。
   - `hits` 列出全部命中的條件。
 
-- [ ] **Step 1：寫測試。** 每個案例都以 base fixture 加一個 `jq` 修改，用 helper `ready_case <want> <label> '<jq on graphql.json>' [args]` 執行。下列每列兩個觸發輸入：
+- [x] **Step 1：寫測試。** 每個案例都以 base fixture 加一個 `jq` 修改，用 helper `ready_case <want> <label> '<jq on graphql.json>' [args]` 執行。下列每列兩個觸發輸入：
 
   | want | 觸發輸入（兩個） |
   |---|---|
@@ -100,11 +102,11 @@
   另加兩條：
   - `hits lists all`：衝突與未解決 thread 同時發生，期望 exit 2、`.hits | length == 2`。
   - `threads listed`：exit 3 時，`.threads[0]` 含 `path` 與 `line`。
-- [ ] **Step 2：跑測試，確認紅。**
-- [ ] **Step 3：實作 `assess`。** 判定邏輯就是那張表。conclusion 的白名單是 SUCCESS、NEUTRAL、SKIPPED；mergeStateStatus 的已知集合是 CLEAN、HAS_HOOKS、UNSTABLE、BLOCKED、BEHIND、DIRTY、UNKNOWN，不在集合內就回 7。
-- [ ] **Step 4：跑測試，確認綠。**
-- [ ] **Step 5：加突變。** 每個 gate 值與每個 exit code 各一個突變，例如把 `isOutdated` 的 thread 排除在外，必須被「未解決但 outdated」那個案例殺掉；再跑一次確認全部殺掉。
-- [ ] **Step 6：commit。** 訊息：`feat(pr-closeout): ready verdict with the full exit table`。
+- [x] **Step 2：跑測試，確認紅。**
+- [x] **Step 3：實作 `assess`。** 判定邏輯就是那張表。conclusion 的白名單是 SUCCESS、NEUTRAL、SKIPPED；mergeStateStatus 的已知集合是 CLEAN、HAS_HOOKS、UNSTABLE、BLOCKED、BEHIND、DIRTY、UNKNOWN，不在集合內就回 7。
+- [x] **Step 4：跑測試，確認綠。**
+- [x] **Step 5：加突變。** 每個 gate 值與每個 exit code 各一個突變，例如把 `isOutdated` 的 thread 排除在外，必須被「未解決但 outdated」那個案例殺掉；再跑一次確認全部殺掉。
+- [x] **Step 6：commit。** 訊息：`feat(pr-closeout): ready verdict with the full exit table`。
 
 ### Task 3：附加資訊與必跑 check（D6）
 
@@ -121,7 +123,7 @@
   - `suspectedSkip: [name]`
 - 必跑名單上的 check 沒出現在 rollup 時，加一條 hit：`{code: "checks-failed", detail: "required check missing: <name>"}`，exit 4。
 
-- [ ] **Step 1：寫測試。**
+- [x] **Step 1：寫測試。**
   - `required missing`：base fixture 拿掉 security-review 的 context，期望 exit 4，detail 含 `required check missing: security-review`。
   - `required missing 2`：拿掉 validate-fixtures，同樣期望 exit 4。
   - `suspected skip`：security-review 的 startedAt 到 completedAt 只有 12 秒，期望 exit 0、`.suspectedSkip == ["security-review"]`。
@@ -131,10 +133,10 @@
   - 不在名單上的 repo：只檢查一般 check，不檢查必跑項。
   - 設定檔不存在：同上，exit 0。
   - 設定檔不是合法 JSON：exit 7。
-- [ ] **Step 2：跑測試，確認紅。**
-- [ ] **Step 3：實作。** `prevPulls` 取第一筆 `merged_at` 不為 null 的 PR，`prevCommit` 的 parents 數量 1 對應 squash、2 對應 merge。`baseBehind` 取自 `compare.behind_by`。
-- [ ] **Step 4：跑測試，確認綠；加突變。** 至少兩個：拿掉必跑名單的比對、時長門檻改成 0。確認都被殺掉。
-- [ ] **Step 5：commit。** 訊息：`feat(pr-closeout): required checks, suspected skips, precedent and comments`。
+- [x] **Step 2：跑測試，確認紅。**
+- [x] **Step 3：實作。** `prevPulls` 取第一筆 `merged_at` 不為 null 的 PR，`prevCommit` 的 parents 數量 1 對應 squash、2 對應 merge。`baseBehind` 取自 `compare.behind_by`。
+- [x] **Step 4：跑測試，確認綠；加突變。** 至少兩個：拿掉必跑名單的比對、時長門檻改成 0。確認都被殺掉。
+- [x] **Step 5：commit。** 訊息：`feat(pr-closeout): required checks, suspected skips, precedent and comments`。
 
 ### Task 4：審查涵蓋檢查（D2、D2b）
 
@@ -146,7 +148,7 @@
 - Produces：`coverage(repoDir, {headRefName, headOid, baseRef, accept}) -> {status: "covered"|"unreviewed"|"unknown", reason?, unreviewed:[path], docsOnly:[path], accepted:[{path, reason}]}`。
 - `status` 為 `unreviewed` 時，加一條 hit `{code: "merge-gate", gate: "unreviewed"}`，exit 6。
 
-- [ ] **Step 1：寫測試。** fixture repo 的建法：base commit，加上分支的兩個檔 `a.sh`、`b.md`；`.git/review-branch-last.json` 照 review-branch 格式寫入 `branch` 與 `scopedFiles[{file, blob}]`。案例如下：
+- [x] **Step 1：寫測試。** fixture repo 的建法：base commit，加上分支的兩個檔 `a.sh`、`b.md`；`.git/review-branch-last.json` 照 review-branch 格式寫入 `branch` 與 `scopedFiles[{file, blob}]`。案例如下：
 
   | 期望 | 情境 |
   |---|---|
@@ -162,13 +164,13 @@
   | covered | 對 `a.sh` 帶 `--accept-unreviewed a.sh=codex r3 已審`，`.coverage.accepted[0].reason` 為「codex r3 已審」 |
   | 用法錯誤，exit 7 | `--accept-unreviewed a.sh=`（沒有理由） |
 
-- [ ] **Step 2：跑測試，確認紅。**
-- [ ] **Step 3：實作。**
+- [x] **Step 2：跑測試，確認紅。**
+- [x] **Step 3：實作。**
   - 變更清單用 `git -C <dir> diff --name-only <merge-base(origin/<base>, head)> <head>`。
   - blob 用 `git ls-tree <head> -- <path>` 取得 mode 與 hash，正規化成 review-branch 的格式：`<hash>`、`<hash>+x`、`link:<hash>`。
   - 純文件路徑的判斷是 `/\.(md|mdx|txt|rst|adoc)$|^docs?\//`。
-- [ ] **Step 4：跑測試，確認綠；加突變。** 至少三個：mode 正規化、純文件豁免、放行理由必填。確認都被殺掉。
-- [ ] **Step 5：commit。** 訊息：`feat(pr-closeout): reviewed bytes equal merged bytes`。
+- [x] **Step 4：跑測試，確認綠；加突變。** 至少三個：mode 正規化、純文件豁免、放行理由必填。確認都被殺掉。
+- [x] **Step 5：commit。** 訊息：`feat(pr-closeout): reviewed bytes equal merged bytes`。
 
 ### Task 5：openspec 歸檔檢查（W3-2，D3）
 
@@ -179,14 +181,14 @@
 **Interfaces：**
 - Produces：`.openspec`，形狀是 `{present: bool, unarchivedChanges: [{name, verify: "fresh"|"stale:<x>"|"no-verdict"|"unavailable"}]}`。只警告，不影響 exit。
 
-- [ ] **Step 1：寫測試。**
+- [x] **Step 1：寫測試。**
   - 沒有 `openspec/`：`.openspec.present == false`。
   - PR 動到 `openspec/changes/foo/tasks.md` 且 head 時該目錄還在：`unarchivedChanges[0].name == "foo"`，exit 不變。
   - PR 只動 `openspec/changes/archive/2026-11-09-foo/`：列表為空。
   - 找不到 reconcile-check 腳本：`verify == "unavailable"`。
-- [ ] **Step 2：跑測試，確認紅；實作；確認綠。** reconcile-check 的位置：取 `~/.claude/plugins/cache/*/openspec-superpowers-workflow/*/skills/openspec-superpowers-workflow/validators/reconcile-check.cjs` 版本排序最新的一份；路徑可用 `RECONCILE_CHECK` 環境變數覆寫，供測試使用。
-- [ ] **Step 3：加突變。** 把 archive 的排除拿掉，確認被殺掉。
-- [ ] **Step 4：commit。** 訊息：`feat(pr-closeout): list unarchived openspec changes`。
+- [x] **Step 2：跑測試，確認紅；實作；確認綠。** reconcile-check 的位置：取 `~/.claude/plugins/cache/*/openspec-superpowers-workflow/*/skills/openspec-superpowers-workflow/validators/reconcile-check.cjs` 版本排序最新的一份；路徑可用 `RECONCILE_CHECK` 環境變數覆寫，供測試使用。
+- [x] **Step 3：加突變。** 把 archive 的排除拿掉，確認被殺掉。
+- [x] **Step 4：commit。** 訊息：`feat(pr-closeout): list unarchived openspec changes`。
 
 ### Task 6：`landed`
 
@@ -200,7 +202,7 @@
   - 結果為 exit 0、6、7。
   - JSON 欄位：`{mergedAt, mergeCommit, onBase: bool, headMatches: bool, branch?: {openPulls, remote: bool, local: bool}}`。
 
-- [ ] **Step 1：寫測試。** 建一個 bare origin 與 clone，在 origin 的 main 上做一個 squash commit 當 `merge_commit_sha`。
+- [x] **Step 1：寫測試。** 建一個 bare origin 與 clone，在 origin 的 main 上做一個 squash commit 當 `merge_commit_sha`。
 
   | 期望 | 情境 |
   |---|---|
@@ -214,9 +216,9 @@
   | exit 0 | 全部刪乾淨 |
   | exit 7 | `git fetch` 失敗（用 git shim 模擬） |
 
-- [ ] **Step 2：跑測試，確認紅；實作；確認綠。** 先 `git -C <dir> fetch origin <base>`；判祖先用 `merge-base --is-ancestor <mc> origin/<base>`，不用原分支的 tip。
-- [ ] **Step 3：加突變。** 至少兩個：祖先判定改成用分支 tip、拿掉遠端分支檢查。確認都被殺掉。
-- [ ] **Step 4：commit。** 訊息：`feat(pr-closeout): landed verifies merge, head and branch cleanup`。
+- [x] **Step 2：跑測試，確認紅；實作；確認綠。** 先 `git -C <dir> fetch origin <base>`；判祖先用 `merge-base --is-ancestor <mc> origin/<base>`，不用原分支的 tip。
+- [x] **Step 3：加突變。** 至少兩個：祖先判定改成用分支 tip、拿掉遠端分支檢查。確認都被殺掉。
+- [x] **Step 4：commit。** 訊息：`feat(pr-closeout): landed verifies merge, head and branch cleanup`。
 
 ### Task 7：merge 閘門 hook（D7）
 
@@ -241,7 +243,7 @@
   - 看得出是 merge、卻解析不出 repo 或 PR 號碼時 deny，要求明寫 `--repo` 與號碼。
   - 這支 hook 是閘門，所以 `ready` 腳本找不到或 node 缺少時也 deny，並在訊息裡寫明怎麼用 bypass。
 
-- [ ] **Step 1：寫測試。** 用假的 `ready` 腳本，依環境變數回指定的 exit 與 JSON。
+- [x] **Step 1：寫測試。** 用假的 `ready` 腳本，依環境變數回指定的 exit 與 JSON。
 
   | 期望 | 情境 |
   |---|---|
@@ -256,10 +258,10 @@
   | 放行 | `gh api repos/o/r/pulls/3/merge -X PUT`，ready 回 0 |
 
   另外，每個解析分支至少兩個輸入。
-- [ ] **Step 2：跑測試，確認紅；實作；確認綠。** 命令的斷詞沿用 `plugins/openspec-superpowers-workflow/hooks/archive-gate.sh` 的作法：perl tokenizer、heredoc 剝除、只認命令位置。注意 here-string `<<<` 不能當成 heredoc，判斷是否為 heredoc 時不要加「下一個字元不是 `<`」這個條件，原因見個人設定 repo 的 bare-cd-check 修正。測試加一條：`cat <<< x` 換行後接 `gh pr merge 3 --repo o/r`，期望照樣攔到。
-- [ ] **Step 3：加突變。** bypass、解析、exit 判定各一個，確認都被殺掉。
-- [ ] **Step 4：實機驗證一次。** 對一個已合併的 PR 下 `gh pr merge <n> --repo …`，期望被 hook 以 `not-open` deny，而且 GitHub 端沒有任何改變。
-- [ ] **Step 5：commit。** 訊息：`feat(hooks): pr-merge-gate runs pr-closeout ready before any merge`。
+- [x] **Step 2：跑測試，確認紅；實作；確認綠。** 命令的斷詞沿用 `plugins/openspec-superpowers-workflow/hooks/archive-gate.sh` 的作法：perl tokenizer、heredoc 剝除、只認命令位置。注意 here-string `<<<` 不能當成 heredoc，判斷是否為 heredoc 時不要加「下一個字元不是 `<`」這個條件，原因見個人設定 repo 的 bare-cd-check 修正。測試加一條：`cat <<< x` 換行後接 `gh pr merge 3 --repo o/r`，期望照樣攔到。
+- [x] **Step 3：加突變。** bypass、解析、exit 判定各一個，確認都被殺掉。
+- [x] **Step 4：實機驗證一次。** 對一個已合併的 PR 下 `gh pr merge <n> --repo …`，期望被 hook 以 `not-open` deny，而且 GitHub 端沒有任何改變。
+- [x] **Step 5：commit。** 訊息：`feat(hooks): pr-merge-gate runs pr-closeout ready before any merge`。
 
 ### Task 8：skill 本文與真實驗證
 
@@ -267,7 +269,7 @@
 - Create：`plugins/pr-closeout/skills/pr-closeout/SKILL.md`
 - Test：在 `plugins/pr-closeout/tests/pr-closeout.test.sh` 加兩條：SKILL.md 的 frontmatter 有 `name: pr-closeout` 與 description；本文提到的每個子命令都存在於腳本的 usage。
 
-- [ ] **Step 1：寫 SKILL.md。**
+- [x] **Step 1：寫 SKILL.md。**
   - description 包含「merge」「走收尾 SOP」「收尾」。
   - 本文第一段：「merge 不自動觸發，使用者明說才做」。
   - 腳本一律寫成 `node ${CLAUDE_PLUGIN_ROOT}/scripts/pr-closeout.mjs`。
@@ -278,13 +280,13 @@
   - CI 分類規則四條。
   - `suspectedSkip` 與 `precedent` 的用法。
   - 第 5、6 步（專案記憶、帳本收帳）照原 SOP，寫成通用說法，不提個人路徑。
-- [ ] **Step 2：真實驗證。** 輸出存在 repo 外的 scratchpad，供 PR body 引用；寫進 PR body 時要去識別化。
+- [x] **Step 2：真實驗證。** 輸出存在 repo 外的 scratchpad，供 PR body 引用；寫進 PR body 時要去識別化。
   - 對本 repo #42 跑 `ready`，帶 `--repo-dir <repo>`。
   - 若 #42 那份 review-branch 紀錄已被覆蓋，改用使用者另存的副本，或記錄為「無法重現」。
   - 期望：exit 6、`gate == "not-open"`；`.coverage` 列出 commit B 帶進來的檔。
   - 再對另一個已合併的 PR 跑 `landed`，期望 exit 0。
-- [ ] **Step 3：跑全部測試。** 跑 `plugins/pr-closeout/tests/*.test.sh` 與 `node scripts/validate-fixtures.cjs`，期望全綠。
-- [ ] **Step 4：commit。** 訊息：`feat(pr-closeout): skill body`。
+- [x] **Step 3：跑全部測試。** 跑 `plugins/pr-closeout/tests/*.test.sh` 與 `node scripts/validate-fixtures.cjs`，期望全綠。
+- [x] **Step 4：commit。** 訊息：`feat(pr-closeout): skill body`。
 
 ### Task 9：plugin 打包與發布準備
 
@@ -297,13 +299,13 @@
   - 根目錄的 `CHANGELOG.md` 與 `CHANGELOG.zh-TW.md`：加 `[1.15.0]`。
   - 根目錄的 `README.md` 與 `README.zh-TW.md`：plugin 清單加一段。
 
-- [ ] **Step 1：寫檔。** README 寫清楚四件事：
+- [x] **Step 1：寫檔。** README 寫清楚四件事：
   - 兩個子命令與 exit 表。
   - 設定檔 `PR_CLOSEOUT_CONFIG` 的格式與預設位置。
   - merge 閘門的行為與 `PR_CLOSEOUT_OK=1`。
   - 安裝後要 `claude plugin update pr-closeout` 才拿得到新版。
-- [ ] **Step 2：驗證。** 跑 `node scripts/validate-fixtures.cjs`，期望全綠；版本一致性與 dir completeness 檢查都要過。也跑 `claude plugin validate plugins/pr-closeout`。
-- [ ] **Step 3：commit。** 訊息：`release(pr-closeout): 1.0.0 (marketplace 1.15.0)`。
+- [x] **Step 2：驗證。** 跑 `node scripts/validate-fixtures.cjs`，期望全綠；版本一致性與 dir completeness 檢查都要過。也跑 `claude plugin validate plugins/pr-closeout`。
+- [x] **Step 3：commit。** 訊息：`release(pr-closeout): 1.0.0 (marketplace 1.15.0)`。
 
 ### Task 10：個人設定 repo 的個人設定（本 repo PR 合併並安裝 plugin 之後）
 
@@ -316,7 +318,7 @@
   - `refs/INDEX.md`：更新該條目。
   - `CLAUDE.md`：Git 節「PR 收尾 SOP」那一行改指向 skill。動之前先讀 `refs/claude-md-authoring.md`。
 
-- [ ] **Step 1：裝好 plugin。** `claude plugin update`（或 install）`pr-closeout`，再以 `claude plugin list` 確認版本為 1.0.0。
-- [ ] **Step 2：寫檔。** 跑 `bash ~/.claude/scripts/hooks/claude-md-lint.sh`，必須通過。
-- [ ] **Step 3：實際用一次。** 走這個個人設定 repo PR 自己的收尾：`ready` 回 0，merge 閘門放行，`landed` 回 0。
-- [ ] **Step 4：跑全套並 commit。** `bash ~/.claude/scripts/hooks/tests/run-all.sh` 必須 ALL GREEN；commit 訊息 `feat: pr-closeout config, refs and CLAUDE.md point to the plugin skill`。
+- [x] **Step 1：裝好 plugin。** `claude plugin update`（或 install）`pr-closeout`，再以 `claude plugin list` 確認版本為 1.0.0。
+- [x] **Step 2：寫檔。** 跑 `bash ~/.claude/scripts/hooks/claude-md-lint.sh`，必須通過。
+- [x] **Step 3：實際用一次。** 走這個個人設定 repo PR 自己的收尾：`ready` 回 0，merge 閘門放行，`landed` 回 0。
+- [x] **Step 4：跑全套並 commit。** `bash ~/.claude/scripts/hooks/tests/run-all.sh` 必須 ALL GREEN；commit 訊息 `feat: pr-closeout config, refs and CLAUDE.md point to the plugin skill`。
