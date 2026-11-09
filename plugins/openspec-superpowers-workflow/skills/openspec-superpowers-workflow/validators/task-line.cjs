@@ -10,14 +10,18 @@ const TASK_LINE = /^\s*(?:[-*+]|\d{1,9}[.)])\s*\[(?:\s*([^\]\s]?)\s*\](?![([])|\
 // A skip reason needs "skip:" followed by at least one letter or digit; "skip:" alone or only punctuation is none.
 const SKIP_REASON = /skip:\s*[\p{L}\p{N}]/u;
 
-// → [{ line, no (1-based), done }] for every task line of the text, in order.
+// → [{ line, no (1-based), done, skipped }] for every task line of the text, in order; `skipped` is an
+// unfinished task excused with a skip reason, so "open work" is `!done && !skipped` for every consumer.
 function parseTaskLines(text) {
   const out = [];
   (text || '').split('\n').forEach((line, i) => {
     const m = line.match(TASK_LINE);
-    if (m) out.push({ line, no: i + 1, done: (m[1] ?? '').toLowerCase() === 'x' });
+    if (m) {
+      const done = (m[1] ?? '').toLowerCase() === 'x';
+      out.push({ line, no: i + 1, done, skipped: !done && SKIP_REASON.test(line) });
+    }
   });
   return out;
 }
 
-module.exports = { TASK_LINE, SKIP_REASON, parseTaskLines };
+module.exports = { parseTaskLines };

@@ -14,7 +14,7 @@ const crypto = require('crypto');
 
 const USAGE = 'Usage: openspec-archive-stats.cjs --root <dir> [--root <dir> …] [--since YYYY-MM-DD] [--names]';
 // The task definition and the skip rule are shared with reconcile-check R6 (one module, same pattern as the OpenSpec CLI).
-const { SKIP_REASON, parseTaskLines } = require('../skills/openspec-superpowers-workflow/validators/task-line.cjs');
+const { parseTaskLines } = require('../skills/openspec-superpowers-workflow/validators/task-line.cjs');
 const DEFINITION =
   'task = a line OpenSpec 1.16 counts as a task (bullet -, *, +, 1. or 1), then a [ ]-style box, at any indentation; ' +
   'done only when the box holds x or X); ' +
@@ -44,15 +44,15 @@ const isDir = (p) => { try { return fs.statSync(p).isDirectory(); } catch { retu
 const archiveDir = (project) => path.join(project, 'openspec', 'changes', 'archive');
 
 function findProjects(roots) {
-  const found = new Map();
+  const found = new Set();
   for (const root of roots) {
     const abs = path.resolve(root);
     const candidates = isDir(archiveDir(abs))
       ? [abs]
       : (() => { try { return fs.readdirSync(abs).map((n) => path.join(abs, n)); } catch { return []; } })();
-    for (const c of candidates) if (isDir(archiveDir(c))) found.set(c, true);
+    for (const c of candidates) if (isDir(archiveDir(c))) found.add(c);
   }
-  return [...found.keys()];
+  return [...found];
 }
 
 function readTasks(changeDir) {
@@ -91,8 +91,9 @@ function main(argv) {
       if (open.length === 0) continue;
       totals.incomplete++; entry.incomplete++; byMonth[month].incomplete++;
       if (open.length === tasks.length) totals.zeroChecked++;
-      if (open.some((t) => !SKIP_REASON.test(t.line))) totals.incompleteNoReason++;
-      if (open.some((t) => SKIP_REASON.test(t.line))) totals.withSkipReason++;
+      const excused = open.filter((t) => t.skipped).length;
+      if (excused < open.length) totals.incompleteNoReason++;
+      if (excused > 0) totals.withSkipReason++;
     }
     projects.push(entry);
   }

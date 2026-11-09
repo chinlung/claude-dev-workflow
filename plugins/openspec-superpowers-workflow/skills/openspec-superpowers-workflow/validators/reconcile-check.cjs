@@ -17,7 +17,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { execFileSync } = require('child_process');
 const { REQUIRED_FILES, findSpecFiles, checkRequirementBlocks } = require('./validate-openspec-workflow.cjs');
-const { SKIP_REASON, parseTaskLines } = require('./task-line.cjs');
+const { parseTaskLines } = require('./task-line.cjs');
 
 const ARTIFACTS = { proposal: 'proposal.md', design: 'design.md', tasks: 'tasks.md', reviewNotes: 'review-notes.md' };
 const USAGE = 'Usage: reconcile-check.cjs snapshot|check|verify <openspec/changes/<name>> [--json]';
@@ -145,7 +145,7 @@ function checkR5(ctx) {
 function checkR6(ctx) {
   const boxes = parseTaskLines(ctx.read(ARTIFACTS.tasks));
   if (boxes.length === 0) return result('warn', ['tasks.md has no checkbox task']);
-  const open = boxes.filter(({ line, done }) => !done && !SKIP_REASON.test(line));
+  const open = boxes.filter((t) => !t.done && !t.skipped);
   if (open.length === 0) return result('pass');
   return result('fail', [`${open.length} unchecked task(s) without "skip: <reason>" (the reason needs a letter or digit)`, ...open.map(({ line, no }) => `line ${no}: ${line.trim()}`)]);
 }
