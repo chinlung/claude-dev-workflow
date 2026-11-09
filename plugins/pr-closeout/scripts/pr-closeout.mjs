@@ -122,9 +122,118 @@ export function fetchAll({ owner, repo, pr, fixture }) {
 }
 
 // ── verdict ──────────────────────────────────────────────────────────────────────────────────────
-export function assess(raw) {
-  prOf(raw.graphql);
-  return { exit: 0, gate: null, hits: [] };
+const KNOWN = {
+  state: new Set(['OPEN', 'CLOSED', 'MERGED']),
+  mergeable: new Set(['MERGEABLE', 'CONFLICTING', 'UNKNOWN']),
+  mergeStateStatus: new Set(['CLEAN', 'HAS_HOOKS', 'UNSTABLE', 'BLOCKED', 'BEHIND', 'DIRTY', 'UNKNOWN']),
+  reviewDecision: new Set([null, 'APPROVED', 'CHANGES_REQUESTED', 'REVIEW_REQUIRED']),
+  rollup: new Set(['SUCCESS', 'FAILURE', 'ERROR', 'PENDING', 'EXPECTED']),
+};
+const OK_CONCLUSIONS = new Set(['SUCCESS', 'NEUTRAL', 'SKIPPED']);
+const EXIT_OF = { 'query-failed': 7, 'merge-gate': 6, conflict: 2, 'unresolved-threads': 3, 'checks-failed': 4, pending: 5 };
+// Order of urgency: what waiting cannot fix comes first. The two "soft" gates (an unseen block,
+// a base the branch must catch up with) rank below pending: a running check may be what blocks.
+const SOFT_GATES = new Set(['blocked-unseen', 'behind']);
+const RANK = { 'query-failed': 0, 'merge-gate': 1, conflict: 2, 'unresolved-threads': 3, 'checks-failed': 4, pending: 5 };
+const rankOf = (h) => (h.code === 'merge-gate' && SOFT_GATES.has(h.gate) ? 6 : RANK[h.code]);
+
+// A check context → 'ok' | 'failed' | 'pending'. Anything not known to be fine is failed.
+function contextState(c) {
+  if (c && c.__typename === 'CheckRun') {
+    if (c.status !== 'COMPLETED') return 'pending';
+    return OK_CONCLUSIONS.has(c.conclusion) ? 'ok' : 'failed';
+  }
+  if (c && c.__typename === 'StatusContext') {
+    if (c.state === 'SUCCESS') return 'ok';
+    if (c.state === 'PENDING' || c.state === 'EXPECTED') return 'pending';
+    return 'failed';
+  }
+  return 'failed';
+}
+
+export function assess(raw, { expectHead } = {}) {
+  const p = prOf(raw.graphql);
+  const hits = [];
+  const unknown = (field, value) => hits.push({ code: 'query-failed', detail: `unknown ${field}: ${JSON.stringify(value)}` });
+  const known = (field, value) => (KNOWN[field].has(value) ? true : (unknown(field, value), false));
+  const gate = (g, detail) => hits.push({ code: 'merge-gate', gate: g, detail });
+
+  if (known('state', p.state) && p.state !== 'OPEN') gate('not-open', `the PR is ${p.state}`);
+  if (typeof p.isDraft !== 'boolean') unknown('isDraft', p.isDraft);
+  else if (p.isDraft) gate('draft', 'the PR is a draft');
+  if (known('reviewDecision', p.reviewDecision === undefined ? '(missing)' : p.reviewDecision) && p.reviewDecision === 'CHANGES_REQUESTED') {
+    gate('changes-requested', 'a reviewer requested changes');
+  }
+  if (typeof p.headRefOid !== 'string') unknown('headRefOid', p.headRefOid);
+  else if (expectHead && p.headRefOid !== expectHead) gate('head-mismatch', `head is ${p.headRefOid}, expected ${expectHead}`);
+
+  const mergeableKnown = known('mergeable', p.mergeable);
+  const stateKnown = known('mergeStateStatus', p.mergeStateStatus);
+  if ((mergeableKnown && p.mergeable === 'CONFLICTING') || (stateKnown && p.mergeStateStatus === 'DIRTY')) {
+    hits.push({ code: 'conflict', detail: 'the branch conflicts with its base' });
+  }
+
+  const rt = p.reviewThreads;
+  let threads = [];
+  if (!rt || !Array.isArray(rt.nodes) || !rt.pageInfo) unknown('reviewThreads', rt);
+  else {
+    if (rt.pageInfo.hasNextPage) hits.push({ code: 'query-failed', detail: `more than ${PAGE} review threads` });
+    // outdated is not resolved: it only means the line moved
+    threads = rt.nodes.filter((t) => !t || t.isResolved !== true).map((t) => ({
+      path: t && t.path, line: t && t.line, outdated: !!(t && t.isOutdated),
+      author: t && t.comments && t.comments.nodes && t.comments.nodes[0] && t.comments.nodes[0].author && t.comments.nodes[0].author.login,
+    }));
+    if (threads.length) hits.push({ code: 'unresolved-threads', detail: `${threads.length} unresolved review thread(s)` });
+  }
+
+  const commit = p.commits && p.commits.nodes && p.commits.nodes[0] && p.commits.nodes[0].commit;
+  if (!commit) unknown('commits', p.commits);
+  const rollup = commit ? commit.statusCheckRollup : null;   // null: the head has no checks at all
+  let checks = [];
+  if (rollup) {
+    const cx = rollup.contexts;
+    if (!cx || !Array.isArray(cx.nodes) || !cx.pageInfo) unknown('statusCheckRollup.contexts', cx);
+    else {
+      if (cx.pageInfo.hasNextPage) hits.push({ code: 'query-failed', detail: `more than ${PAGE} check contexts` });
+      checks = cx.nodes.map((c) => ({
+        name: c && (c.name || c.context), state: contextState(c),
+        conclusion: c && (c.conclusion || c.state || null), startedAt: c && c.startedAt, completedAt: c && c.completedAt,
+      }));
+    }
+    const failedChecks = checks.filter((c) => c.state === 'failed');
+    const pendingChecks = checks.filter((c) => c.state === 'pending');
+    const rollupKnown = known('rollup', rollup.state);
+    const rollupFailed = rollupKnown && (rollup.state === 'FAILURE' || rollup.state === 'ERROR');
+    if (failedChecks.length || rollupFailed) {
+      hits.push({ code: 'checks-failed', detail: failedChecks.length ? `failed: ${failedChecks.map((c) => c.name).join(', ')}` : `the head's rollup is ${rollup.state}` });
+    }
+    if (pendingChecks.length || (rollupKnown && (rollup.state === 'PENDING' || rollup.state === 'EXPECTED'))) {
+      hits.push({ code: 'pending', detail: pendingChecks.length ? `running: ${pendingChecks.map((c) => c.name).join(', ')}` : `the head's rollup is ${rollup.state}` });
+    }
+  }
+
+  if ((mergeableKnown && p.mergeable === 'UNKNOWN') || (stateKnown && p.mergeStateStatus === 'UNKNOWN')) {
+    hits.push({ code: 'pending', detail: 'GitHub is still computing mergeability' });
+  }
+  // BLOCKED with failing checks is already a checks-failed hit; BLOCKED with nothing visible wrong
+  // is the gate this script cannot see (a required review, a ruleset) — never read that as green.
+  if (stateKnown && p.mergeStateStatus === 'BLOCKED' && !hits.some((h) => h.code === 'checks-failed')) {
+    gate('blocked-unseen', `GitHub reports BLOCKED (review decision ${p.reviewDecision ?? 'none'})`);
+  }
+  if (stateKnown && p.mergeStateStatus === 'BEHIND') gate('behind', 'the base requires the branch to be up to date');
+
+  hits.sort((a, b) => rankOf(a) - rankOf(b));
+  const top = hits[0];
+  return {
+    exit: top ? EXIT_OF[top.code] : 0,
+    gate: top && top.code === 'merge-gate' ? top.gate : null,
+    hits,
+    head: p.headRefOid ?? null,
+    headRefName: p.headRefName ?? null,
+    baseRefName: p.baseRefName ?? null,
+    threads,
+    checks,
+  };
 }
 
 // ── CLI ──────────────────────────────────────────────────────────────────────────────────────────

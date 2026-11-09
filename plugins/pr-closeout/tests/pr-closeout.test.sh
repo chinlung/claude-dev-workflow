@@ -98,8 +98,61 @@ has "token sent on curl stdin" "$(cat "$tmp/curl-stdin" 2>/dev/null)" "Authoriza
 printf '#!/bin/bash\nexit 7\n' > "$tmp/shim/curl"; chmod +x "$tmp/shim/curl"
 PATH="$tmp/shim:$PATH" run_cli 7 "gh and curl both fail" ready example/repo 1
 
+# ── Task 2: the exit table ───────────────────────────────────────────────────────────────────────
+P='.data.repository.pullRequest'
+RU="$P.commits.nodes[0].commit.statusCheckRollup"
+CX="$RU.contexts.nodes"
+THREAD='{isResolved:false,isOutdated:false,path:"src/a.sh",line:7,comments:{nodes:[{author:{login:"rev"}}]}}'
+# gate_case <exit> <gate or ""> <label> <jq filter> [args]: exit plus the gate field
+gate_case() {
+  local want=$1 gate=$2 label=$3 filter=$4; shift 4
+  ready_case "$want" "$label" "$(fixture "t2-$RANDOM" "$filter")" "$@"
+  if [ -n "$gate" ]; then jqeq "$label: gate" '.gate' "\"$gate\""; fi
+}
+gate_case 6 not-open          "merged PR"                 "$P.state = \"MERGED\""
+gate_case 6 not-open          "closed PR"                 "$P.state = \"CLOSED\""
+gate_case 6 draft             "draft, clean"              "$P.isDraft = true"
+gate_case 6 draft             "draft wins over blocked"   "$P.isDraft = true | $P.mergeStateStatus = \"BLOCKED\""
+gate_case 6 changes-requested "changes requested"         "$P.reviewDecision = \"CHANGES_REQUESTED\""
+gate_case 6 changes-requested "changes requested + red"   "$P.reviewDecision = \"CHANGES_REQUESTED\" | $RU.state = \"FAILURE\""
+gate_case 6 head-mismatch     "other head (sha-1)"        "." --expect-head 2222222222222222222222222222222222222222
+gate_case 6 head-mismatch     "other head (sha-256)"      "." --expect-head 2222222222222222222222222222222222222222222222222222222222222222
+gate_case 2 ""                "conflicting"               "$P.mergeable = \"CONFLICTING\""
+gate_case 2 ""                "dirty"                     "$P.mergeStateStatus = \"DIRTY\""
+gate_case 3 ""                "one unresolved thread"     "$P.reviewThreads.nodes = [$THREAD]"
+jqeq "threads listed" '[.threads[0].path, .threads[0].line, .threads[0].author]' '["src/a.sh",7,"rev"]'
+gate_case 3 ""                "outdated is not resolved"  "$P.reviewThreads.nodes = [$THREAD | .isOutdated = true]"
+gate_case 0 ""                "resolved thread"           "$P.reviewThreads.nodes = [$THREAD | .isResolved = true]"
+gate_case 4 ""                "a failed check"            "$CX[1].conclusion = \"FAILURE\""
+gate_case 4 ""                "a conclusion not on the list" "$CX[1].conclusion = \"TIMED_OUT\""
+gate_case 4 ""                "blocked, rollup failure"   "$P.mergeStateStatus = \"BLOCKED\" | $RU.state = \"FAILURE\""
+gate_case 4 ""                "blocked, rollup error"     "$P.mergeStateStatus = \"BLOCKED\" | $RU.state = \"ERROR\""
+gate_case 4 ""                "a status context failed"   "$CX += [{__typename:\"StatusContext\",context:\"ci/x\",state:\"FAILURE\"}]"
+gate_case 5 ""                "a check still running"     "$CX[0].status = \"IN_PROGRESS\" | $CX[0].conclusion = null"
+gate_case 5 ""                "mergeable still computing" "$P.mergeable = \"UNKNOWN\""
+gate_case 5 ""                "merge state still computing" "$P.mergeStateStatus = \"UNKNOWN\""
+gate_case 6 blocked-unseen    "blocked, everything green" "$P.mergeStateStatus = \"BLOCKED\""
+gate_case 6 blocked-unseen    "blocked, review required"  "$P.mergeStateStatus = \"BLOCKED\" | $P.reviewDecision = \"REVIEW_REQUIRED\""
+gate_case 6 behind            "behind"                    "$P.mergeStateStatus = \"BEHIND\""
+gate_case 6 behind            "behind, approved"          "$P.mergeStateStatus = \"BEHIND\" | $P.reviewDecision = \"APPROVED\""
+gate_case 7 ""                "unknown merge state"       "$P.mergeStateStatus = \"WEIRD\""
+gate_case 7 ""                "mergeable missing"         "del($P.mergeable)"
+gate_case 7 ""                "unknown review decision"   "$P.reviewDecision = \"MAYBE\""
+gate_case 7 ""                "more threads than one page" "$P.reviewThreads.pageInfo.hasNextPage = true"
+gate_case 0 ""                "clean"                     "$P.mergeStateStatus = \"CLEAN\""
+gate_case 0 ""                "has hooks"                 "$P.mergeStateStatus = \"HAS_HOOKS\""
+gate_case 0 ""                "unstable, every listed check green" "$P.mergeStateStatus = \"UNSTABLE\""
+gate_case 0 ""                "expected head matches"     "." --expect-head 1111111111111111111111111111111111111111
+# every check runs: a conflict and an unresolved thread both appear, the exit is the more urgent one
+gate_case 2 ""                "hits lists all"            "$P.mergeable = \"CONFLICTING\" | $P.reviewThreads.nodes = [$THREAD]"
+jqeq "hits lists all: both codes" '[.hits[].code] | sort' '["conflict","unresolved-threads"]'
+# threads outrank an unseen block (a protected repo reports BLOCKED while a thread is open), and a
+# query failure outranks everything: the hits are ordered by urgency, not by when they were found
+gate_case 3 ""                "blocked with an unresolved thread" "$P.mergeStateStatus = \"BLOCKED\" | $P.reviewThreads.nodes = [$THREAD]"
+gate_case 7 ""                "query failure outranks a gate" "$P.state = \"MERGED\" | $P.reviewThreads.pageInfo.hasNextPage = true"
+
 # ── summary and mutants ──────────────────────────────────────────────────────────────────────────
-MIN_PASS=12
+MIN_PASS=62
 if [ "$pass" -lt "$MIN_PASS" ] && [ "${STOP_ON_FAIL:-0}" != 1 ]; then failed "only $pass checks passed, expected at least $MIN_PASS"; fi
 echo "pr-closeout: $pass passed, $fail failed"
 
@@ -117,7 +170,23 @@ mutant() {   # <label> <substring of the case that must kill it> <perl substitut
   else echo "mutant [$label]: suite red as required (by [$want])"; fi
 }
 if [ "${NO_MUTANTS:-0}" != 1 ]; then
-  MUT_WANT_N=0
+  mutant outdated      "[outdated is not resolved]"        "s/t\.isResolved !== true\)/t.isResolved !== true && !t.isOutdated)/"
+  mutant not-open      "[merged PR]"                       "s/p\.state !== 'OPEN'/false/"
+  mutant draft         "[draft, clean]"                    "s/else if \(p\.isDraft\) gate/else if (false) gate/"
+  mutant changes       "[changes requested]"               "s/p\.reviewDecision === 'CHANGES_REQUESTED'\) \{/false) {/"
+  mutant head          "[other head (sha-1)]"              "s/expectHead && p\.headRefOid !== expectHead/false/"
+  mutant conflict      "[conflicting]"                     "s/\(mergeableKnown && p\.mergeable === 'CONFLICTING'\) \|\|/false ||/"
+  mutant failed        "[a failed check]"                  "s/if \(failedChecks\.length \|\| rollupFailed\)/if (false)/"
+  mutant rollup        "[blocked, rollup failure]"         "s/const rollupFailed = rollupKnown && /const rollupFailed = false && /"
+  mutant whitelist     "[a failed check]"                  "s/return OK_CONCLUSIONS\.has\(c\.conclusion\) \? 'ok' : 'failed';/return 'ok';/"
+  mutant running       "[a check still running]"           "s/if \(c\.status !== 'COMPLETED'\) return 'pending';//"
+  mutant computing     "[mergeable still computing]"       "s/\(mergeableKnown && p\.mergeable === 'UNKNOWN'\) \|\|/false ||/"
+  mutant unseen        "[blocked, everything green]"       "s/p\.mergeStateStatus === 'BLOCKED' && !hits/false && !hits/"
+  mutant behind        "[behind]"                          "s/p\.mergeStateStatus === 'BEHIND'\) gate/false) gate/"
+  mutant unknown       "[unknown merge state]"             "s/KNOWN\[field\]\.has\(value\) \? true :/true ? true :/"
+  mutant soft-rank     "[blocked with an unresolved thread]" "s/SOFT_GATES\.has\(h\.gate\) \? 6 :/SOFT_GATES.has(h.gate) ? 1 :/"
+  mutant unsorted      "[query failure outranks a gate]"   "s/^  hits\.sort\(.*\n//"
+  MUT_WANT_N=16
   if [ "$mut_n" != "$MUT_WANT_N" ]; then echo "FAIL: $mut_n of $MUT_WANT_N mutants ran"; mut_bad=1; fi
   [ "$mut_bad" = 0 ] || fail=$((fail + 1))
 fi
