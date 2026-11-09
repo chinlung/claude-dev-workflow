@@ -109,7 +109,7 @@ done <<< "$names"
 
 if [ -n "$failures" ]; then
   reason="⛔ openspec 歸檔閘門：下列 change 沒有有效的 Phase 6 核查結果，歸檔已擋下。
-${failures}no-verdict＝還沒跑過 check，或上一次 check 沒有通過；stale:<artifact>＝check 之後該檔又被改過。
+${failures}no-verdict＝還沒跑過 check，或上一次 check 沒有通過；stale:<artifact>＝check 之後該檔又被改過；stale:rules＝這份結果是舊版核查規則寫的（plugin 升級後要重跑 check）。
 處理方式：Phase 6 開始時先跑 \`node ${check} snapshot <change 目錄>\`；reconcile 完成後跑 \`node ${check} check <change 目錄>\`，逐項處理 fail 與 warn，並在回覆中寫出 manual 項（C1、C2、C5）的判斷。check 通過、且之後沒有再改檔，才能歸檔。review-notes 最後一輪必須標 final，而且只有使用者明說 review 已收斂後才能加。
 確定要略過本閘門：在命令前加 OPENSPEC_ARCHIVE_OK=1。"
   jq -cn --arg r "$reason" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'

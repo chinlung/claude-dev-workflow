@@ -4,6 +4,14 @@
 
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
+## [1.14.0] - 2026-11-09
+
+### Changed
+
+- **openspec-superpowers-workflow 1.5.0 → 2.0.0**（BREAKING）— 原本只存在於文字的規則現在有機器檢查，playbook 也依兩個月真實 session 的紀錄修正。**歸檔：** 新增 PreToolUse hook `archive-gate`，在沒有新鮮的 `reconcile-check.cjs check` 通過結果（綁定 proposal、design、tasks、review-notes、specs 的雜湊）時，擋下 `openspec archive` 與 `/opsx:archive` 範本的 `mv … changes/archive/`；命令前加 `OPENSPEC_ARCHIVE_OK=1` 可繞過。review 由使用者在最後一輪標題加上 `final` 來收斂，沒有它不得進入 Phase 6。**skip-gate** 不再「擋一次就信文字」：沒有 active change 時改程式碼須先有八個契約面的聲明檔，任何一面寫「是」就轉 Phase 1。**`tasks.md` 是執行紀錄：** 每個 `### Task N` 一個勾選框、Phase 4 完成就勾，未勾的 task 必須附 `skip: <理由>`，否則 R6 fail、`snapshot` 也拒絕。**Phase 2** 提問上限兩題，其餘寫成假設，並對照新增的 `DESIGN-RED-FLAGS.md` 自檢。**OpenSpec 1.16：** 文件改正「`/opsx:apply` 沒有 CLI」、列出每個 `/opsx:*` 指令可用的階段、Phase 4 預設改用 `executing-plans`；`tests/cli-claims.test.sh` 以真實 CLI 檢查這些敘述，CI 安裝固定版本（`tests/openspec-version`）。新增 `scripts/openspec-archive-stats.cjs` 統計歸檔時仍未勾的 task。詳見該 plugin 的 CHANGELOG [2.0.0]。
+- **CI 改用 Node 22**（原為 20）：OpenSpec 1.16 要求 Node 22.12 以上。既有套件是零相依的 CJS 與 bash，不需更動即通過。
+- `docs/` 新增 2026-11-09 的分析（pstack 移植候選、lifecycle 與知識落點審查、優化路線圖），以及上述兩組工作的設計與計畫文件。
+
 ## [1.13.3] - 2026-11-04
 
 ### Changed

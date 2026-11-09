@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-11-09
+
+Two months of real sessions (10 sessions that loaded the skill, 9 archives, 133 archived changes on disk) showed that the rules which only existed as prose were not followed: no archiving session read the reconciliation checklist, four archived before review had converged, 38% of archived changes still had unchecked tasks, the skip gate's twelve denials never produced the eight-surface check, and users asked three times to skip the Phase 2 questions. 2.0.0 gives those rules a machine check where one is possible and rewrites the playbook where the evidence said it was wrong. Design and plan: `docs/openspec-workflow-2-design-2026-11-09.md`, `docs/openspec-workflow-2-part2-design-2026-11-09.md` and the two plan files beside them.
+
+### Breaking
+
+- **Archiving needs a fresh pass from `reconcile-check.cjs`.** A new PreToolUse Bash hook, `archive-gate.sh`, denies `openspec archive <name>` and the OpenSpec 1.16 `/opsx:archive` template's `mkdir … && mv <changes>/<name> <changes>/archive/…` unless `validators/reconcile-check.cjs check` recorded a pass verdict for that change and none of proposal, design, tasks, review-notes or specs changed since (hashes). Bypass with `OPENSPEC_ARCHIVE_OK=1` in the command, only when the user asks. Fail-open: no jq/perl/node, no parsable change name, or a crash of the checker all allow.
+- **Review is closed by the user, and the playbook does not reconcile before that.** The last `## Round` heading of `review-notes.md` must carry `final`, added only after the user says review has converged (R4). Phase 6 has an entry check: without `final`, the agent names the open items and asks instead of rewriting anything.
+- **An unchecked task must carry a skip reason.** R6 is a failure: every unfinished task line in `tasks.md` (what OpenSpec 1.16 counts as a task: `-`, `*`, `+` or numbered bullet, at any depth, box not `[x]`/`[X]`, so `[~]` and `[]` are unfinished) needs `skip:` followed by a reason with at least one letter or digit. The definition lives in one module, `validators/task-line.cjs`, used by R6 and the stats script and checked against the real CLI by `tests/cli-claims.test.sh`. A reason may start with punctuation or a quote (`skip: （範圍外）`, `skip: "not required"`) and the colon may be full-width. A pass verdict now records the rules version that produced it, so a verdict written under 1.5.0's warn-only R6 reports `stale:rules` and needs a fresh `check` before the gate lets the change through. `reconcile-check.cjs snapshot` runs R6 first and refuses (exit 1, no state file) while it fails, so ticking and skip notes are settled before `tasks.md` freezes for reconciliation.
+- **`tasks.md` is one checkbox per Task.** Phase 3 writes `### Task N` headings with exactly one `- [ ]` line each and the steps as a numbered list; Phase 4 ticks the box in the same turn as the task's commit. OpenSpec counts every checkbox as a task, so the old "one box per step" plans inflated progress and were never ticked.
+- **skip-gate v2 reads a declaration file instead of denying once.** With `openspec/` present and no active change, a code edit is denied until `.claude/openspec-skip.<session>.local.md` holds `契約面：API=否 資料=否 schema=否 migration=否 相容=否 權限=否 並行=否 跨模組=否 ｜ 理由：<一句>`; every key once, as a whole word, with 是 or 否, before `｜`. Any 是 denies and asks for Phase 1. Documentation paths (`.md .mdx .txt .rst .adoc`, `docs/`, `doc/`, `openspec/`, `.claude/`) are not gated. After an archive in the session the declaration must be newer than the archive. The batch window, session flag and `stat` handling of 1.4.x are gone.
+- **Phase 2 asks at most two questions.** Facts are looked up, not asked; the cap covers the whole phase and only questions that change *what* gets built; everything else is written as an assumption under `## Open Questions` with its default; a request to skip the questions means none; `design.md` is written in the same reply even when a question is asked. The draft is checked against the new `DESIGN-RED-FLAGS.md` (eight flags adapted from pstack, MIT) and the hits go under `## Trade-offs`.
+- **Phase 4 defaults to `executing-plans`.** `subagent-driven-development` is for tasks that are independent of each other (it was the stated default and was used 0 times in two months; executing-plans 5 times).
+
+### Added
+
+- `validators/reconcile-check.cjs` with `snapshot`, `check` (R1–R9, `--json`) and `verify` (exit 3 for no verdict or a stale one, so the hook can tell "not ready" from "the checker crashed").
+- `hooks/archive-gate.sh`, `tests/archive-gate.test.sh`, `tests/reconcile-check.test.sh`.
+- `scripts/openspec-archive-stats.cjs`: how many archived changes left tasks unchecked, with and without a skip reason, by month; project names hashed unless `--names`. Baseline 2026-11-09 on the author's disk: 133 archived, 51 incomplete (38.3%), 26 with nothing ticked, 0 with a skip reason.
+- `DESIGN-RED-FLAGS.md`, `tests/skill-docs.test.sh` (description length, referenced documents exist, the red-flags file keeps its shape).
+- `tests/cli-claims.test.sh` and `tests/openspec-version`: every `openspec <sub> --flag` in the plugin's documents is checked against the real CLI's `--help`, `phases.md` must name every upstream `/opsx:*` command (taken from a full-profile `openspec init`), two known-wrong sentences must stay gone, and the tasks.md format sample must count one task per heading in `openspec instructions apply --json`. CI installs the pinned CLI (1.16.1, Node 22) and the test fails there when it is missing; locally it skips with a visible message.
+- `phases.md`: a "`/opsx:*` commands by phase" table (propose/new/continue/ff → 1; update → 1–3; explore → 0–2; apply → 4; verify → 5 and 6; sync → 6 after 6b5; archive/bulk-archive → 6c; onboard → none), and the CLI equivalent of `/opsx:apply` (`openspec instructions apply --change <name> --json`), which 1.5.0 said did not exist.
+
+### Changed
+
+- 6c: the incomplete-task warning is expected only for lines that carry a `skip:` reason; the CLI fallback keeps `--yes` because a non-interactive `openspec archive` with any skip line exits 1 without it.
+- README, SKILL.md body, PHASE-IDENTIFICATION.md, RECONCILIATION-CRITERIA.md (C1–C5 ↔ R1–R9 table), OUTPUT-CONTRACTS.md and SUPERPOWERS-HANDOFF.md follow the rules above. The SKILL.md description is unchanged in size (1506 chars).
+
+### Notes
+
+- Local eval suites (gitignored; de-identified cases). Red on 1.5.0 → green on 2.0.0, `runs: 3`, with-plugin arm, judge sonnet: tasks ticked after finishing (design/01) 2/3 → 3/3; undone task gets a skip reason (design/02) 0/3 → 3/3; "skip the questions" asks nothing (design/03) 0/3 → 2/3; at most two decisions asked and design.md still written (design/04) 0/3 → 3/3; archive requested before `final` is held back (phase6/01) 0/3 → 3/3; constitution item kept out of the spec (phase6/03) 3/3 → 3/3. The trigger case for a tiny single-module edit stays red (0/3 → 1/3): the skill is not loaded for such an edit, so the skip-gate hook, not text, is the fix there, and a hook cannot run inside the eval sandbox. The existing Phase 5 suite: with-plugin 8/8 at 1.00, mean Δ +0.55 (was +0.60; the without arm moved, the with arm did not).
+- Installed copies update only with `claude plugin update openspec-superpowers-workflow`.
+
 ## [1.5.0] - 2026-09-14
 
 ### Added

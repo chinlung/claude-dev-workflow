@@ -20,7 +20,7 @@ Superpowers 產出**永遠 OVERWRITE** OpenSpec 的對應檔案，**不建立任
 ```
 啟動 /brainstorming skill
 輸入：proposal.md 和 specs/ 的內容
-執行 Socratic 提問流程
+提問預算：整個 Phase 2 至多 2 題，其餘寫成 design.md 的 `## Open Questions`（見 phases.md Phase 2）；覆寫前對照 DESIGN-RED-FLAGS.md
 ```
 
 ### Sync back（必要步驟，不可省略）
@@ -63,6 +63,8 @@ OVERWRITE openspec/changes/<name>/tasks.md
 with the tasks output from writing-plans
 ```
 
+寫入前先整理格式（理由見 `phases.md` Phase 3）：每個 `### Task N` 標題下只留**一個**勾選框，writing-plans 產出的「每步一個框」改成編號清單。OpenSpec 把每個框都算成一個 task，框一多進度就膨脹、也沒人會逐步去勾。
+
 ### ✅ 正確範例
 ```
 writing-plans 完成，產出任務清單
@@ -79,14 +81,14 @@ Write(path: "plan.md", content: <tasks output>)  # 計畫沒有放在 OpenSpec �
 
 ---
 
-## Phase 4 Handoff 模板：tasks.md → subagent-driven-development with TDD
+## Phase 4 Handoff 模板：tasks.md → executing-plans with TDD
 
 ### 輸入
 - `openspec/changes/<name>/tasks.md`（Phase 3 產出，已由使用者審核）
 
 ### 執行
 ```
-啟動 /subagent-driven-development 或 /executing-plans
+啟動 /executing-plans（task 彼此獨立、各自寫得成自包含 brief 時才改用 /subagent-driven-development）
 每個 task 的順序：
   1. 寫測試（RED）
   2. 實作讓測試通過（GREEN）
@@ -96,7 +98,7 @@ Write(path: "plan.md", content: <tasks output>)  # 計畫沒有放在 OpenSpec �
 
 ### 禁止在此 Phase 做的事
 - 修改任何 spec 檔案（proposal.md、specs/、design.md）
-- 修改 tasks.md 的任務描述（可以 check off 完成狀態）
+- 修改 tasks.md 的任務描述。完成的任務要在同一輪把框勾成 `[x]`；不做的任務保持未勾，並在行尾寫 ` — skip: <理由>`
 
 ---
 

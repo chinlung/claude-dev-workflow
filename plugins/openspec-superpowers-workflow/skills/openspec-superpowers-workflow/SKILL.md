@@ -38,7 +38,7 @@ If the project is not initialized, run `openspec init .` (note: use `.` for the 
 | 1. Spec definition | OpenSpec | `proposal.md`, `specs/` (user approves) |
 | 2. Design refinement | Superpowers `brainstorming` | OVERWRITES `design.md` |
 | 3. Task planning | Superpowers `writing-plans` | OVERWRITES `tasks.md` |
-| 4. Implementation | Superpowers `subagent-driven-development` / `executing-plans` + TDD | code |
+| 4. Implementation | Superpowers `executing-plans` (or `subagent-driven-development` when the tasks are independent) + TDD | code |
 | 5. Review & fix | neither — record in `review-notes.md`, fix code only | `review-notes.md` entries |
 | 6. Reconcile & archive | OpenSpec | clean-rewritten specs, reconciliation criteria gate, `/opsx:archive` |
 
@@ -47,7 +47,7 @@ If the project is not initialized, run `openspec init .` (note: use `.` for the 
 1. **Never modify spec files during Phase 5 code review.** All feedback → `review-notes.md` with `[REQUIREMENT|DESIGN|CODE|CONSTITUTION]` tag + Y/N. Tag by the artifact the fix lands in, not by the nature of the problem; Y means "spec/design/constitution must change in Phase 6", never "already fixed" — so `[CODE] Y` does not exist, even if a project's own notes header says otherwise. If asked to edit a spec now, say explicitly that you are not doing it and that it is recorded for Phase 6. Add `final` to the last `## Round` heading only when the user says review has converged.
 2. **Never create separate Superpowers design/plan files.** Outputs OVERWRITE OpenSpec's `design.md` / `tasks.md` in place.
 3. **Phase 6 reconciliation = clean rewrite**, not incremental patches. Goal: specs read as if you knew everything from the start. Before archiving, run `reconcile-check.cjs check` (phases.md 6b5); the archive-gate hook denies archiving without its fresh pass verdict.
-4. **`tasks.md` is never modified during reconciliation** — it's execution history.
+4. **`tasks.md` is the execution record.** Tick a task's `- [ ]` to `- [x]` in Phase 4 when it is done; leave a task you will not do unchecked with ` — skip: <reason>` on its line; keep one checkbox per `### Task N`. It is never modified during reconciliation (after the Phase 6 snapshot).
 5. **`[CONSTITUTION]` items never go into the feature's spec** — they go to the project constitution separately.
 6. **TDD in Phase 4 is mandatory.** Tests before implementation, always.
 
@@ -55,7 +55,7 @@ If the project is not initialized, run `openspec init .` (note: use `.` for the 
 
 1. Identify which phase the user is in — read `PHASE-IDENTIFICATION.md` when this is a new OpenSpec workflow, the request may span multiple phases, an `openspec/changes/<name>/` folder exists but status is unclear, or the phase is ambiguous.
 2. Read `phases.md` for the detailed playbook of that phase — includes exact actions, sync-back rules, review-notes.md format, and anti-patterns.
-3. For Phase 2/3/4 handoffs where Superpowers produces design/tasks/code, read `SUPERPOWERS-HANDOFF.md` before syncing back to OpenSpec.
+3. For Phase 2/3/4 handoffs where Superpowers produces design/tasks/code, read `SUPERPOWERS-HANDOFF.md` before syncing back to OpenSpec. Before overwriting `design.md` in Phase 2, also read `DESIGN-RED-FLAGS.md` and check the draft against it; Phase 2 asks at most two questions in total (see `phases.md`).
 4. Follow it exactly. If switching phases mid-conversation, re-read the relevant section.
 
 See `phases.md` for: full Phase 1-6 actions, `review-notes.md` tag semantics and examples, decision quick-reference table, and the anti-patterns list. See `RECONCILIATION-CRITERIA.md` for the Phase 6 pre-archive gate checklist. See `PHASE-IDENTIFICATION.md` for the phase decision tree. See `SUPERPOWERS-HANDOFF.md` for sync-back templates and sidecar-file anti-patterns. See `OUTPUT-CONTRACTS.md` for the durable output contract per phase, coverage definitions, valid/invalid requirement-writing examples, and the deferred-item convention.

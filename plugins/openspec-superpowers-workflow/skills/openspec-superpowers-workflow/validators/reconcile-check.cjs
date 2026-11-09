@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 'use strict';
 // Phase 6 mechanical checks before an OpenSpec change is archived.
-//   snapshot <change-dir>        record the hash of tasks.md (run when Phase 6 starts)
+//   snapshot <change-dir>        record the hash of tasks.md (run when Phase 6 starts; refused, exit 1, while R6 fails)
 //   check    <change-dir> [--json]  run R1–R9; with no fail, record a pass verdict pinned to the
 //                                    hashes of proposal, design, tasks, review-notes and specs
-//   verify   <change-dir>        exit 0 when that verdict exists and none of those files changed
+//   verify   <change-dir>        exit 0 when that verdict exists, was recorded under the current RULES, and none of those files changed
 // State: <project>/.claude/openspec-reconcile.<change>.local.json. The archive gate hook calls
 // `verify`; the checks that need judgment (C1, C2, C5) are printed as `manual`, not decided here.
 // Exit codes: 0 pass / fresh, 1 check failed, 2 usage or a path outside openspec/changes/,
@@ -17,8 +17,12 @@ const path = require('path');
 const crypto = require('crypto');
 const { execFileSync } = require('child_process');
 const { REQUIRED_FILES, findSpecFiles, checkRequirementBlocks } = require('./validate-openspec-workflow.cjs');
+const { parseTaskLines } = require('./task-line.cjs');
 
 const ARTIFACTS = { proposal: 'proposal.md', design: 'design.md', tasks: 'tasks.md', reviewNotes: 'review-notes.md' };
+// Bump when a check gets stricter: a pass verdict is pinned to the rules that produced it, so verify rejects one
+// recorded under older rules even when no artifact changed (2 = R6 fails on an unfinished task without a skip reason).
+const RULES = 2;
 const USAGE = 'Usage: reconcile-check.cjs snapshot|check|verify <openspec/changes/<name>> [--json]';
 
 function resolveChange(arg) {
@@ -139,10 +143,14 @@ function checkR5(ctx) {
   }
 }
 
+// A task is whatever OpenSpec counts as one (task-line.cjs, same pattern as the CLI). An unfinished one needs
+// "skip:" and a reason with at least one letter or digit; "skip:" alone or followed by punctuation is not one.
 function checkR6(ctx) {
-  const open = (ctx.read(ARTIFACTS.tasks) || '').split('\n').filter((l) => /^\s*-\s*\[ \]/.test(l) && !/skip:/.test(l));
+  const boxes = parseTaskLines(ctx.read(ARTIFACTS.tasks));
+  if (boxes.length === 0) return result('warn', ['tasks.md has no checkbox task']);
+  const open = boxes.filter((t) => !t.done && !t.skipped);
   if (open.length === 0) return result('pass');
-  return result('warn', [`${open.length} unchecked task(s) without "skip: <reason>"`, ...open.map((l) => l.trim())]);
+  return result('fail', [`${open.length} unchecked task(s) without "skip: <reason>" (the reason needs a letter or digit)`, ...open.map(({ line, no }) => `line ${no}: ${line.trim()}`)]);
 }
 
 const PATCH_LANGUAGE = [/修訂[：:]/, /原本(是|為)/, /\bRound \d+\b/i, /review-notes/, /\bpreviously\b/i];
@@ -187,6 +195,13 @@ function main(argv) {
     return 2;
   }
   if (cmd === 'snapshot') {
+    // tasks.md is frozen from here on, so every unchecked task must already be ticked or carry a skip reason.
+    const r6 = checkR6(ctx);
+    if (r6.status === 'fail') {
+      console.log('snapshot refused: tick each unchecked task or add " — skip: <reason>" to it, then run snapshot again');
+      for (const d of r6.detail) console.log(`  ${d}`);
+      return 1;
+    }
     const state = readState(ctx);
     state.change = ctx.name;
     state.snapshot = { tasks: fileHash(ctx, ARTIFACTS.tasks), at: new Date().toISOString() };
@@ -197,6 +212,7 @@ function main(argv) {
   if (cmd === 'verify') {
     const verdict = readState(ctx).verdict;
     if (!verdict || verdict.result !== 'pass' || !verdict.hashes) { console.log('no-verdict'); return 3; }
+    if (verdict.rules !== RULES) { console.log('stale:rules'); return 3; }
     const now = hashes(ctx);
     for (const key of Object.keys(now)) {
       if (verdict.hashes[key] !== now[key]) { console.log(`stale:${key}`); return 3; }
@@ -209,7 +225,7 @@ function main(argv) {
   const state = readState(ctx);
   state.change = ctx.name;
   // A failed check withdraws any earlier verdict: the gate must not pass on a result that no longer holds.
-  if (outcome === 'pass') state.verdict = { result: 'pass', at: new Date().toISOString(), hashes: hashes(ctx) };
+  if (outcome === 'pass') state.verdict = { result: 'pass', rules: RULES, at: new Date().toISOString(), hashes: hashes(ctx) };
   else delete state.verdict;
   writeState(ctx, state);
   if (rest.includes('--json')) {

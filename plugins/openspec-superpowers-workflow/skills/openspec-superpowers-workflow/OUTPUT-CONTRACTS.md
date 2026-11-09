@@ -85,7 +85,7 @@ All exports must be validated before download.
 
 | 檔案 | 內容要求 | 可驗證條件 |
 |------|---------|-----------|
-| `tasks.md` | 完整任務清單（OVERWRITE stub）；每個任務含精確檔案路徑、驗證步驟 | 內容非 stub；每個設計決策有對應任務；使用者已審核 |
+| `tasks.md` | 完整任務清單（OVERWRITE stub）；每個任務含精確檔案路徑、驗證步驟；每個 `### Task N` 標題下恰有一個勾選框，步驟用編號清單 | 內容非 stub；每個設計決策有對應任務；使用者已審核；框數等於 Task 數 |
 
 ### 覆蓋定義
 
@@ -103,6 +103,7 @@ All exports must be validated before download.
 |------|------|
 | 程式碼 | 每個任務完整實作，通過任務 reviewer |
 | 測試 | TDD 順序（RED→GREEN）；每個 SPEC 需求有對應測試 |
+| `tasks.md` 勾選 | 做完的任務在同一輪勾成 `[x]`；不做的任務保持未勾並在行尾寫 ` — skip: <理由>` |
 
 ### 覆蓋定義
 

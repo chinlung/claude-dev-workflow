@@ -17,10 +17,21 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '20'
+          node-version: '22'
       # Zero-dependency Node CLIs — no install step needed.
       - name: Run fixture / mutation / consistency suite
         run: node scripts/validate-fixtures.cjs
+      # OpenSpec 1.16 needs Node >= 22.12 (its npm engines field), hence node-version 22 above. The CLI is installed
+      # for plugins/openspec-superpowers-workflow/tests/cli-claims.test.sh, which checks the plugin docs against the real
+      # CLI and fails when CI=true and the CLI is missing. The version lives in one file; --ignore-scripts skips the
+      # package's install scripts.
+      - name: Install the pinned OpenSpec CLI
+        run: |
+          v="$(tr -d '[:space:]' < plugins/openspec-superpowers-workflow/tests/openspec-version)"
+          case "$v" in
+            ""|*[!0-9.]*) echo "::error::tests/openspec-version must hold a plain version number, got: $v"; exit 1 ;;
+          esac
+          npm install -g --ignore-scripts "@fission-ai/openspec@$v"
       # ubuntu-latest ships jq — no install step needed.
       # Same enumeration as the local PostToolUse hook (scripts/hooks/validate-on-plugin-edit.cjs):
       # every plugins/*/tests/*.test.sh, so a new suite cannot run locally yet be missing here.

@@ -425,11 +425,11 @@ docs/task-{YYYYMMDD-HHMM}-{簡短名稱}/
 
 強制 **OpenSpec**（規格生命週期，WHAT）與 **Superpowers**（開發紀律，HOW）嚴格角色分離的六階段功能開發工作流程。避免兩種工具互相踩腳，杜絕最常見的反模式：Code review 期間改 spec、Phase 6 reconcile 時用 patch 而非 clean rewrite、把 cross-cutting 規則塞進 feature spec。
 
-這個 plugin 只提供一個自動觸發的 skill（無 slash command）— 當你在已 `openspec init` 的專案中提到提案、brainstorm、規劃任務、PR review、reconcile 或 archive 時會自動啟動。
+這個 plugin 提供一個自動觸發的 skill（無 slash command）與兩個 PreToolUse hook（`skip-gate`、`archive-gate`），把其中兩條規則變成機器檢查（細節見 plugin README）。skill 在你在已 `openspec init` 的專案中提到提案、brainstorm、規劃任務、PR review、reconcile 或 archive 時會自動啟動。
 
 ## 前置需求
 
-- **[OpenSpec CLI](https://github.com/Fission-AI/OpenSpec)** — `npm i -g @fission-ai/openspec`；專案需跑過 `openspec init .`
+- **[OpenSpec CLI](https://github.com/Fission-AI/OpenSpec)** — `npm i -g @fission-ai/openspec`（需要 Node 22.12 以上）；專案需跑過 `openspec init .`
 - **[Superpowers](https://github.com/anthropic-experimental/claude-code-plugins/tree/main/superpowers)** plugin — 提供 `brainstorming`、`writing-plans`、`subagent-driven-development`、`test-driven-development` 等 skills
 
 ## 六階段工作流程
@@ -437,9 +437,9 @@ docs/task-{YYYYMMDD-HHMM}-{簡短名稱}/
 | Phase | 主導工具 | 動作 | 產出 |
 |-------|---------|------|------|
 | 1. Spec Definition | OpenSpec | `openspec new change` + 填入 `proposal.md` / `specs/` | 使用者審核的 proposal + specs |
-| 2. Design Refinement | Superpowers `brainstorming` | Socratic 問答精煉 | **覆寫** `design.md` 原位 |
+| 2. Design Refinement | Superpowers `brainstorming` | 先列假設、全 phase 至多 2 題提問、對照設計紅旗 | **覆寫** `design.md` 原位 |
 | 3. Task Planning | Superpowers `writing-plans` | 切出 2-5 分鐘粒度任務 | **覆寫** `tasks.md` 原位 |
-| 4. Implementation | Superpowers `subagent-driven-development` + TDD | RED → GREEN → REFACTOR | 可運行程式碼 |
+| 4. Implementation | Superpowers `executing-plans`（task 獨立時 `subagent-driven-development`）+ TDD | RED → GREEN → REFACTOR | 可運行程式碼 |
 | 5. Review & Feedback | 人類主導 | 分類 `[REQUIREMENT\|DESIGN\|CODE\|CONSTITUTION]` + Y/N | `review-notes.md`；**spec 一律不動** |
 | 6. Reconcile & Archive | OpenSpec | Clean rewrite（非 patch）+ `openspec archive` | 合併至 `openspec/specs/<capability>/spec.md` |
 
@@ -447,8 +447,8 @@ docs/task-{YYYYMMDD-HHMM}-{簡短名稱}/
 
 1. **Phase 5 期間絕不修改 spec 檔**。所有審查意見 → `review-notes.md` 加 tag + Y/N（Y = Phase 6 須更新某 OpenSpec artifact，絕非「已修好」——`[CODE] Y` 不存在；1.5.0 起建檔即預填標頭釘住此語意）。被要求現在改 spec 時明講拒絕並記錄
 2. **Superpowers 絕不新建自己的 design / plan 檔**。輸出一律覆寫 OpenSpec 的 `design.md` / `tasks.md` 原位
-3. **Phase 6 reconcile 必須 clean rewrite**。目標是讓 spec 讀起來像「一開始就知道」，而非修訂史
-4. **`tasks.md` 在 reconcile 時凍結** — 它是執行歷史，不是當前規格
+3. **Phase 6 reconcile 必須 clean rewrite**。目標是讓 spec 讀起來像「一開始就知道」，而非修訂史。歸檔前必須有新鮮的 `reconcile-check.cjs check` 通過結果，且 review 要由使用者把最後一輪標成 `final` 才算收斂；`archive-gate` hook 負責驗證通過結果
+4. **`tasks.md` 是執行紀錄** — 每個 `### Task N` 一個勾選框、Phase 4 完成就勾，沒做的 task 要寫 `skip: <理由>`（否則 R6 fail）。從 Phase 6 的 snapshot 起凍結，它是執行歷史，不是當前規格
 5. **`[CONSTITUTION]` 項目絕不進 feature spec** — 改到 `openspec/config.yaml` 的 `context:` / `rules:`
 6. **Phase 4 TDD 強制**。永遠先寫失敗測試再寫實作
 
@@ -462,8 +462,10 @@ skills/openspec-superpowers-workflow/
 ├── SUPERPOWERS-HANDOFF.md      # 140 行 — Phase 2/3/4 sync-back 範本、sidecar 檔 anti-pattern
 ├── OUTPUT-CONTRACTS.md         # 218 行 — 各 Phase 產出契約、requirement 寫法正反例
 ├── RECONCILIATION-CRITERIA.md  # 116 行 — Phase 6 歸檔前核查清單
+├── DESIGN-RED-FLAGS.md         # 八條設計紅旗（Phase 2 覆寫 design.md 前自檢）
 └── validators/
-    └── validate-openspec-workflow.cjs  # change folder 寬鬆 pre-check
+    ├── validate-openspec-workflow.cjs  # change folder 寬鬆 pre-check
+    └── reconcile-check.cjs             # Phase 6 歸檔前核查（snapshot／check／verify）
 ```
 
 Skill 啟動時 Claude 先讀 `SKILL.md`，辨認當前 Phase 後只載入該 Phase 需要的 reference（Phase 不明讀 `PHASE-IDENTIFICATION.md`、playbook 讀 `phases.md` 對應段落、Phase 2/3/4 交接讀 `SUPERPOWERS-HANDOFF.md`、歸檔前讀 `RECONCILIATION-CRITERIA.md`），即使有近 900 行 playbook 也不會爆 context。
@@ -484,7 +486,7 @@ Skill 啟動時 Claude 先讀 `SKILL.md`，辨認當前 Phase 後只載入該 Ph
 
 ## 不適用情境
 
-- 單一模組、驗收明確、且無任何契約面的變更——public API / data contract / schema / migration / 向後相容 / 安全權限邊界 / 並行一致性 / 跨模組行為（直接用裸 superpowers skills；看契約風險不看 LOC）。1.4.0 起 SKIP 判定必須在回覆中逐項明示八面結論——plugin 的 skip-gate PreToolUse hook 會 deny 本 session 首次程式碼編輯一次以強制此核對
+- 單一模組、驗收明確、且無任何契約面的變更——public API / data contract / schema / migration / 向後相容 / 安全權限邊界 / 並行一致性 / 跨模組行為（直接用裸 superpowers skills；看契約風險不看 LOC）。SKIP 判定必須逐項明示八面結論——2.0.0 起 plugin 的 skip-gate PreToolUse hook 在沒有 active change 時，會擋下程式碼編輯直到出現八面結論的聲明檔，任何一面寫「是」就轉 Phase 1
 
 SKIP 的唯一依據是上述契約面判定，沒有其他豁免類別（例如原型探索本身不構成豁免，仍依契約面判定）。**觸發也不以專案已有 `openspec/` 資料夾為前提**：提出／新增／精煉 feature 即觸發；專案尚未初始化時，skill 的前置檢查會引導執行 `openspec init .`。
 

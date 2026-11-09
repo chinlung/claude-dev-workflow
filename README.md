@@ -427,11 +427,11 @@ Incremental experience capture. `/save-session` runs a five-phase pipeline (scan
 
 A six-phase feature development workflow that enforces strict role separation between **OpenSpec** (spec lifecycle, the WHAT) and **Superpowers** (dev discipline, the HOW). Prevents the two toolkits from stepping on each other and eliminates the most common anti-patterns: modifying specs during code review, patching specs incrementally instead of clean rewriting, and leaking cross-cutting constitution rules into individual feature specs.
 
-This plugin ships a single auto-triggered skill (no slash command) — it activates when you mention feature proposals, brainstorming, task planning, PR review, reconciliation, or archiving work inside an OpenSpec-initialized project.
+This plugin ships an auto-triggered skill (no slash command) and two PreToolUse hooks, `skip-gate` and `archive-gate`, that turn two of its rules into checks (details in the plugin README). The skill activates when you mention feature proposals, brainstorming, task planning, PR review, reconciliation, or archiving work inside an OpenSpec-initialized project.
 
 ## Prerequisites
 
-- **[OpenSpec CLI](https://github.com/Fission-AI/OpenSpec)** — `npm i -g @fission-ai/openspec`; run `openspec init .` once per project
+- **[OpenSpec CLI](https://github.com/Fission-AI/OpenSpec)** — `npm i -g @fission-ai/openspec` (needs Node 22.12 or newer); run `openspec init .` once per project
 - **[Superpowers](https://github.com/anthropic-experimental/claude-code-plugins/tree/main/superpowers)** plugin — provides `brainstorming`, `writing-plans`, `subagent-driven-development`, `test-driven-development` skills
 
 ## Six-Phase Workflow
@@ -439,9 +439,9 @@ This plugin ships a single auto-triggered skill (no slash command) — it activa
 | Phase | Leader | Action | Output |
 |-------|--------|--------|--------|
 | 1. Spec Definition | OpenSpec | `openspec new change` + fill `proposal.md` / `specs/` | User-reviewed proposal + specs |
-| 2. Design Refinement | Superpowers `brainstorming` | Socratic refinement | **OVERWRITES** `design.md` in place |
+| 2. Design Refinement | Superpowers `brainstorming` | Assumptions first, at most two questions, design red-flag check | **OVERWRITES** `design.md` in place |
 | 3. Task Planning | Superpowers `writing-plans` | 2-5 min granularity tasks | **OVERWRITES** `tasks.md` in place |
-| 4. Implementation | Superpowers `subagent-driven-development` + TDD | RED → GREEN → REFACTOR | Working code |
+| 4. Implementation | Superpowers `executing-plans` (`subagent-driven-development` for independent tasks) + TDD | RED → GREEN → REFACTOR | Working code |
 | 5. Review & Feedback | Human-driven | Tag feedback `[REQUIREMENT\|DESIGN\|CODE\|CONSTITUTION]` + Y/N | `review-notes.md`; **specs are never touched** |
 | 6. Reconcile & Archive | OpenSpec | Clean rewrite (not patch) + `openspec archive` | Merged into `openspec/specs/<capability>/spec.md` |
 
@@ -449,8 +449,8 @@ This plugin ships a single auto-triggered skill (no slash command) — it activa
 
 1. **Never modify spec files during Phase 5 code review.** All feedback → `review-notes.md` with tag + Y/N (Y = an OpenSpec artifact must change in Phase 6, never "already fixed" — `[CODE] Y` does not exist; since 1.5.0 the file is seeded with a header pinning this). If asked to edit a spec now, decline out loud and record it.
 2. **Never create separate Superpowers design/plan files.** Outputs OVERWRITE OpenSpec's `design.md` / `tasks.md` in place.
-3. **Phase 6 reconciliation = clean rewrite.** Goal: specs read as if you knew everything from the start, not a changelog.
-4. **`tasks.md` is frozen during reconciliation** — it is execution history, not current spec.
+3. **Phase 6 reconciliation = clean rewrite.** Goal: specs read as if you knew everything from the start, not a changelog. Archiving needs a fresh `reconcile-check.cjs check` pass, and review must be closed by the user marking the last round `final`; the `archive-gate` hook enforces the pass.
+4. **`tasks.md` is the execution record** — one checkbox per `### Task N`, ticked in Phase 4, and a task left undone carries `skip: <reason>` (R6 fails otherwise). Frozen from the Phase 6 snapshot on; it is execution history, not current spec.
 5. **`[CONSTITUTION]` items never go into the feature's spec** — they update `openspec/config.yaml` `context:` / `rules:`.
 6. **TDD in Phase 4 is mandatory.** Tests before implementation, always.
 
@@ -464,8 +464,10 @@ skills/openspec-superpowers-workflow/
 ├── SUPERPOWERS-HANDOFF.md      # 140 lines — Phase 2/3/4 sync-back templates, sidecar-file anti-patterns
 ├── OUTPUT-CONTRACTS.md         # 218 lines — per-phase output contracts, requirement-writing examples
 ├── RECONCILIATION-CRITERIA.md  # 116 lines — Phase 6 pre-archive gate checklist
+├── DESIGN-RED-FLAGS.md         # eight design red flags (Phase 2 self-check before design.md is overwritten)
 └── validators/
-    └── validate-openspec-workflow.cjs  # lenient change-folder pre-check
+    ├── validate-openspec-workflow.cjs  # lenient change-folder pre-check
+    └── reconcile-check.cjs             # Phase 6 pre-archive check (snapshot / check / verify)
 ```
 
 When the skill activates, Claude first reads `SKILL.md`, identifies which phase applies, then loads only the reference that phase needs (`PHASE-IDENTIFICATION.md` when the phase is unclear, the relevant section of `phases.md`, `SUPERPOWERS-HANDOFF.md` for Phase 2/3/4 handoffs, `RECONCILIATION-CRITERIA.md` before archiving). Context budget stays controlled even with ~900 lines of playbook.
@@ -486,7 +488,7 @@ With this skill:
 
 ## Not For
 
-- Single-module changes with clear acceptance criteria and no contract surface — public API / data contract / schema / migration / backward compatibility / security boundaries / concurrency / cross-module behavior (do it with bare superpowers skills directly; judge by contract risk, not LOC). Since 1.4.0 a skip decision must enumerate all eight surfaces explicitly in the reply — the plugin's skip-gate PreToolUse hook denies the session's first code edit once to force that check
+- Single-module changes with clear acceptance criteria and no contract surface — public API / data contract / schema / migration / backward compatibility / security boundaries / concurrency / cross-module behavior (do it with bare superpowers skills directly; judge by contract risk, not LOC). A skip decision must enumerate all eight surfaces — since 2.0.0 the plugin's skip-gate PreToolUse hook denies code edits while no change is active until a declaration file with the eight verdicts exists, and any surface marked 是 sends the work to Phase 1
 
 The contract-surface judgment above is the only skip criterion — there is no separate exemption category (prototyping, for instance, is judged by the same surfaces). Triggering also does **not** depend on `openspec/` already existing: proposing / adding / refining a feature triggers the skill, and in an uninitialized project its prerequisite check guides you to run `openspec init .`.
 

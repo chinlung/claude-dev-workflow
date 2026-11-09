@@ -4,7 +4,7 @@
 
 ## 前置需求
 
-- **[OpenSpec CLI](https://github.com/Fission-AI/OpenSpec)**（`npm i -g @fission-ai/openspec`）— 規格生命週期管理
+- **[OpenSpec CLI](https://github.com/Fission-AI/OpenSpec)**（`npm i -g @fission-ai/openspec`，需要 Node 22.12 以上）— 規格生命週期管理。文件裡的 CLI 與 `/opsx:*` 敘述以 `tests/openspec-version` 記的版本為準，由 `tests/cli-claims.test.sh` 對照真實 CLI 檢查
 - **[Superpowers](https://github.com/anthropic-experimental/claude-code-plugins/tree/main/superpowers)** — 開發紀律 skills（`brainstorming`、`writing-plans`、`subagent-driven-development`、`test-driven-development` 等）
 - 專案需先跑過 `openspec init .`（無 `--here` flag）
 
@@ -17,9 +17,9 @@
 | Phase | 主導工具 | 動作 | 產出 |
 |-------|---------|------|------|
 | 1. Spec Definition | OpenSpec | `openspec new change` + 填入 proposal / specs | `proposal.md`、`specs/<capability>/spec.md`（使用者審核） |
-| 2. Design Refinement | Superpowers `brainstorming` | Socratic 問答精煉設計 | **覆寫** `design.md` |
+| 2. Design Refinement | Superpowers `brainstorming` | 先列假設、全 phase 至多 2 題提問，對照設計紅旗後精煉設計 | **覆寫** `design.md` |
 | 3. Task Planning | Superpowers `writing-plans` | 切出 2-5 分鐘粒度任務 | **覆寫** `tasks.md` |
-| 4. Implementation | Superpowers `subagent-driven-development` + TDD | RED → GREEN → REFACTOR | 程式碼 |
+| 4. Implementation | Superpowers `executing-plans`（task 獨立時 `subagent-driven-development`）+ TDD | RED → GREEN → REFACTOR | 程式碼 |
 | 5. Review & Feedback | 人類主導 | 分類 `[REQUIREMENT\|DESIGN\|CODE\|CONSTITUTION]` + Y/N | `review-notes.md`，**spec 一律不動** |
 | 6. Reconcile & Archive | OpenSpec | Clean rewrite spec（非 patch）+ `openspec archive` | 歸檔至 `openspec/changes/archive/<date>-<name>/`，合併到 `openspec/specs/` |
 
@@ -28,7 +28,7 @@
 1. **Phase 5 期間絕不修改 spec 檔**。所有審查意見必須記到 `review-notes.md`，用 `[REQUIREMENT|DESIGN|CODE|CONSTITUTION]` tag 加 Y/N 分類——Y 只回答「Phase 6 是否必須更新某個 OpenSpec artifact」，不是「已處理」，所以 `[CODE] Y` 不存在；tag 看修改落在哪個檔案，不看問題性質。1.5.0 起 Phase 1 建檔即預填一段標頭把這套語意釘住，避免各專案自行發明「Y = 已處理」（真實歸檔資料曾出現 54 條 `[CODE] Y`）。被明確要求「現在改 spec」時必須明講拒絕並記錄，不得默默改道
 2. **Superpowers 絕不新建自己的 design / plan 檔**。輸出一律覆寫 OpenSpec 的 `design.md` / `tasks.md` 原位
 3. **Phase 6 reconcile 必須 clean rewrite**。目標是讓 spec 讀起來像「一開始就知道所有這些事」，而非「一份加註解的修訂史」。歸檔前必須跑 `reconcile-check.cjs check`，歸檔閘門 hook 會驗證它的結果
-4. **`tasks.md` 在 reconcile 時絕不修改**。它是執行歷史，不是當前規格
+4. **`tasks.md` 是執行紀錄**：Phase 4 每完成一個任務就把它的框勾成 `[x]`，不做的任務保持未勾並在行尾寫 ` — skip: <理由>`；每個 `### Task N` 標題下只放一個勾選框（OpenSpec 把每個框都算成一個 task）。Phase 6 的 snapshot 之後絕不修改，它是執行歷史，不是當前規格
 5. **`[CONSTITUTION]` 項目絕不進 feature spec**。改到 `openspec/config.yaml` 的 `context:` / `rules:` 欄位
 6. **Phase 4 TDD 強制**。先寫失敗測試，再寫實作，永遠如此
 
@@ -42,6 +42,7 @@ skills/openspec-superpowers-workflow/
 ├── SUPERPOWERS-HANDOFF.md      # 140 行：Phase 2/3/4 sync-back 範本、sidecar 檔 anti-pattern
 ├── OUTPUT-CONTRACTS.md         # 218 行：各 Phase 產出契約、requirement 寫法正反例、deferred 項慣例
 ├── RECONCILIATION-CRITERIA.md  # 116 行：Phase 6 歸檔前核查清單
+├── DESIGN-RED-FLAGS.md         # 八條設計紅旗（Phase 2 覆寫 design.md 前自檢）
 └── validators/
     ├── validate-openspec-workflow.cjs  # change folder 寬鬆 pre-check（見下方 Validator）
     └── reconcile-check.cjs             # Phase 6 歸檔前核查（snapshot／check／verify，見下方 Archive gate）
@@ -97,7 +98,7 @@ SKIP 判定曾在真實 session 中被「憑摘要句自由心證」繞過（變
 Phase 6 的歸檔前核查原本只寫在文字裡；兩個月內 9 個實際歸檔的 session，對核查清單的讀取次數是 0，另有 4 個 session 在 review 收斂前就先歸檔。archive-gate 讓歸檔必須先有一份新鮮的核查結果：
 
 - **攔哪些命令**：`openspec archive <name>`，以及 OpenSpec 1.16 `/opsx:archive` 範本的 `mkdir` + `mv <changes>/<name> <changes>/archive/<date-name>`（bulk 時命令裡每個 change 都要通過）。`hooks.json` 以 `if` 只在 `openspec archive *` 與 `mv *` 時啟動
-- **放行條件**：`validators/reconcile-check.cjs check` 對該 change 記下的 pass verdict 存在，且之後 proposal、design、tasks、review-notes、specs 都沒有再改（`verify` 比對雜湊）
+- **放行條件**：`validators/reconcile-check.cjs check` 對該 change 記下的 pass verdict 存在、是現行核查規則版本寫的（plugin 升級讓規則變嚴時，舊結果回報 `stale:rules`，要重跑 check），且之後 proposal、design、tasks、review-notes、specs 都沒有再改（`verify` 比對雜湊）
 - **核查內容**：R1–R9，對應 `RECONCILIATION-CRITERIA.md` 的 C1–C5；其中 R4 要求 review 最後一輪標了 `final`，而 `final` 只能在使用者明說 review 已收斂後才加
 - **繞過**：命令前加 `OPENSPEC_ARCHIVE_OK=1`，只在使用者明確要求時使用
 - **界線**：機械檢查不取代判斷——C1、C2、C5 以 `manual` 列出，仍由代理逐項判斷並寫在回覆裡；全面 fail-open（缺 jq／perl／node、解析不到 change 名稱、change 目錄不存在、`reconcile-check.cjs` 自身崩潰都放行）；只認上述兩種命令形狀，`git mv`、`cp` 加 `rm`、`npx openspec`、從 `changes/` 目錄內用相對路徑 `mv` 等寫法不在覆蓋面內（設計取捨：解析不到名稱即放行）
