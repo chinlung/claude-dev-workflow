@@ -57,7 +57,7 @@ FAKE_RC=0 gate allow "MCP merge with sha" "$(mcp_in "{\"owner\":\"o\",\"repo\":\
 called "ready o/r 8 --expect-head $SHA" "MCP sha: args"
 FAKE_RC=0 gate allow "merge after another command" "$(bash_in 'git -C /a fetch origin && gh pr merge 3 --repo o/r --squash')"
 called "ready o/r 3" "compound: args"
-FAKE_RC=0 gate allow "merge after a here-string" "$(bash_in $'cat <<< x\ngh pr merge 3 --repo o/r')"
+FAKE_RC=0 gate allow "merge after a here-string" "$(bash_in $'cat <<< x\ngh pr merge 3 --repo o/r\nx')"
 called "ready o/r 3" "here-string: args"
 
 # ── decisions ────────────────────────────────────────────────────────────────────────────────────
@@ -76,6 +76,27 @@ called "" "bypass: ready not called"
 PR_CLOSEOUT_SCRIPT="$tmp/missing.mjs" gate deny "ready script missing" "$(bash_in 'gh pr merge 3 --repo o/r')"
 reason_has "script missing: says how to bypass" "PR_CLOSEOUT_OK=1"
 
+# ── found by review: wrappers, full paths, backticks, endpoint variants, graphql, open heredocs ──
+FAKE_RC=0 gate allow "command gh" "$(bash_in 'command gh pr merge 3 --repo o/r')"
+called "ready o/r 3" "command gh: args"
+FAKE_RC=0 gate allow "env wrapper" "$(bash_in 'env GH_HOST=github.com gh pr merge 4 -R o/r')"
+called "ready o/r 4" "env wrapper: args"
+FAKE_RC=0 gate allow "full path to gh" "$(bash_in '/opt/homebrew/bin/gh pr merge 5 --repo o/r')"
+called "ready o/r 5" "full path: args"
+FAKE_RC=0 gate allow "inside backticks" "$(bash_in 'echo `gh pr merge 6 --repo o/r`')"
+called "ready o/r 6" "backticks: args"
+FAKE_RC=0 gate allow "endpoint with a trailing slash" "$(bash_in 'gh api repos/o/r/pulls/3/merge/ -X PUT')"
+called "ready o/r 3" "trailing slash: args"
+FAKE_RC=0 gate allow "endpoint with a query string" "$(bash_in 'gh api "repos/o/r/pulls/9/merge?x=1" -X PUT')"
+called "ready o/r 9" "query string: args"
+gate deny "graphql mergePullRequest" "$(bash_in "gh api graphql -f query='mutation{mergePullRequest(input:{pullRequestId:\"x\"}){clientMutationId}}'")"
+called "" "graphql: ready not called"
+gate deny "graphql auto-merge" "$(bash_in "gh api graphql -f query='mutation{enablePullRequestAutoMerge(input:{pullRequestId:\"x\"}){clientMutationId}}'")"
+FAKE_RC=0 gate allow "gh api without merge" "$(bash_in 'gh api repos/o/r/pulls/3 --jq .merged')"
+called "" "api no merge: ready not called"
+FAKE_RC=0 gate allow "a heredoc that never closes" "$(bash_in $'cat <<EOF\ngh pr merge 3 --repo o/r')"
+called "ready o/r 3" "open heredoc: args"
+
 # ── not a merge: allowed without asking ──────────────────────────────────────────────────────────
 gate allow "merge in a commit message" "$(bash_in 'git commit -m "gh pr merge later"')"
 called "" "commit message: ready not called"
@@ -87,7 +108,7 @@ gate allow "merge inside a heredoc body" "$(bash_in $'cat > n.md <<EOF\ngh pr me
 called "" "heredoc: ready not called"
 gate allow "nothing about merge" "$(bash_in 'ls -la')"
 
-MIN_PASS=43
+MIN_PASS=62
 if [ "$pass" -lt "$MIN_PASS" ] && [ "${STOP_ON_FAIL:-0}" != 1 ]; then failed "only $pass checks passed, expected at least $MIN_PASS"; fi
 echo "pr-merge-gate: $pass passed, $fail failed"
 
@@ -110,9 +131,14 @@ if [ "${NO_MUTANTS:-0}" != 1 ]; then
   mutant rc-check      "[ready says unresolved threads]" 's/\[ "\$rc" = 0 \] && continue/continue/'
   mutant need-target   "[no --repo]"                  's/if \[ "\$repo" = - \] \|\| \[ "\$num" = - \]; then/if false; then/'
   mutant expect-head   "[head: args]"                 's/\[ "\$sha" = - \] \|\| args\+=/true || args+=/'
-  mutant api-parse     "[gh api: args]"               's/if \(\$x =~ m\{\^\/\?repos/if (0 && \$x =~ m{^\/?repos/'
+  mutant api-parse     "[gh api merge]"               's/if \(\$x =~ m\{\^\/\?repos/if (0 && \$x =~ m{^\/?repos/'
   mutant mcp           "[MCP: args]"                  's/elif \[\[ \$tool == mcp__\*merge_pull_request \]\]/elif false/'
-  MUT_WANT_N=7
+  mutant wrappers      "[command gh: args]"           's/shift \@t while \@t && !\(\(\$t\[0\] =~ m\{\(\[\^\/\]\+\)\$\}\)\[0\] eq '"'"'gh'"'"'\);/shift \@t while \@t && \$t[0] =~ \/^[A-Za-z_]\\w*=\/;/'
+  mutant backticks     "[backticks: args]"            's/\[;&\|\(\)`\\n\]/[;&|()\\n]/'
+  mutant open-heredoc  "[open heredoc: args]"         's/^push \@keep, \@body;.*$//'
+  mutant api-unread    "[graphql mergePullRequest]"   's/print "- - -\\n" if !\$found/print "" if !\$found/'
+  mutant prefilter-case "[graphql auto-merge]"        's/\*\[Mm\]\[Ee\]\[Rr\]\[Gg\]\[Ee\]\*/*merge*/'
+  MUT_WANT_N=12
   if [ "$mut_n" != "$MUT_WANT_N" ]; then echo "FAIL: $mut_n of $MUT_WANT_N mutants ran"; mut_bad=1; fi
   [ "$mut_bad" = 0 ] || fail=$((fail + 1))
 fi

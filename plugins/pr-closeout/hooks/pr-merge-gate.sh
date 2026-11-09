@@ -31,7 +31,7 @@ deny() {
 }
 
 input=$(cat) || allow
-case $input in *merge*) ;; *) allow ;; esac
+case $input in *[Mm][Ee][Rr][Gg][Ee]*) ;; *) allow ;; esac   # any case: enablePullRequestAutoMerge
 command -v jq >/dev/null 2>&1 || deny "需要 jq 才能判斷這是不是 merge。"
 tool=$(printf '%s' "$input" | jq -r '.tool_name // empty' 2>/dev/null) || deny "讀不懂 hook 的輸入。"
 
@@ -47,13 +47,14 @@ if [ "$tool" = Bash ]; then
   IFS= read -r -d '' parser <<'PERL' || true
 use strict; use warnings;
 my $c = $ENV{PMG_CMD} // '';
-my @lines = split /\n/, $c, -1; my @keep; my $delim;
+my @lines = split /\n/, $c, -1; my @keep; my $delim; my @body;
 for my $l (@lines) {
-  if (defined $delim) { my $t = $l; $t =~ s/^\t+//; undef $delim if $t eq $delim; next; }
+  if (defined $delim) { push @body, $l; my $t = $l; $t =~ s/^\t+//; if ($t eq $delim) { undef $delim; @body = (); } next; }
   push @keep, $l;
   my $s = $l; $s =~ s/<<<//g;
   $delim = $1 if $s =~ /<<-?\s*['"]?([A-Za-z_]\w*)['"]?/;
 }
+push @keep, @body;   # a heredoc that never closes is not one: its lines are commands (fail closed)
 $c = join "\n", @keep;
 my @segs = ([]); my $tok; my $i = 0; my $n = length $c;
 sub endtok { push @{$segs[-1]}, $tok if defined $tok; undef $tok; }
@@ -66,14 +67,16 @@ while ($i < $n) {
     $i = $j + 1; next;
   }
   if ($ch eq "\\") { $tok .= substr($c, $i + 1, 1); $i += 2; next; }
-  if ($ch =~ /[;&|()\n]/) { endtok(); push @segs, []; $i++; next; }
+  if ($ch =~ /[;&|()`\n]/) { endtok(); push @segs, []; $i++; next; }
   if ($ch =~ /\s/) { endtok(); $i++; next; }
   $tok .= $ch; $i++;
 }
 endtok();
 for my $s (@segs) {
-  my @t = @$s; shift @t while @t && $t[0] =~ /^[A-Za-z_]\w*=/;
-  next unless @t >= 2 && $t[0] eq 'gh';
+  # gh anywhere in the segment, by basename: wrappers (command, env, time, sudo, xargs…) and a full
+  # path to gh still reach it; a stray `echo gh pr merge` is read as a merge too (the safe side)
+  my @t = @$s; shift @t while @t && !(($t[0] =~ m{([^/]+)$})[0] eq 'gh');
+  next unless @t >= 2;
   my ($repo, $num, $sha) = ('-', '-', '-');
   if ($t[1] eq 'pr' && @t > 2 && $t[2] eq 'merge') {
     my @a = @t[3 .. $#t];
@@ -88,9 +91,12 @@ for my $s (@segs) {
     }
     print "$repo $num $sha\n";
   } elsif ($t[1] eq 'api') {
+    my $found = 0;
     for my $x (@t[2 .. $#t]) {
-      if ($x =~ m{^/?repos/([^/]+/[^/]+)/pulls/(\d+)/merge$}) { print "$1 $2 -\n"; last; }
+      if ($x =~ m{^/?repos/([^/]+/[^/]+)/pulls/(\d+)/merge/?(?:\?.*)?$}) { print "$1 $2 -\n"; $found = 1; last; }
     }
+    # a merge this parser cannot pin to a PR (a GraphQL mergePullRequest, an odd endpoint): unreadable
+    print "- - -\n" if !$found && grep { /mergePullRequest|AutoMerge|\/merge(?:[\/?]|$)/i } @t[2 .. $#t];
   }
 }
 PERL
