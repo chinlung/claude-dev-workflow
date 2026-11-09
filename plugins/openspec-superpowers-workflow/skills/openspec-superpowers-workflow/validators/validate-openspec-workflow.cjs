@@ -127,4 +127,6 @@ function main() {
   }
 }
 
-main();
+// CLI when run directly; reconcile-check.cjs requires these functions instead of copying them.
+if (require.main === module) main();
+module.exports = { REQUIRED_FILES, findSpecFiles, checkRequirementBlocks };
