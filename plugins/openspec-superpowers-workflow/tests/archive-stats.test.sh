@@ -87,10 +87,11 @@ R6="$WORK/r6"
 mk_arch "$R6" reasons 2026-10-01-empty '- [ ] 1.1 a — skip:\r\n'
 mk_arch "$R6" reasons 2026-10-02-spaces '- [ ] 1.1 a — skip:   \n'
 mk_arch "$R6" reasons 2026-10-03-given '- [ ] 1.1 a — skip: x\r\n- [x] 1.2 b\n'
+mk_arch "$R6" reasons 2026-10-04-punct '- [ ] 1.1 a — skip: ...\n'
 stats --root "$R6"
-eq "skip with empty or blank reason counts as no reason" 2 "$(j .totals.incompleteNoReason)"
+eq "skip with an empty, blank or punctuation-only reason counts as no reason" 3 "$(j .totals.incompleteNoReason)"
 eq "skip with a reason counts as withSkipReason" 1 "$(j .totals.withSkipReason)"
-eq "all three are incomplete" 3 "$(j .totals.incomplete)"
+eq "all four are incomplete" 4 "$(j .totals.incomplete)"
 
 # 沒有歸檔目錄 / 不存在的根
 mkdir -p "$WORK/r5/plain"

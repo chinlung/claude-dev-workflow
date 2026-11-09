@@ -28,7 +28,7 @@
 1. **Phase 5 期間絕不修改 spec 檔**。所有審查意見必須記到 `review-notes.md`，用 `[REQUIREMENT|DESIGN|CODE|CONSTITUTION]` tag 加 Y/N 分類——Y 只回答「Phase 6 是否必須更新某個 OpenSpec artifact」，不是「已處理」，所以 `[CODE] Y` 不存在；tag 看修改落在哪個檔案，不看問題性質。1.5.0 起 Phase 1 建檔即預填一段標頭把這套語意釘住，避免各專案自行發明「Y = 已處理」（真實歸檔資料曾出現 54 條 `[CODE] Y`）。被明確要求「現在改 spec」時必須明講拒絕並記錄，不得默默改道
 2. **Superpowers 絕不新建自己的 design / plan 檔**。輸出一律覆寫 OpenSpec 的 `design.md` / `tasks.md` 原位
 3. **Phase 6 reconcile 必須 clean rewrite**。目標是讓 spec 讀起來像「一開始就知道所有這些事」，而非「一份加註解的修訂史」。歸檔前必須跑 `reconcile-check.cjs check`，歸檔閘門 hook 會驗證它的結果
-4. **`tasks.md` 在 reconcile 時絕不修改**。它是執行歷史，不是當前規格
+4. **`tasks.md` 是執行紀錄**：Phase 4 每完成一個任務就把它的框勾成 `[x]`，不做的任務保持未勾並在行尾寫 ` — skip: <理由>`；每個 `### Task N` 標題下只放一個勾選框（OpenSpec 把每個框都算成一個 task）。Phase 6 的 snapshot 之後絕不修改，它是執行歷史，不是當前規格
 5. **`[CONSTITUTION]` 項目絕不進 feature spec**。改到 `openspec/config.yaml` 的 `context:` / `rules:` 欄位
 6. **Phase 4 TDD 強制**。先寫失敗測試，再寫實作，永遠如此
 

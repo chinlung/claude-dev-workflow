@@ -98,12 +98,53 @@ check "$D"; status "R5: unchanged since snapshot pass" R5 pass
 printf -- '- [x] 1.2 added during reconcile\n' >> "$D/tasks.md"; check "$D"
 status "R5: changed since snapshot fail" R5 fail
 
-# R6：未勾選 task 沒有 skip: → warn；有 skip: → pass
+# R6：每個未勾選 task 都要附「skip: 理由」，沒有 → fail；任何縮排深度與寫法的框都算 task
 P=$WORK/p10; D=$(make_change "$P" foo); printf -- '- [ ] 1.2 later\n' >> "$D/tasks.md"; check "$D"
-status "R6: unchecked task warn" R6 warn
-eq "R6: unchecked task exit 0" 0 "$RC"
+status "R6: unchecked task without skip fail" R6 fail
+eq "R6: unchecked task without skip exit 1" 1 "$RC"
 P=$WORK/p11; D=$(make_change "$P" foo); printf -- '- [ ] 1.2 later skip: 不做，見 follow-ups\n' >> "$D/tasks.md"; check "$D"
-status "R6: unchecked task with skip pass" R6 pass
+status "R6: unchecked task with skip in the line pass" R6 pass
+P=$WORK/p11b; D=$(make_change "$P" foo); printf -- '- [ ] 1.2 later — skip: 範圍外\n' >> "$D/tasks.md"; check "$D"
+status "R6: skip suffix with a reason pass" R6 pass
+# 空理由的三種寫法都不算理由：行尾、只有空白、只有標點
+P=$WORK/p11c; D=$(make_change "$P" foo); printf -- '- [ ] 1.2 later — skip:\n' >> "$D/tasks.md"; check "$D"
+status "R6: skip with nothing after the colon fail" R6 fail
+P=$WORK/p11d; D=$(make_change "$P" foo); printf -- '- [ ] 1.2 later — skip:   \n' >> "$D/tasks.md"; check "$D"
+status "R6: skip with only blanks fail" R6 fail
+P=$WORK/p11e; D=$(make_change "$P" foo); printf -- '- [ ] 1.2 later — skip: ...\n' >> "$D/tasks.md"; check "$D"
+status "R6: skip with only punctuation fail" R6 fail
+# OpenSpec 把任何深度、任何內容的框都算 task
+P=$WORK/p11f; D=$(make_change "$P" foo); printf -- '  - [ ] nested later\n' >> "$D/tasks.md"; check "$D"
+status "R6: nested unchecked box fail" R6 fail
+P=$WORK/p11g; D=$(make_change "$P" foo); printf -- '- [ ] **Step 2: write the test**\n' >> "$D/tasks.md"; check "$D"
+status "R6: bold-step unchecked box fail" R6 fail
+P=$WORK/p11h; D=$(make_change "$P" foo); printf '# Tasks\n\nNothing planned.\n' > "$D/tasks.md"; check "$D"
+status "R6: no boxes at all warn" R6 warn
+eq "R6: no boxes at all exit 0" 0 "$RC"
+P=$WORK/p11i; D=$(make_change "$P" foo); check "$D"
+status "R6: every box checked pass" R6 pass
+P=$WORK/p11j; D=$(make_change "$P" foo); printf -- '- [x] 1.2 done, skip: not needed after all\n' >> "$D/tasks.md"; check "$D"
+status "R6: checked line mentioning skip pass" R6 pass
+# 標準格式範例：每個 Task 一個框
+P=$WORK/p11k; D=$(make_change "$P" foo); cp "$FIXTURES/tasks-format/tasks.md" "$D/tasks.md"; check "$D"
+status "R6: format sample unticked fail" R6 fail
+perl -pi -e 's/\[ \]/[x]/' "$D/tasks.md"; check "$D"
+status "R6: format sample ticked pass" R6 pass
+
+# snapshot 先跑 R6：不過就拒絕、不留狀態檔；補勾之後才成功，而且 R5 不把補勾當成 Phase 6 期間的修改
+P=$WORK/p11m; D=$(make_change "$P" foo); printf -- '- [ ] 1.2 later\n' >> "$D/tasks.md"
+node "$CHECK" snapshot "$D" > "$WORK/snap.out" 2>&1; eq "snapshot: refused while a task has no skip reason" 1 "$?"
+eq "snapshot: refusal leaves no state file" absent "$([ -e "$P/.claude/openspec-reconcile.foo.local.json" ] && echo present || echo absent)"
+has "snapshot: refusal names the line" "$WORK/snap.out" "1.2 later"
+P=$WORK/p11n; D=$(make_change "$P" foo); printf -- '- [ ] 1.2 later — skip:\n' >> "$D/tasks.md"
+node "$CHECK" snapshot "$D" > "$WORK/snap.out" 2>&1; eq "snapshot: refused for an empty reason too" 1 "$?"
+eq "snapshot: second refusal leaves no state file" absent "$([ -e "$P/.claude/openspec-reconcile.foo.local.json" ] && echo present || echo absent)"
+perl -pi -e 's/^- \[ \] 1\.2 later — skip:\n/- [x] 1.2 later\n/' "$D/tasks.md"
+node "$CHECK" snapshot "$D" > "$WORK/snap.out" 2>&1; eq "snapshot: succeeds once the task is ticked" 0 "$?"
+check "$D"; status "snapshot then check: R5 pass" R5 pass
+perl -pi -e 's/^- \[x\] 1\.2 later\n/- [ ] 1.2 later\n/' "$D/tasks.md"; check "$D"
+status "snapshot then un-ticking: R5 fail" R5 fail
+status "snapshot then un-ticking: R6 fail" R6 fail
 
 # R7：design 有補丁語言 → warn
 P=$WORK/p12; D=$(make_change "$P" foo); printf '原本是同步匯出。\n' >> "$D/design.md"; check "$D"
@@ -134,7 +175,7 @@ out=$(node -e 'const m = require(process.argv[1]); process.stdout.write(typeof m
 eq "validator require exports findSpecFiles without running main" "function" "$out"
 
 # ---- summary ----
-MIN=34
+MIN=55
 if [ "$((PASS + FAIL))" -lt "$MIN" ]; then
   echo "FAIL: ran $((PASS + FAIL)) assertions, expected at least $MIN"; FAIL=$((FAIL+1))
 fi

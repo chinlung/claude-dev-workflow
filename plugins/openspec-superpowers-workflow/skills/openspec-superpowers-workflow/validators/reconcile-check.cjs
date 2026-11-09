@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 // Phase 6 mechanical checks before an OpenSpec change is archived.
-//   snapshot <change-dir>        record the hash of tasks.md (run when Phase 6 starts)
+//   snapshot <change-dir>        record the hash of tasks.md (run when Phase 6 starts; refused, exit 1, while R6 fails)
 //   check    <change-dir> [--json]  run R1–R9; with no fail, record a pass verdict pinned to the
 //                                    hashes of proposal, design, tasks, review-notes and specs
 //   verify   <change-dir>        exit 0 when that verdict exists and none of those files changed
@@ -139,10 +139,16 @@ function checkR5(ctx) {
   }
 }
 
+// OpenSpec counts every checkbox bullet as a task, at any indentation and with any text. An unchecked one
+// needs "skip:" and a reason with at least one letter or digit; "skip:" alone or followed by punctuation is not one.
+const TASK_BOX = /^\s*-\s*\[( |x|X)\]/;
+const SKIP_REASON = /skip:\s*[\p{L}\p{N}]/u;
 function checkR6(ctx) {
-  const open = (ctx.read(ARTIFACTS.tasks) || '').split('\n').filter((l) => /^\s*-\s*\[ \]/.test(l) && !/skip:/.test(l));
+  const boxes = (ctx.read(ARTIFACTS.tasks) || '').split('\n').map((line, i) => ({ line, no: i + 1 })).filter(({ line }) => TASK_BOX.test(line));
+  if (boxes.length === 0) return result('warn', ['tasks.md has no checkbox task']);
+  const open = boxes.filter(({ line }) => /^\s*-\s*\[ \]/.test(line) && !SKIP_REASON.test(line));
   if (open.length === 0) return result('pass');
-  return result('warn', [`${open.length} unchecked task(s) without "skip: <reason>"`, ...open.map((l) => l.trim())]);
+  return result('fail', [`${open.length} unchecked task(s) without "skip: <reason>" (the reason needs a letter or digit)`, ...open.map(({ line, no }) => `line ${no}: ${line.trim()}`)]);
 }
 
 const PATCH_LANGUAGE = [/修訂[：:]/, /原本(是|為)/, /\bRound \d+\b/i, /review-notes/, /\bpreviously\b/i];
@@ -187,6 +193,13 @@ function main(argv) {
     return 2;
   }
   if (cmd === 'snapshot') {
+    // tasks.md is frozen from here on, so every unchecked task must already be ticked or carry a skip reason.
+    const r6 = checkR6(ctx);
+    if (r6.status === 'fail') {
+      console.log('snapshot refused: tick each unchecked task or add " — skip: <reason>" to it, then run snapshot again');
+      for (const d of r6.detail) console.log(`  ${d}`);
+      return 1;
+    }
     const state = readState(ctx);
     state.change = ctx.name;
     state.snapshot = { tasks: fileHash(ctx, ARTIFACTS.tasks), at: new Date().toISOString() };

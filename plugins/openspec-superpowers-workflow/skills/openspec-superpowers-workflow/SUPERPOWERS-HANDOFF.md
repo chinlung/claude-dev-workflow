@@ -63,6 +63,8 @@ OVERWRITE openspec/changes/<name>/tasks.md
 with the tasks output from writing-plans
 ```
 
+寫入前先整理格式（理由見 `phases.md` Phase 3）：每個 `### Task N` 標題下只留**一個**勾選框，writing-plans 產出的「每步一個框」改成編號清單。OpenSpec 把每個框都算成一個 task，框一多進度就膨脹、也沒人會逐步去勾。
+
 ### ✅ 正確範例
 ```
 writing-plans 完成，產出任務清單
@@ -96,7 +98,7 @@ Write(path: "plan.md", content: <tasks output>)  # 計畫沒有放在 OpenSpec �
 
 ### 禁止在此 Phase 做的事
 - 修改任何 spec 檔案（proposal.md、specs/、design.md）
-- 修改 tasks.md 的任務描述（可以 check off 完成狀態）
+- 修改 tasks.md 的任務描述。完成的任務要在同一輪把框勾成 `[x]`；不做的任務保持未勾，並在行尾寫 ` — skip: <理由>`
 
 ---
 

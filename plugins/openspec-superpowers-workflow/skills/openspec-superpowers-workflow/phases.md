@@ -132,6 +132,18 @@ After brainstorming completes, OVERWRITE `openspec/changes/<feature-name>/design
 
 **Do NOT create a separate plan file. Tasks live in OpenSpec's tasks.md.**
 
+**tasks.md format: one checkbox per Task.** OpenSpec counts every `- [ ]` / `- [x]` bullet as a task, at any depth and with any text, and Superpowers' `task-brief` cuts a task out of the plan by its `### Task N` heading. So write each Task as a heading with exactly one checkbox line under it, and turn the step list that `writing-plans` produces into a plain numbered list with no checkboxes:
+
+```markdown
+## 1. <group>
+### Task 1: <title>
+- [ ] 1.1 <the deliverable in one line, with its test>
+1. Write the failing test…
+2. Implement…
+```
+
+A checkbox on every step makes progress count several times too large and "tick it when done" a chore nobody does. That is how tasks.md ended up as a plan that nothing updated.
+
 **Quality gate**: User reviews task breakdown before proceeding to implementation.
 
 ---
@@ -154,6 +166,9 @@ After brainstorming completes, OVERWRITE `openspec/changes/<feature-name>/design
 - If a task fails its reviewer (spec or quality verdict), fix it before moving to the next task.
 - Never suppress reviewer findings or pre-rate severity. A defect the plan itself mandates is reported for you to decide on, not waved through.
 - Do NOT modify any spec files during implementation.
+- **tasks.md is the execution record.** When a task passes its completion contract (executing-plans `task-done`, or the SDD review), change that task's `- [ ]` to `- [x]` in the same turn as its commit. Do not rewrite the task description.
+- A task you decide not to do stays unchecked and gets ` — skip: <reason>` at the end of its line. The reason needs a letter or digit; a bare `skip:` does not count.
+- **Phase 4 exit check:** `openspec instructions apply --change <feature-name> --json` reports `progress.remaining` of 0, or every remaining line carries a skip reason. If Phase 5 later shows a task was not really finished, record it as a `[CODE] N` entry; it is settled in the step before the Phase 6 snapshot.
 
 ---
 
@@ -220,9 +235,11 @@ context.
 
 **Trigger**: All reviews passed, all code fixes merged, user says "reconcile" or "archive"
 
+**Entry check (before 6a).** Read the last `## Round` heading of `review-notes.md`. If it does not carry `final`, the user has not declared review converged: do not start 6a and do not rewrite any artifact. Tell the user which open items that last round lists, and ask whether review has converged. Add `final` only after they say so. A merged PR or an instruction to archive is not that statement.
+
 ### Step 6a: Reconcile specs
 
-**First**, record the current `tasks.md`, so the archive gate can prove it was not touched during reconciliation (C3):
+**First**, settle `tasks.md`: tick every task that is done and add ` — skip: <reason>` to every one that is not (only the box and the skip suffix, never the task description). Then record it, so the archive gate can prove it was not touched during reconciliation (C3). `snapshot` refuses (exit 1, no state file) while any unchecked task has no skip reason:
 
 ```bash
 node ${CLAUDE_PLUGIN_ROOT}/skills/openspec-superpowers-workflow/validators/reconcile-check.cjs snapshot openspec/changes/<feature-name>
@@ -239,7 +256,7 @@ Then read `openspec/changes/<feature-name>/review-notes.md` and process only ite
 all this information from the start. The goal is a spec that reads as a coherent document,
 not a changelog with amendments.
 
-**tasks.md is NEVER modified during reconciliation.** It is execution history.
+**tasks.md is NEVER modified during reconciliation** (after the snapshot above). It is execution history.
 
 ### Step 6b: User confirms reconciled specs
 
@@ -275,7 +292,7 @@ Run `/opsx:archive <feature-name>` (or `openspec archive <feature-name> --yes` i
 - Merge final requirements into `openspec/specs/<capability>/spec.md` (OpenSpec source of truth)
 - Move the change folder to `openspec/changes/archive/<YYYY-MM-DD>-<feature-name>/` — the archive command auto-prefixes with the archive date, so the folder name is NOT just the feature name
 - `review-notes.md` is preserved inside the archive for historical reference
-- Note: archive will warn if tasks.md has incomplete items (`Warning: N incomplete task(s) found`); this is expected when Phase 4 was partially skipped or done out-of-band — use `--yes` to proceed
+- Note: archive warns when tasks.md has unchecked items (`Warning: N incomplete task(s) found`). After the snapshot every unchecked item carries a `skip:` reason, so the warning is expected and lists only those lines. If it lists a line without a reason, stop: fix tasks.md and take a new snapshot before archiving
 - The archive gate hook runs before both `openspec archive` and the OpenSpec 1.16 `/opsx:archive` template's `mkdir` + `mv` into `changes/archive/`, and denies either one without a fresh pass verdict from Step 6b5. Prefix the command with `OPENSPEC_ARCHIVE_OK=1` to bypass it, and only when the user explicitly asks
 
 ### Step 6d: Constitution updates (if any)

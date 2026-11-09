@@ -14,11 +14,11 @@ const crypto = require('crypto');
 
 const USAGE = 'Usage: openspec-archive-stats.cjs --root <dir> [--root <dir> …] [--since YYYY-MM-DD] [--names]';
 const BOX = /^\s*-\s*\[( |x|X)\]/; // same notion of "task" as OpenSpec: any checkbox bullet, any depth
-const SKIP_REASON = /skip:\s*\S/;
+const SKIP_REASON = /skip:\s*[\p{L}\p{N}]/u; // same rule as reconcile-check R6: the reason needs a letter or digit
 const DEFINITION =
   'task = a line matching /^\\s*-\\s*\\[( |x|X)\\]/ in tasks.md, at any indentation; ' +
   'incomplete = at least one unchecked task; incompletePct = incomplete / archived; ' +
-  'incompleteNoReason = an unchecked task without "skip:" and a non-empty reason; ' +
+  'incompleteNoReason = an unchecked task without "skip:" and a reason (at least one letter or digit);' +
   'noTasks = no tasks.md, or none with a checkbox';
 
 function fail(message) {
