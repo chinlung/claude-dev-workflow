@@ -1,0 +1,190 @@
+#!/bin/bash
+# Tests for plugins/pr-closeout/hooks/pr-merge-gate.sh (PreToolUse, Bash and GitHub MCP merge).
+# Usage: bash plugins/pr-closeout/tests/pr-merge-gate.test.sh   (HOOK=<path> to test a copy)
+# A fake `ready` (PR_CLOSEOUT_SCRIPT) answers with FAKE_RC and records the arguments it got, so the
+# cases check both the decision and what the hook asked. Mutants at the end must die on their case.
+set -u
+here=$(cd "$(dirname "$0")" && pwd)
+HOOK=${HOOK:-"$here/../hooks/pr-merge-gate.sh"}
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/pmg-test.XXXXXX") || exit 1
+trap 'rm -rf "$tmp"' EXIT
+command -v jq >/dev/null 2>&1 || { echo "pr-merge-gate.test: jq is required"; exit 1; }
+command -v node >/dev/null 2>&1 || { echo "pr-merge-gate.test: node is required"; exit 1; }
+
+cat > "$tmp/fake-ready.mjs" <<'JS'
+import fs from 'node:fs';
+fs.appendFileSync(process.env.FAKE_LOG, process.argv.slice(2).join(' ') + '\n');
+if (process.env.FAKE_SLEEP) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Number(process.env.FAKE_SLEEP));
+const rc = Number(process.env.FAKE_RC || 0);
+const gate = process.env.FAKE_GATE || null;
+process.stdout.write(JSON.stringify({ exit: rc, gate, hits: rc ? [{ code: 'x', gate, detail: 'fake detail' }] : [] }));
+process.exitCode = rc;
+JS
+export PR_CLOSEOUT_SCRIPT="$tmp/fake-ready.mjs" FAKE_LOG="$tmp/calls"
+
+pass=0; fail=0
+failed() { fail=$((fail + 1)); echo "FAIL $1"; [ "${STOP_ON_FAIL:-0}" = 1 ] && exit 1; return 0; }
+ok() { pass=$((pass + 1)); }
+# gate <want allow|deny> <label> <hook stdin json>; leaves stdout in $tmp/out, calls in $tmp/calls
+gate() {
+  local want=$1 label=$2 json=$3 rc got
+  rm -f "$tmp/calls"
+  printf '%s' "$json" | bash "$HOOK" > "$tmp/out" 2> "$tmp/err"; rc=$?
+  got=allow; jq -e '.hookSpecificOutput.permissionDecision == "deny"' "$tmp/out" >/dev/null 2>&1 && got=deny
+  if [ "$rc" = 0 ] && [ "$got" = "$want" ]; then ok; else failed "[$label] decision $got rc=$rc, expected $want: $(head -c 200 "$tmp/out")"; fi
+}
+bash_in() { jq -cn --arg c "$1" '{hook_event_name:"PreToolUse",tool_name:"Bash",tool_input:{command:$c}}'; }
+mcp_in() { jq -cn --argjson i "$1" '{hook_event_name:"PreToolUse",tool_name:"mcp__claude_ai_GitHub_MCP_Server__merge_pull_request",tool_input:$i}'; }
+called() { local want=$1 label=$2 got; got=$(cat "$tmp/calls" 2>/dev/null); if [ "$got" = "$want" ]; then ok; else failed "[$label] ready called with [$got], expected [$want]"; fi; }
+reason_has() { if jq -r '.hookSpecificOutput.permissionDecisionReason // ""' "$tmp/out" | command grep -qF -- "$2"; then ok; else failed "[$1] reason lacks: $2"; fi; }
+SHA=1111111111111111111111111111111111111111
+
+# ── parsing: which PR, which repo, which head ────────────────────────────────────────────────────
+FAKE_RC=0 gate allow "gh pr merge, --repo" "$(bash_in 'gh pr merge 3 --repo o/r --squash')"
+called "ready o/r 3" "gh pr merge, --repo: args"
+FAKE_RC=0 gate allow "gh pr merge, --repo=" "$(bash_in 'gh pr merge --repo=o/r 4 --squash')"
+called "ready o/r 4" "gh pr merge, --repo=: args"
+FAKE_RC=0 gate allow "gh pr merge, a PR URL" "$(bash_in 'gh pr merge https://github.com/o/r/pull/7 --squash')"
+called "ready o/r 7" "URL: args"
+FAKE_RC=0 gate allow "match-head-commit is passed on" "$(bash_in "gh pr merge 3 -R o/r --squash --match-head-commit $SHA")"
+called "ready o/r 3 --expect-head $SHA" "head: args"
+FAKE_RC=0 gate allow "gh api merge" "$(bash_in 'gh api repos/o/r/pulls/3/merge -X PUT')"
+called "ready o/r 3" "gh api: args"
+FAKE_RC=0 gate allow "gh api merge, leading slash" "$(bash_in 'gh api -X PUT /repos/o/r/pulls/5/merge')"
+called "ready o/r 5" "gh api slash: args"
+FAKE_RC=0 gate allow "MCP merge" "$(mcp_in '{"owner":"o","repo":"r","pullNumber":3}')"
+called "ready o/r 3" "MCP: args"
+FAKE_RC=0 gate allow "MCP merge with sha" "$(mcp_in "{\"owner\":\"o\",\"repo\":\"r\",\"pullNumber\":8,\"sha\":\"$SHA\"}")"
+called "ready o/r 8 --expect-head $SHA" "MCP sha: args"
+FAKE_RC=0 gate allow "merge after another command" "$(bash_in 'git -C /a fetch origin && gh pr merge 3 --repo o/r --squash')"
+called "ready o/r 3" "compound: args"
+FAKE_RC=0 gate allow "merge after a here-string" "$(bash_in $'cat <<< x\ngh pr merge 3 --repo o/r\nx')"
+called "ready o/r 3" "here-string: args"
+
+# ── decisions ────────────────────────────────────────────────────────────────────────────────────
+FAKE_RC=3 gate deny "ready says unresolved threads" "$(bash_in 'gh pr merge 3 --repo o/r --squash')"
+reason_has "threads: exit named" "exit 3"
+FAKE_RC=6 FAKE_GATE=head-mismatch gate deny "ready says head mismatch" "$(bash_in "gh pr merge 3 --repo o/r --match-head-commit $SHA")"
+reason_has "head mismatch: gate named" "head-mismatch"
+FAKE_RC=7 gate deny "ready cannot query" "$(mcp_in '{"owner":"o","repo":"r","pullNumber":3}')"
+gate deny "no --repo" "$(bash_in 'gh pr merge 3 --squash')"
+reason_has "no repo: asks for it" "--repo"
+called "" "no repo: ready not called"
+gate deny "no PR number" "$(bash_in 'gh pr merge --repo o/r --squash')"
+gate deny "MCP without a number" "$(mcp_in '{"owner":"o","repo":"r"}')"
+FAKE_RC=3 gate allow "bypass" "$(bash_in 'PR_CLOSEOUT_OK=1 gh pr merge 3 --repo o/r')"
+called "" "bypass: ready not called"
+PR_CLOSEOUT_SCRIPT="$tmp/missing.mjs" gate deny "ready script missing" "$(bash_in 'gh pr merge 3 --repo o/r')"
+reason_has "script missing: says how to bypass" "PR_CLOSEOUT_OK=1"
+
+# ── found by review: wrappers, full paths, backticks, endpoint variants, graphql, open heredocs ──
+FAKE_RC=0 gate allow "command gh" "$(bash_in 'command gh pr merge 3 --repo o/r')"
+called "ready o/r 3" "command gh: args"
+FAKE_RC=0 gate allow "env wrapper" "$(bash_in 'env GH_HOST=github.com gh pr merge 4 -R o/r')"
+called "ready o/r 4" "env wrapper: args"
+FAKE_RC=0 gate allow "full path to gh" "$(bash_in '/opt/homebrew/bin/gh pr merge 5 --repo o/r')"
+called "ready o/r 5" "full path: args"
+FAKE_RC=0 gate allow "inside backticks" "$(bash_in 'echo `gh pr merge 6 --repo o/r`')"
+called "ready o/r 6" "backticks: args"
+FAKE_RC=0 gate allow "endpoint with a trailing slash" "$(bash_in 'gh api repos/o/r/pulls/3/merge/ -X PUT')"
+called "ready o/r 3" "trailing slash: args"
+FAKE_RC=0 gate allow "endpoint with a query string" "$(bash_in 'gh api "repos/o/r/pulls/9/merge?x=1" -X PUT')"
+called "ready o/r 9" "query string: args"
+gate deny "graphql mergePullRequest" "$(bash_in "gh api graphql -f query='mutation{mergePullRequest(input:{pullRequestId:\"x\"}){clientMutationId}}'")"
+called "" "graphql: ready not called"
+gate deny "graphql auto-merge" "$(bash_in "gh api graphql -f query='mutation{enablePullRequestAutoMerge(input:{pullRequestId:\"x\"}){clientMutationId}}'")"
+gate deny "endpoint with a fragment" "$(bash_in "gh api 'repos/o/r/pulls/3/merge#x' -X PUT")"
+called "" "fragment: ready not called"
+FAKE_RC=0 gate allow "gh api without merge" "$(bash_in 'gh api repos/o/r/pulls/3 --jq .merged')"
+called "" "api no merge: ready not called"
+FAKE_RC=0 gate allow "a heredoc that never closes" "$(bash_in $'cat <<EOF\ngh pr merge 3 --repo o/r')"
+called "ready o/r 3" "open heredoc: args"
+
+# command substitution runs inside double quotes and unquoted heredocs: what it runs counts
+FAKE_RC=0 gate allow "substitution in double quotes" "$(bash_in 'echo "merged: $(gh pr merge 3 --repo o/r --squash)"')"
+called "ready o/r 3" "dq substitution: args"
+FAKE_RC=0 gate allow "substitution in an assignment" "$(bash_in 'x="$(gh pr merge 4 -R o/r)"')"
+called "ready o/r 4" "assignment substitution: args"
+FAKE_RC=0 gate allow "backticks in double quotes" "$(bash_in 'echo "`gh pr merge 6 --repo o/r`"')"
+called "ready o/r 6" "dq backticks: args"
+FAKE_RC=0 gate allow "substitution in an unquoted heredoc" "$(bash_in $'cat <<EOF\n$(gh pr merge 5 --repo o/r)\nEOF')"
+called "ready o/r 5" "heredoc substitution: args"
+gate allow "substitution text in a quoted heredoc" "$(bash_in $'cat <<\'EOF\'\n$(gh pr merge 5 --repo o/r)\nEOF')"
+called "" "quoted heredoc: ready not called"
+gate allow "merge as plain text in double quotes" "$(bash_in 'echo "run gh pr merge 3 --repo o/r later"')"
+called "" "dq plain text: ready not called"
+
+# options that take a value must not lend it as the PR number, and two numbers are not one PR
+FAKE_RC=0 gate allow "--subject takes a value" "$(bash_in 'gh pr merge --subject 5 7 --repo o/r --squash')"
+called "ready o/r 7" "subject value: args"
+FAKE_RC=0 gate allow "-b takes a value" "$(bash_in 'gh pr merge -b 9 3 -R o/r')"
+called "ready o/r 3" "-b value: args"
+gate deny "two PR numbers" "$(bash_in 'gh pr merge 5 7 --repo o/r')"
+called "" "two numbers: ready not called"
+
+# a command string handed to a shell runs too: bash -c, sh -lc, eval
+FAKE_RC=0 gate allow "inside bash -c" "$(bash_in "timeout 60 bash -c 'gh pr merge 3 --repo o/r --squash'")"
+called "ready o/r 3" "bash -c: args"
+FAKE_RC=0 gate allow "inside sh -lc" "$(bash_in "sh -lc 'gh pr merge 5 -R o/r'")"
+called "ready o/r 5" "sh -lc: args"
+FAKE_RC=0 gate allow "inside eval" "$(bash_in 'eval "gh pr merge 4 --repo o/r"')"
+called "ready o/r 4" "eval: args"
+# every ready run shares one budget under the hook's own timeout: too little left is a deny
+FAKE_RC=0 FAKE_SLEEP=1500 PR_MERGE_GATE_BUDGET=2 gate deny "two merges, budget spent" "$(bash_in 'gh pr merge 3 --repo o/r; gh pr merge 4 --repo o/r')"
+reason_has "budget spent: says so" "時間"
+called "ready o/r 3" "budget spent: only the first ran"
+
+# ── not a merge: allowed without asking ──────────────────────────────────────────────────────────
+gate allow "merge in a commit message" "$(bash_in 'git commit -m "gh pr merge later"')"
+called "" "commit message: ready not called"
+gate allow "merge in single quotes" "$(bash_in "echo 'gh pr merge 3 --repo o/r'")"
+called "" "quoted: ready not called"
+gate allow "git merge" "$(bash_in 'git merge --ff-only origin/main')"
+called "" "git merge: ready not called"
+gate allow "merge inside a heredoc body" "$(bash_in $'cat > n.md <<EOF\ngh pr merge 3 --repo o/r\nEOF')"
+called "" "heredoc: ready not called"
+gate allow "nothing about merge" "$(bash_in 'ls -la')"
+
+MIN_PASS=91
+if [ "$pass" -lt "$MIN_PASS" ] && [ "${STOP_ON_FAIL:-0}" != 1 ]; then failed "only $pass checks passed, expected at least $MIN_PASS"; fi
+echo "pr-merge-gate: $pass passed, $fail failed"
+
+mut_bad=0; mut_n=0
+mutant() {   # <label> <substring of the case that must kill it> <perl substitution>
+  local label=$1 want=$2 m="$tmp/mutant-$1.sh" log="$tmp/mutant-$1.log" rc first
+  perl -pe "$3" "$HOOK" > "$m" || { echo "MUTANT [$label] perl failed"; mut_bad=1; return; }
+  if cmp -s "$m" "$HOOK"; then echo "MUTANT [$label] substitution did not apply"; mut_bad=1; return; fi
+  HOOK="$m" NO_MUTANTS=1 STOP_ON_FAIL=1 perl -e 'alarm 120; exec @ARGV' bash "$0" > "$log" 2>&1; rc=$?
+  mut_n=$((mut_n + 1))
+  first=$(command grep -a -m1 '^FAIL' "$log")   # -a: a truncated multibyte char must not make GNU grep call the log binary
+  if [ "$rc" = 0 ]; then echo "MUTANT [$label] suite stayed green"; mut_bad=1
+  elif [ -z "$first" ]; then echo "MUTANT [$label] crashed before any case failed"; mut_bad=1
+  elif [[ $first != *"$want"* ]]; then echo "MUTANT [$label] killed by [${first:0:90}], expected [$want]"; mut_bad=1
+  else echo "mutant [$label]: suite red as required (by [$want])"; fi
+}
+if [ "${NO_MUTANTS:-0}" != 1 ]; then
+  mutant bypass        "[bypass]"                     's/^  case \$cmd in \*PR_CLOSEOUT_OK=1\*\) allow ;; esac$/  :/'
+  mutant here-string   "[here-string: args]"          's/my \$s = \$l; \$s =~ s\/<<<\/\/g;/my \$s = \$l;/'
+  mutant rc-check      "[ready says unresolved threads]" 's/\[ "\$rc" = 0 \] && continue/continue/'
+  mutant need-target   "[no --repo]"                  's/if \[ "\$repo" = - \] \|\| \[ "\$num" = - \]; then/if false; then/'
+  mutant expect-head   "[head: args]"                 's/\[ "\$sha" = - \] \|\| args\+=/true || args+=/'
+  mutant api-parse     "[gh api merge]"               's/if \(\$x =~ m\{\^\/\?repos/if (0 && \$x =~ m{^\/?repos/'
+  mutant mcp           "[MCP: args]"                  's/elif \[\[ \$tool == mcp__\*merge_pull_request \]\]/elif false/'
+  mutant wrappers      "[command gh: args]"           's/shift \@t while \@t && !\(\(\$t\[0\] =~ m\{\(\[\^\/\]\+\)\$\}\)\[0\] eq '"'"'gh'"'"'\);/shift \@t while \@t && \$t[0] =~ \/^[A-Za-z_]\\w*=\/;/'
+  mutant backticks     "[backticks: args]"            's/\[;&\|\(\)`\\n\]/[;&|()\\n]/'
+  mutant open-heredoc  "[open heredoc: args]"         's/^  push \@keep, \@body;.*$//'
+  mutant api-unread    "[graphql mergePullRequest]"   's/print "- - -\\n" if !\$found/print "" if !\$found/'
+  mutant prefilter-case "[graphql auto-merge]"        's/\*\[Mm\]\[Ee\]\[Rr\]\[Gg\]\[Ee\]\*/*merge*/'
+  mutant dq-subs       "[dq substitution: args]"      's/^      push \@queue, subs_of\(\$dq\);$//'
+  mutant heredoc-subs  "[heredoc substitution: args]" 's/push \@queue, map \{ subs_of\(\$_\) \} \@body unless \$quoted; //'
+  mutant quoted-hd     "[quoted heredoc: ready not called]" 's/ unless \$quoted;/;/'
+  mutant takes-value   "[--subject takes a value]"   's/if \(\$takes\{\$x\}\) \{ \$k\+\+; next; \}//'
+  mutant two-numbers   "[two PR numbers]"             's/\$num = '"'"'-'"'"' if \$two;//'
+  mutant shell-c       "[bash -c: args]"              's/if \(\$s->\[\$m\] =~ \/\^-\[A-Za-z\]\*c\[A-Za-z\]\*\$\/\) \{ push \@queue, \$s->\[\$m \+ 1\] if defined \$s->\[\$m \+ 1\]; last; \}//'
+  mutant eval          "[eval: args]"                 's/elsif \(\$w eq '"'"'eval'"'"'\)/elsif (0)/'
+  mutant budget        "[two merges, budget spent]"   's/if \[ "\$left" -lt 1000 \]; then/if false; then/'
+  MUT_WANT_N=20
+  if [ "$mut_n" != "$MUT_WANT_N" ]; then echo "FAIL: $mut_n of $MUT_WANT_N mutants ran"; mut_bad=1; fi
+  [ "$mut_bad" = 0 ] || fail=$((fail + 1))
+fi
+[ "$fail" = 0 ]

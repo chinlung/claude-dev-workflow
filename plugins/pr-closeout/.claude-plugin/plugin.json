@@ -1,0 +1,21 @@
+{
+  "name": "pr-closeout",
+  "version": "1.0.0",
+  "description": "PR closeout: ready reads a PR's merge readiness from GitHub as an exit-coded, fail-closed verdict (conflicts, unresolved review threads, failed or missing required checks, hidden merge gates, files the last review-branch round never saw, unarchived openspec changes); landed proves the merge afterwards (merged_at, head, merge commit on base, branch cleanup). A PreToolUse gate runs ready before gh pr merge, gh api …/merge and the GitHub MCP merge tool.",
+  "author": {
+    "name": "Chin Lung",
+    "email": "scl@hanchih.com"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/chinlung/claude-dev-workflow",
+  "homepage": "https://github.com/chinlung/claude-dev-workflow#readme",
+  "keywords": [
+    "pull-request",
+    "merge",
+    "closeout",
+    "github",
+    "code-review",
+    "ci",
+    "merge-gate"
+  ]
+}

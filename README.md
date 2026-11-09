@@ -19,6 +19,7 @@ A collection of powerful plugins for Claude Code, featuring automated developmen
 | [Session Reflect](#session-reflect-plugin) | Session-end review that proposes up to 5 verified, actionable improvement suggestions | `/session-reflect:reflect` + Stop hook |
 | [Scope Ledger](#scope-ledger-plugin) | Per-goal scope ledger + follow-ups backlog + six fail-open hooks that triage review findings (converge / harvest modes) and stop review-driven scope creep without skipping real bugs | `/scope-ledger:scope` + PreToolUse (Edit + Bash) / UserPromptSubmit / PostToolUse / Stop / SessionStart hooks |
 | [PR](#pr-plugin) | PR body template that is fast to review: visual Summary, before/after Evidence, Merge Danger (door + blast radius) | `/pr:pr` + auto-triggered skill |
+| [PR Closeout](#pr-closeout-plugin) | Fail-closed merge readiness from GitHub (conflicts, unresolved threads, failed or missing required checks, hidden merge gates, files the last review never saw), merge proof afterwards, and a merge gate that runs it before any merge | `/pr-closeout:pr-closeout` + PreToolUse (Bash + GitHub MCP merge) hook |
 
 ## Installation
 
@@ -38,6 +39,7 @@ A collection of powerful plugins for Claude Code, featuring automated developmen
 /plugin install session-reflect@scl-claude-plugins
 /plugin install scope-ledger@scl-claude-plugins
 /plugin install pr@scl-claude-plugins
+/plugin install pr-closeout@scl-claude-plugins
 ```
 
 Or install directly:
@@ -666,6 +668,10 @@ Keeps review-driven work from expanding past the original request without lettin
 # PR Plugin
 
 A single-skill plugin that shapes a pull-request body for fast review. **Summary** shows the change as the smallest visual that makes the point — pseudocode, a call tree, a component or file tree, Mermaid, or a `diff` sketch of the shape that changes; **Evidence** shows a before and after (screenshots for visual changes, then test runs and console output); **Merge Danger** says whether the change is a one-way or two-way door and how far its blast radius reaches. It only writes the body — save it to a file and open the PR with `gh pr create --body-file <file>`; `/commit-commands:commit-push-pr` writes its own body from the diff and does not apply this template. The body is written in the language of the repository's existing PRs, or in Traditional Chinese when there is no precedent; the skill itself is in Traditional Chinese with an English reference copy, and an eval suite measures its behaviour against a no-plugin baseline. The Summary's menu of visuals comes from Dex Horthy's `show-me` skill (Humanlayer). Details: [`plugins/pr/README.md`](plugins/pr/README.md).
+
+# PR Closeout Plugin
+
+Turns the PR closeout from hand-typed queries into facts. `ready` reads one PR from GitHub (one GraphQL query plus the three review endpoints) and answers with an exit code: conflict, unresolved review threads (outdated ones included), failed checks or a required check that never ran, pending, a merge gate (closed, draft, changes requested, a head other than the one you pushed, BLOCKED with nothing visible wrong, behind) or a query it could not read; it is fail-closed, so an unknown value is never green. Given the local clone it also checks that the last review-branch round saw exactly the bytes being merged, file by file, and lists openspec changes the PR leaves unarchived. `landed` proves the merge afterwards: merged_at, the head, the merge commit on the base (never the squashed branch tip) and that the branch is gone everywhere. A PreToolUse hook runs `ready` before `gh pr merge`, `gh api …/merge` and the GitHub MCP merge tool and lets only a ready PR through (`PR_CLOSEOUT_OK=1` bypasses once). Which checks each repo must show is a per-user list outside the plugin. Details: [`plugins/pr-closeout/README.md`](plugins/pr-closeout/README.md).
 
 ---
 
