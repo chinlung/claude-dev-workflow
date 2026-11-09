@@ -1,5 +1,7 @@
 # scope-ledger Implementation Plan
 
+> **狀態（2026-11-09 回填）：** 已完成，Task 1–7 隨 PR #7 合併（main `037454e`）；Task 8 在個人設定 repo 完成。勾選框於收尾後回填。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Ship the `scope-ledger` plugin — a per-worktree scope ledger file, four fail-open hooks that force review findings through triage and stop a session from ending with the original goal unfinished, and a `/scope-ledger:scope` skill to maintain the ledger.
@@ -31,7 +33,7 @@
 **Interfaces:**
 - Produces (sourced by every hook): `LEDGER_REL`, `ledger_path <proj>`, `ledger_field <file> <key>`, `ledger_unchecked <file>`, `ledger_rounds <file>`, `ledger_bump_rounds <file>`.
 
-- [ ] **Step 1: Write the failing test file (harness + helper cases only)**
+- [x] **Step 1: Write the failing test file (harness + helper cases only)**
 
 ```bash
 #!/bin/bash
@@ -122,12 +124,12 @@ echo "PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `bash plugins/scope-ledger/tests/scope-hooks.test.sh`
 Expected: exits non-zero at `. "$HOOKS/_ledger.sh"` (file missing).
 
-- [ ] **Step 3: Write the helper**
+- [x] **Step 3: Write the helper**
 
 ```bash
 #!/bin/bash
@@ -186,12 +188,12 @@ ledger_bump_rounds() {
 }
 ```
 
-- [ ] **Step 4: Run the suite, expect all H* cases PASS**
+- [x] **Step 4: Run the suite, expect all H* cases PASS**
 
 Run: `bash plugins/scope-ledger/tests/scope-hooks.test.sh`
 Expected: `PASS=14 FAIL=0`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git -C <repo> add plugins/scope-ledger/hooks/_ledger.sh plugins/scope-ledger/tests/scope-hooks.test.sh
@@ -210,7 +212,7 @@ git -C <repo> commit --no-gpg-sign -m "feat(scope-ledger): ledger parsing helper
 - Consumes: `_ledger.sh` (`ledger_path`, `ledger_field`).
 - Hook input: `{session_id, cwd, tool_input.file_path|notebook_path}`; output on deny: PreToolUse `permissionDecision: deny` JSON, exit 0.
 
-- [ ] **Step 1: Append failing tests**
+- [x] **Step 1: Append failing tests**
 
 ```bash
 # ===== scope-gate.sh =====
@@ -273,9 +275,9 @@ check "G10 消毒後仍 deny" "$(run_hook scope-gate.sh "$(gate_json 's10/../evi
 check_flag "G10 flag 落在消毒後路徑" "$t/claude-scope-gate-s10_.._evil" exists
 ```
 
-- [ ] **Step 2: Run, expect G* cases FAIL (script missing → empty output, deny checks fail)**
+- [x] **Step 2: Run, expect G* cases FAIL (script missing → empty output, deny checks fail)**
 
-- [ ] **Step 3: Write the gate**
+- [x] **Step 3: Write the gate**
 
 ```bash
 #!/bin/bash
@@ -348,9 +350,9 @@ touch "$flag_file"
 deny
 ```
 
-- [ ] **Step 4: Run, expect all H* and G* PASS (`FAIL=0`)**
+- [x] **Step 4: Run, expect all H* and G* PASS (`FAIL=0`)**
 
-- [ ] **Step 5: Commit** — `feat(scope-ledger): deny-once gate on the first source edit without a ledger`
+- [x] **Step 5: Commit** — `feat(scope-ledger): deny-once gate on the first source edit without a ledger`
 
 ---
 
@@ -364,7 +366,7 @@ deny
 - Consumes: `_ledger.sh` (`ledger_path`, `ledger_rounds`, `ledger_bump_rounds`).
 - Hook input: `{tool_name, tool_input.skill | tool_input.subagent_type | tool_input.description, cwd}`; output: PostToolUse `additionalContext` JSON.
 
-- [ ] **Step 1: Append failing tests**
+- [x] **Step 1: Append failing tests**
 
 ```bash
 # ===== scope-review-triage.sh =====
@@ -411,9 +413,9 @@ check_empty "R6 Bash → 靜默" "$(printf '{"session_id":"s6","cwd":"%s","tool_
 check_empty "R6 Edit → 靜默" "$(printf '{"session_id":"s6","cwd":"%s","tool_name":"Edit","tool_input":{"file_path":"review.php"}}' "$p" | TMPDIR="$t" CLAUDE_PROJECT_DIR="$p" bash "$HOOKS/scope-review-triage.sh" 2>/dev/null || true)"
 ```
 
-- [ ] **Step 2: Run, expect R* FAIL**
+- [x] **Step 2: Run, expect R* FAIL**
 
-- [ ] **Step 3: Write the hook**
+- [x] **Step 3: Write the hook**
 
 ```bash
 #!/bin/bash
@@ -472,9 +474,9 @@ jq -cn --arg m "$msg" '{hookSpecificOutput:{hookEventName:"PostToolUse",addition
 exit 0
 ```
 
-- [ ] **Step 4: Run, expect `FAIL=0`**
+- [x] **Step 4: Run, expect `FAIL=0`**
 
-- [ ] **Step 5: Commit** — `feat(scope-ledger): inject the finding-triage policy after review skills and count rounds`
+- [x] **Step 5: Commit** — `feat(scope-ledger): inject the finding-triage policy after review skills and count rounds`
 
 ---
 
@@ -488,7 +490,7 @@ exit 0
 - Consumes: `_ledger.sh` (`ledger_path`, `ledger_unchecked`).
 - Hook input: `{session_id, cwd, stop_hook_active}`; output on block: `{"decision":"block","reason":…}`, exit 0.
 
-- [ ] **Step 1: Append failing tests**
+- [x] **Step 1: Append failing tests**
 
 ```bash
 # ===== scope-stop-check.sh =====
@@ -527,9 +529,9 @@ p=$WORK/s6; make_repo "$p"; t=$WORK/st6; mkdir -p "$t"; printf 'goal only\n' > "
 check_empty "S6 畸形帳本 → 靜默" "$(run_hook scope-stop-check.sh "$(stop_json s6 "$p" false)" "$t" "$p")"
 ```
 
-- [ ] **Step 2: Run, expect S* FAIL**
+- [x] **Step 2: Run, expect S* FAIL**
 
-- [ ] **Step 3: Write the hook**
+- [x] **Step 3: Write the hook**
 
 ```bash
 #!/bin/bash
@@ -578,9 +580,9 @@ jq -cn --arg r "$reason" '{decision:"block",reason:$r}'
 exit 0
 ```
 
-- [ ] **Step 4: Run, expect `FAIL=0`**
+- [x] **Step 4: Run, expect `FAIL=0`**
 
-- [ ] **Step 5: Commit** — `feat(scope-ledger): block a stop once per state while in-scope items are open`
+- [x] **Step 5: Commit** — `feat(scope-ledger): block a stop once per state while in-scope items are open`
 
 ---
 
@@ -591,7 +593,7 @@ exit 0
 - Create: `plugins/scope-ledger/hooks/hooks.json`
 - Modify: `plugins/scope-ledger/tests/scope-hooks.test.sh` (append)
 
-- [ ] **Step 1: Append failing tests**
+- [x] **Step 1: Append failing tests**
 
 ```bash
 # ===== scope-session-start.sh =====
@@ -621,9 +623,9 @@ for s in $(jq -r '.. | .command? // empty' "$HOOKS/hooks.json" | sed -E 's/.*\/h
 done
 ```
 
-- [ ] **Step 2: Run, expect T* FAIL**
+- [x] **Step 2: Run, expect T* FAIL**
 
-- [ ] **Step 3: Write the hook and `hooks.json`**
+- [x] **Step 3: Write the hook and `hooks.json`**
 
 ```bash
 #!/bin/bash
@@ -680,9 +682,9 @@ exit 0
 }
 ```
 
-- [ ] **Step 4: Run, expect `FAIL=0`**
+- [x] **Step 4: Run, expect `FAIL=0`**
 
-- [ ] **Step 5: Commit** — `feat(scope-ledger): replay the ledger at session start; register the four hooks`
+- [x] **Step 5: Commit** — `feat(scope-ledger): replay the ledger at session start; register the four hooks`
 
 ---
 
@@ -694,7 +696,7 @@ exit 0
 **Interfaces:**
 - Invoked as `/scope-ledger:scope <init "<goal>" | status | defer … | done>`; the gate and triage hooks name it in their messages exactly as `/scope-ledger:scope init`.
 
-- [ ] **Step 1: Write the skill**
+- [x] **Step 1: Write the skill**
 
 Frontmatter: `name: scope`, `description` ≤ 1536 chars (measure it), `argument-hint: "[init \"<goal>\" | status | defer <item> --why <reason> --to <destination> | done]"`. No `disable-model-invocation` — the hooks ask the model to run it.
 
@@ -708,12 +710,12 @@ Body sections, in this order, all in Traditional Chinese with the ledger templat
 6. **`done`** — preconditions: no unticked In scope; every Deferred has `去處:`. Then: write one project-memory entry (goal, date, Deferred summary with destinations), delete the ledger, print the summary. If preconditions fail, print what is missing and stop.
 7. **What this skill does not do** — edit `.gitignore`; judge the triage; replace `tasks.md`.
 
-- [ ] **Step 2: Measure the description length**
+- [x] **Step 2: Measure the description length**
 
 Run: `python3 -c "import re;print(len(re.search(r'^description: (.*)$',open('plugins/scope-ledger/skills/scope/SKILL.md').read(),re.M).group(1)))"`
 Expected: ≤ 1536.
 
-- [ ] **Step 3: Commit** — `feat(scope-ledger): /scope-ledger:scope skill (init/status/defer/done + triage policy)`
+- [x] **Step 3: Commit** — `feat(scope-ledger): /scope-ledger:scope skill (init/status/defer/done + triage policy)`
 
 ---
 
@@ -723,11 +725,11 @@ Expected: ≤ 1536.
 - Create: `plugins/scope-ledger/.claude-plugin/plugin.json`, `plugins/scope-ledger/README.md`, `plugins/scope-ledger/CHANGELOG.md`
 - Modify: `.claude-plugin/marketplace.json` (entry + `metadata.version` 1.10.13 → 1.11.0), `README.md` + `README.zh-TW.md` (table row + `# Scope Ledger Plugin` section: one paragraph + link), `CHANGELOG.md` + `CHANGELOG.zh-TW.md` (new `## [1.11.0] - 2026-09-23` section), `.github/workflows/validate.yml` (add `bash plugins/scope-ledger/tests/scope-hooks.test.sh` step).
 
-- [ ] **Step 1: plugin.json** — name `scope-ledger`, version `1.0.0`, same author/license/repository/homepage as the other plugins, keywords `["scope", "scope-creep", "triage", "review-findings", "stop-hook", "session-continuity", "compaction"]`.
-- [ ] **Step 2: plugin README** — what problem (three sentences, aggregate evidence only), the ledger template, the four hooks table, the skill's four verbs, "what it does not do", Testing (`bash plugins/scope-ledger/tests/scope-hooks.test.sh`), note on `*.local.md` gitignore.
-- [ ] **Step 3: plugin CHANGELOG** — `## [1.0.0] - 2026-09-23` / Added: initial release, one bullet per hook + skill.
-- [ ] **Step 4: marketplace + root READMEs + root CHANGELOGs + CI step** as listed above.
-- [ ] **Step 5: Run every gate**
+- [x] **Step 1: plugin.json** — name `scope-ledger`, version `1.0.0`, same author/license/repository/homepage as the other plugins, keywords `["scope", "scope-creep", "triage", "review-findings", "stop-hook", "session-continuity", "compaction"]`.
+- [x] **Step 2: plugin README** — what problem (three sentences, aggregate evidence only), the ledger template, the four hooks table, the skill's four verbs, "what it does not do", Testing (`bash plugins/scope-ledger/tests/scope-hooks.test.sh`), note on `*.local.md` gitignore.
+- [x] **Step 3: plugin CHANGELOG** — `## [1.0.0] - 2026-09-23` / Added: initial release, one bullet per hook + skill.
+- [x] **Step 4: marketplace + root READMEs + root CHANGELOGs + CI step** as listed above.
+- [x] **Step 5: Run every gate**
 
 ```bash
 node scripts/validate-fixtures.cjs > "$TMPDIR/gates.log" 2>&1; RC=$?; tail -5 "$TMPDIR/gates.log"; echo "rc=$RC"
@@ -735,12 +737,12 @@ bash plugins/scope-ledger/tests/scope-hooks.test.sh > "$TMPDIR/suite.log" 2>&1; 
 ```
 Expected: both `rc=0` (the version, plugin-changelog, dir-completeness, registration and denyWrite gates all green).
 
-- [ ] **Step 6: Mutation check (on a copy under `$TMPDIR`, never on the live tree)**
+- [x] **Step 6: Mutation check (on a copy under `$TMPDIR`, never on the live tree)**
   1. Copy `plugins/scope-ledger` to `$TMPDIR/mut`; in the copy's `_ledger.sh` make `ledger_unchecked` print nothing → run the copied suite → S4/S4c/S5/T2 must FAIL.
   2. Fresh copy; in `scope-gate.sh` delete the `if [ -f "$ledger" ] …` block → G4/G5b must FAIL.
   3. Fresh copy; in `scope-review-triage.sh` set `WARN_ROUNDS=99` → R3/R3b must FAIL.
   Record the three results in the commit message.
-- [ ] **Step 7: Commit** — `feat(scope-ledger): 1.0.0 — package, register, document; marketplace 1.11.0`
+- [x] **Step 7: Commit** — `feat(scope-ledger): 1.0.0 — package, register, document; marketplace 1.11.0`
 
 ---
 
@@ -750,8 +752,8 @@ Expected: both `rc=0` (the version, plugin-changelog, dir-completeness, registra
 - Modify: `~/.claude/CLAUDE.md` (Code Review section: one rule line; PR wrap-up SOP: append `/scope-ledger:scope done`)
 - Modify: `~/.claude/refs/INDEX.md` (one line for `scope-ledger-design.md`), `~/.claude/refs/scope-ledger-design.md` (status line: implemented in plugin `scope-ledger` 1.0.0; decisions taken for the three open points)
 
-- [ ] **Step 1: Read `~/.claude/refs/claude-md-authoring.md` before touching CLAUDE.md** (required by CLAUDE.md itself).
-- [ ] **Step 2: Add the rule line** under Code Review, rule-first: `review／scan 的 finding 一律先進 scope-ledger 帳本 triage（/scope-ledger:scope），未進帳本不得動手修；hook 於首次改程式碼、review 呼叫後、Stop、SessionStart 機器強制——理由與證據見 refs/scope-ledger-design.md`. Append `→ /scope-ledger:scope done` to the PR wrap-up SOP line.
-- [ ] **Step 3: Commit `~/.claude`** by name (`CLAUDE.md`, `refs/INDEX.md`, `refs/scope-ledger-design.md`), `--no-gpg-sign`.
-- [ ] **Step 4: Push both repos**; verify with SHA comparison (`git rev-parse HEAD` vs `git ls-remote origin <branch>`, stderr split off); watch CI on the plugin repo to green.
-- [ ] **Step 5: Tell the user** the install commands they must run themselves (sandbox): `claude plugin marketplace update scl-claude-plugins` then `claude plugin install scope-ledger@scl-claude-plugins`, then verify with `claude plugin list`.
+- [x] **Step 1: Read `~/.claude/refs/claude-md-authoring.md` before touching CLAUDE.md** (required by CLAUDE.md itself).
+- [x] **Step 2: Add the rule line** under Code Review, rule-first: `review／scan 的 finding 一律先進 scope-ledger 帳本 triage（/scope-ledger:scope），未進帳本不得動手修；hook 於首次改程式碼、review 呼叫後、Stop、SessionStart 機器強制——理由與證據見 refs/scope-ledger-design.md`. Append `→ /scope-ledger:scope done` to the PR wrap-up SOP line.
+- [x] **Step 3: Commit `~/.claude`** by name (`CLAUDE.md`, `refs/INDEX.md`, `refs/scope-ledger-design.md`), `--no-gpg-sign`.
+- [x] **Step 4: Push both repos**; verify with SHA comparison (`git rev-parse HEAD` vs `git ls-remote origin <branch>`, stderr split off); watch CI on the plugin repo to green.
+- [x] **Step 5: Tell the user** the install commands they must run themselves (sandbox): `claude plugin marketplace update scl-claude-plugins` then `claude plugin install scope-ledger@scl-claude-plugins`, then verify with `claude plugin list`.
