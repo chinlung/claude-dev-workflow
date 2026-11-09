@@ -170,6 +170,51 @@ export function coverage(repoDir, { headRefName, headOid, baseRef, accept = [] }
   return out;
 }
 
+// ── local clone: openspec changes the PR leaves unarchived (W3-2; a warning, never the exit) ──────
+function reconcileCheckPath() {
+  if (process.env.RECONCILE_CHECK) return process.env.RECONCILE_CHECK;
+  const cache = path.join(os.homedir(), '.claude', 'plugins', 'cache');
+  const ls = (d) => { try { return fs.readdirSync(d); } catch { return []; } };
+  const found = [];
+  for (const market of ls(cache)) {
+    const root = path.join(cache, market, 'openspec-superpowers-workflow');
+    for (const ver of ls(root)) {
+      const f = path.join(root, ver, 'skills', 'openspec-superpowers-workflow', 'validators', 'reconcile-check.cjs');
+      if (fs.existsSync(f)) found.push({ ver, f });
+    }
+  }
+  const num = (v) => v.split('.').map((x) => Number(x) || 0);
+  found.sort((a, b) => { const [x, y] = [num(a.ver), num(b.ver)]; return x[0] - y[0] || x[1] - y[1] || x[2] - y[2]; });
+  return found.length ? found[found.length - 1].f : null;
+}
+
+export function openspecChanges(repoDir, { headOid, baseRef }) {
+  if (!repoDir || !headOid || !git(repoDir, ['cat-file', '-e', `${headOid}^{commit}`]).ok) return null;
+  const present = git(repoDir, ['ls-tree', '-d', headOid, '--', 'openspec']).out.trim() !== '';
+  if (!present) return { present: false, unarchivedChanges: [] };
+  let mb = git(repoDir, ['merge-base', `origin/${baseRef}`, headOid]);
+  if (!mb.ok) mb = git(repoDir, ['merge-base', baseRef, headOid]);
+  const names = new Set();
+  if (mb.ok) {
+    for (const f of git(repoDir, ['diff', '--name-only', '-z', mb.out.trim(), headOid]).out.split('\0')) {
+      const m = /^openspec\/changes\/([^/]+)\//.exec(f);
+      if (m && m[1] !== 'archive') names.add(m[1]);
+    }
+  }
+  const script = reconcileCheckPath();
+  const unarchivedChanges = [...names].sort()
+    .filter((n) => git(repoDir, ['ls-tree', '-d', headOid, '--', `openspec/changes/${n}`]).out.trim() !== '')
+    .map((name) => {
+      let verify = 'unavailable';
+      if (script && fs.existsSync(script)) {
+        const r = spawnSync(process.execPath, [script, 'verify', path.join(repoDir, 'openspec', 'changes', name)], { encoding: 'utf8' });
+        if (r.status === 0 || r.status === 3) verify = (r.stdout || '').trim().split('\n')[0] || 'unavailable';
+      }
+      return { name, verify };
+    });
+  return { present: true, unarchivedChanges };
+}
+
 // ── verdict ──────────────────────────────────────────────────────────────────────────────────────
 const KNOWN = {
   state: new Set(['OPEN', 'CLOSED', 'MERGED']),
@@ -399,7 +444,8 @@ export function main(argv) {
     const cover = o.repoDir
       ? coverage(o.repoDir, { headRefName: p.headRefName, headOid: p.headRefOid, baseRef: p.baseRefName, accept: o.accept })
       : null;
-    return emit({ ...head, ...assess(raw, { ...o, config: loadConfig(), cover }) });
+    const spec = o.repoDir ? openspecChanges(o.repoDir, { headOid: p.headRefOid, baseRef: p.baseRefName }) : null;
+    return emit({ ...head, ...assess(raw, { ...o, config: loadConfig(), cover }), openspec: spec });
   } catch (e) {
     if (!(e instanceof QueryError)) throw e;
     return emit({ ...head, exit: 7, gate: null, hits: [{ code: 'query-failed', detail: e.message }] });

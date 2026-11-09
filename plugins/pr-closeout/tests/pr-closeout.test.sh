@@ -15,6 +15,7 @@ command -v node >/dev/null 2>&1 || { echo "pr-closeout.test: node is required"; 
 command -v jq >/dev/null 2>&1 || { echo "pr-closeout.test: jq is required"; exit 1; }
 # never the real per-user list: every case below names the config it means
 export PR_CLOSEOUT_CONFIG="$tmp/no-config.json"
+export RECONCILE_CHECK="$tmp/no-reconcile-check.cjs"   # never the installed plugin's copy
 
 pass=0; fail=0
 CASE_TIMEOUT=${CASE_TIMEOUT:-20}
@@ -250,8 +251,25 @@ jqeq "accepted: recorded" '[.coverage.status, .coverage.accepted[0].path, .cover
 cov_case 7 "accepted without a reason" --accept-unreviewed "a.sh="
 cov_case 6 "accepting another file does not cover this one" --accept-unreviewed "z.sh=not this one"
 
+# ── Task 5: unarchived openspec changes (a warning, never the exit) ───────────────────────────────
+mkrepo4; cov_case 0 "no openspec dir"
+jqeq "no openspec: absent" '.openspec.present' 'false'
+mkdir -p "$R4/openspec/changes/foo" "$R4/openspec/changes/bar"
+echo t > "$R4/openspec/changes/foo/tasks.md"; echo t > "$R4/openspec/changes/bar/tasks.md"
+git -C "$R4" add openspec; $G -C "$R4" commit -q -m changes
+printf '%s\n' "process.stdout.write(process.argv[2] === 'verify' ? 'stale:tasks\n' : ''); process.exitCode = 3;" > "$tmp/fake-reconcile.cjs"
+RECONCILE_CHECK="$tmp/fake-reconcile.cjs" cov_case 0 "two unarchived changes"
+jqeq "unarchived: named, sorted" '[.openspec.unarchivedChanges[].name]' '["bar","foo"]'
+jqeq "unarchived: verify read" '.openspec.unarchivedChanges[0].verify' '"stale:tasks"'
+cov_case 0 "verify script not found"
+jqeq "not found: unavailable" '.openspec.unarchivedChanges[0].verify' '"unavailable"'
+mkrepo4; mkdir -p "$R4/openspec/changes/archive/2026-11-09-foo"; echo t > "$R4/openspec/changes/archive/2026-11-09-foo/tasks.md"
+git -C "$R4" add openspec; $G -C "$R4" commit -q -m archived
+cov_case 0 "only an archived change"
+jqeq "archived only: none" '[.openspec.present, .openspec.unarchivedChanges]' '[true,[]]'
+
 # ── summary and mutants ──────────────────────────────────────────────────────────────────────────
-MIN_PASS=108
+MIN_PASS=117
 if [ "$pass" -lt "$MIN_PASS" ] && [ "${STOP_ON_FAIL:-0}" != 1 ]; then failed "only $pass checks passed, expected at least $MIN_PASS"; fi
 echo "pr-closeout: $pass passed, $fail failed"
 
@@ -295,7 +313,9 @@ if [ "${NO_MUTANTS:-0}" != 1 ]; then
   mutant reason-req    "[accepted without a reason]"       "s/if \(!p \|\| !reason\) throw/if (!p) throw/"
   mutant branch-check  "[other branch: unknown]" "s/state\.branch !== headRefName\) return/false) return/"
   mutant accept-any    "[accepting another file does not cover this one]" "s/accept\.find\(\(a\) => a\.path === file\)/accept[0]/"
-  MUT_WANT_N=26
+  mutant archive-excl  "[archived only: none]"             "s/m && m\[1\] !== 'archive'/m/"
+  mutant verify-read   "[unarchived: verify read]"         "s/if \(r\.status === 0 \|\| r\.status === 3\) verify/if (false) verify/"
+  MUT_WANT_N=28
   if [ "$mut_n" != "$MUT_WANT_N" ]; then echo "FAIL: $mut_n of $MUT_WANT_N mutants ran"; mut_bad=1; fi
   [ "$mut_bad" = 0 ] || fail=$((fail + 1))
 fi
