@@ -1,8 +1,8 @@
 # model-router 五級分類 review（2026-11-02）
 
-範圍：`~/.claude/skills/model-router/hooks/register.ts`（claude-config）的 nimble 分類與路由。資料：2026-10-15（cache-aware ratchet 上線）以來 182 個 session 的主迴圈 transcript、1,055 個回合；另從中抽 80 段文字原樣重播給本機 `nimble:latest`。router 每輪的決定只顯示在狀態列、不寫進 transcript，所以「哪一輪被路由」是從實際送出的模型（`message.model`）推回來的。
+範圍：`~/.claude/skills/model-router/hooks/register.ts`（個人設定 repo）的 nimble 分類與路由。資料：2026-10-15（cache-aware ratchet 上線）以來 182 個 session 的主迴圈 transcript、1,055 個回合；另從中抽 80 段文字原樣重播給本機 `nimble:latest`。router 每輪的決定只顯示在狀態列、不寫進 transcript，所以「哪一輪被路由」是從實際送出的模型（`message.model`）推回來的。
 
-**狀態（同日更新）**：§2 的 #1～#5 已實作於 claude-config `0b5d4f2`（model-router 0.3.0），#6 依使用者裁定不改；實作與建議的差異、實作中發現的事、仍待驗證的項目見 §4。§1～§3 是審查當時的記錄，保持原樣；其中 §1 的回合數有兩處計法錯誤，修正見 §5（2026-11-03）。
+**狀態（同日更新）**：§2 的 #1～#5 已實作於個人設定 repo `0b5d4f2`（model-router 0.3.0），#6 依使用者裁定不改；實作與建議的差異、實作中發現的事、仍待驗證的項目見 §4。§1～§3 是審查當時的記錄，保持原樣；其中 §1 的回合數有兩處計法錯誤，修正見 §5（2026-11-03）。
 
 ## 1. 發現
 
@@ -76,11 +76,11 @@ tiers 的 effort 是 sonnet `high`、opus `high`、fable `xhigh`，被路由的�
 - 重播：用本報告的 80 段樣本重跑，確認 risk 題收窄後支付／憑證類仍判 risky、`commit` 不再判 risky。
 - 上線後一週：用 #3 的決定檔與 transcript 對照，比較熱 cache 升級次數與 flip-flop 次數。
 
-工具：產生本報告數字的分析腳本已整理進 claude-config 的 `scripts/model-router-review/`（`turns.mjs` → `report.mjs`、`replay.mjs`；README 有重算步驟與各區段對應），取代當時只在 session scratchpad 的 `router-hist.mjs`、`router-replay.mjs`。整理時修了四處，所以同一批資料重算會略有出入：間隔量到該 turn 的請求而不是它的第一個回答（約 1% 的 turn 換到相鄰的桶）、「上一個請求」只記路由器會當作 prompt 的 turn、含圖片的訊息保留文字、重播抽樣在整份清單上平均取（原本清單不夠長時只取到最前面）。
+工具：產生本報告數字的分析腳本已整理進個人設定 repo 的 `scripts/model-router-review/`（`turns.mjs` → `report.mjs`、`replay.mjs`；README 有重算步驟與各區段對應），取代當時只在 session scratchpad 的 `router-hist.mjs`、`router-replay.mjs`。整理時修了四處，所以同一批資料重算會略有出入：間隔量到該 turn 的請求而不是它的第一個回答（約 1% 的 turn 換到相鄰的桶）、「上一個請求」只記路由器會當作 prompt 的 turn、含圖片的訊息保留文字、重播抽樣在整份清單上平均取（原本清單不夠長時只取到最前面）。
 
 ## 4. 落地結果（2026-11-02）
 
-實作在 claude-config `0b5d4f2`（main，CI 綠），mod 版本 0.2.0 → 0.3.0。使用者裁定 #1～#5 做、#6 不改。設計與證據的完整版在 claude-config 的 `refs/subagent-model-tiers.md` §7.1，本節只記與建議的差異。
+實作在個人設定 repo `0b5d4f2`（main，CI 綠），mod 版本 0.2.0 → 0.3.0。使用者裁定 #1～#5 做、#6 不改。設計與證據的完整版在個人設定 repo 的 `refs/subagent-model-tiers.md` §7.1，本節只記與建議的差異。
 
 | # | 結果 | 與 §2 建議的差異 |
 |---|---|---|
@@ -93,21 +93,21 @@ tiers 的 effort 是 sonnet `high`、opus `high`、fable `xhigh`，被路由的�
 
 ### 實作中發現、報告原本沒預料到的事
 
-- **預設值有兩份真實來源**：只改 `register.ts` 的 `cacheTtlMs` 預設，測試仍看到舊的 5 分鐘，因為引擎餵的是 `plugin.json` 的值。mod 載入器不允許測試匯入 `.json`，所以同步檢查放在 claude-config 的 bash 套件（由 `run-all.sh` 與 CI 跑）。
+- **預設值有兩份真實來源**：只改 `register.ts` 的 `cacheTtlMs` 預設，測試仍看到舊的 5 分鐘，因為引擎餵的是 `plugin.json` 的值。mod 載入器不允許測試匯入 `.json`，所以同步檢查放在個人設定 repo 的 bash 套件（由 `run-all.sh` 與 CI 跑）。
 - **自審抓到的問題**：codex 1 條（bash 套件缺 node 時退出碼錯誤，已重現並修）；獨立 opus 審查 5 條，採納 4 條（破壞性系統文字、中文部署詞、冷 cache、標籤顯示 `undefined`）、駁回 1 條（haiku session 沿用：分類器只看得到上一個請求文字、看不到模型提案，舊行為不比沿用準）；簡化審查 8 條，採納 4 條；安全審查 0 條。
 - **突變驗證**：mod 測試 63 → 77 支，28 個突變全被抓到。兩個倖存者的處理不同：「寫入失敗會中斷回合」是測試盲點（引擎吞掉 hook 的例外，改成驗排在紀錄之後的 cache 統計仍寫入）；「≤0 關閉延續」是等價突變（刪掉多餘條件）。
 - **歷史驗證**：439 個系統回合中，沒有一個後面夾著人打的字（用來評估「通知與人打的字被合併成同一段」的風險）。
 
 ### 仍待驗證
 
-1. 新紀錄累積約一週後，用 `model-router.log` 對 transcript 重算：`node turns.mjs --since <日期>` → `node report.mjs turns.json`（claude-config 的 `scripts/model-router-review/`），第 8 段給決定分佈、風險／floor 次數、沿用後下一輪是否換 pair。注意紀錄環是所有 session 共用、沒有 session id，換 pair 的次數是上限值；工具不判 nimble 的對錯，誤判率仍要人工讀樣本（`replay.mjs` 可重播抽樣提示看分級）。
+1. 新紀錄累積約一週後，用 `model-router.log` 對 transcript 重算：`node turns.mjs --since <日期>` → `node report.mjs turns.json`（個人設定 repo 的 `scripts/model-router-review/`），第 8 段給決定分佈、風險／floor 次數、沿用後下一輪是否換 pair。注意紀錄環是所有 session 共用、沒有 session id，換 pair 的次數是上限值；工具不判 nimble 的對錯，誤判率仍要人工讀樣本（`replay.mjs` 可重播抽樣提示看分級）。
 2. `turn.start` 的 `e.text` 是否與 transcript 的 user 文字逐字相同——系統前綴辨識的前提；不符時退回照舊分類，不會更糟，但沿用不會觸發。
 3. harness 是否可能把排隊中的通知與使用者剛打的字合併成同一段 `e.text`（歷史資料 0 例，但沒讀 binary 確認）；若會，整段以系統前綴開頭，裡面的請求不會被風險詞篩到。
 4. mod 的測試用 `claude plugin test <dir>` 執行，不在 `run-all.sh`／CI 內（CI 沒有 claude binary），改 router 後要手跑。
 
 ## 5. 更正（2026-11-03）
 
-隔天用整理進 claude-config 的工具（`scripts/model-router-review/`）對照 router 的決定紀錄時，發現 §1 的計法有兩處錯，並查到一個實作陷阱。§1～§3 保持原樣，修正後的數字如下。
+隔天用整理進個人設定 repo 的工具（`scripts/model-router-review/`）對照 router 的決定紀錄時，發現 §1 的計法有兩處錯，並查到一個實作陷阱。§1～§3 保持原樣，修正後的數字如下。
 
 ### 5.1 「回合」多算了兩種東西
 
@@ -137,7 +137,7 @@ tiers 的 effort 是 sonnet `high`、opus `high`、fable `xhigh`，被路由的�
 對帳時有一個設成 haiku 的 session（`21e3fbc3`）在 log 視窗內有 2 個 turn 不在決定紀錄裡、以 haiku 送出（還有 2 個在視窗開始之前）。四個全是子代理 hand-back，且每個前面緊貼著 transcript 的一則 `model-router: reloaded (7 hooks…)`。引擎監看 `skills/model-router`，儲存就熱重載；我當時正原地改 router 並跑突變測試。2026-10-15 起 34 則 `model-router: …reloaded` 記錄（含 plugin.json 變動觸發的）中 4 則落在 turn 開頭，4 次全中，其餘 30 次在 turn 之間或結束時、後面的 turn 都有被路由。
 
 - 這不是 hand-back 有一條繞過 `turn.start` 的送達路徑：同樣的 hand-back 在沒有重載時全都有被路由。
-- 穩定狀態沒有這個洞；router 自己防不了（出事時它的程式碼沒被呼叫）。改 mod 時要在副本測、測完一次換進去（寫在 claude-config `refs/subagent-model-tiers.md` §7.1）。
+- 穩定狀態沒有這個洞；router 自己防不了（出事時它的程式碼沒被呼叫）。改 mod 時要在副本測、測完一次換進去（寫在個人設定 repo `refs/subagent-model-tiers.md` §7.1）。
 - 沒查清楚的：重載的確切排程，以及 `turn.start` 被丟掉的內部原因（二進位讀不出來）。「只有沒有 `prompt.submit` 的 turn 會中」是推論：人打的提示先走 `prompt.submit`，可能由它吸收待套用的重載。
 
 ### 5.3 順帶觀察

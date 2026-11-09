@@ -56,7 +56,7 @@ function parseArgs(list) {
   return opts;
 }
 
-// `-Users-scl-web-my-repo` → `/Users/scl/web/my-repo`: every `-` is either a path separator or a
+// `-Users-me-web-my-repo` → `/Users/me/web/my-repo`: every `-` is either a path separator or a
 // literal hyphen. Descending with `/` is only allowed from a prefix that exists as a directory, but
 // a prefix that does NOT exist is not dead — `/tmp/claude` is the start of `/tmp/claude-501` — so the
 // hyphen branch is always tried too; the candidate must exist once every token is placed.

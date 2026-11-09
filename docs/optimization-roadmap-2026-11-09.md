@@ -10,7 +10,7 @@
 > 3. pstack 某項若正好修補本地缺陷，併入同一工作包一次做完（標 ⇐pstack）。
 > 4. 改到同一個檔的項目放同一包，避免重工。
 >
-> 兩個 repo：**R** = 本 repo（claude-dev-workflow，marketplace plugins）；**C** = `~/.claude`（chinlung/claude-config）。分屬不同 PR。
+> 兩個 repo：**R** = 本 repo（claude-dev-workflow，marketplace plugins）；**C** = `~/.claude`（個人設定 repo）。分屬不同 PR。
 >
 > 契約風險：本 repo 沒有 `openspec/`，沿用前例（scope-ledger、session-reflect）走 `docs/<name>-design` 加 `-plan`，再接 superpowers TDD 與 `/review-branch`。改 plugin 對外行為、schema 或 hook 行為的包，在下表標「設計文件」。
 

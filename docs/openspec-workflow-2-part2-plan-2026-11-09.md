@@ -8,7 +8,7 @@
 
 **Tech Stack:** bash、jq、零相依 Node（plugin 內程式碼維持 Node 20 可跑）、OpenSpec CLI 1.16.1（需 Node 22.12 以上）、`claude plugin eval`。
 
-**Spec:** `docs/openspec-workflow-2-part2-design-2026-11-09.md`（使用者 2026-11-09 核准四個決策點：eval 花費、claude-config 小 PR、CI 安裝固定版 OpenSpec、CI 升 Node 22）
+**Spec:** `docs/openspec-workflow-2-part2-design-2026-11-09.md`（使用者 2026-11-09 核准四個決策點：eval 花費、個人設定 repo 小 PR、CI 安裝固定版 OpenSpec、CI 升 Node 22）
 
 ## Global Constraints
 
@@ -18,7 +18,7 @@
 - plugin 內的 Node 程式碼只用 Node 20 已有的 API；只有 OpenSpec CLI 本身需要 Node 22.12 以上。
 - 測試判定只認命令自身的 exit code：`cmd > out.log; rc=$?`，不接管線判定。
 - 新測試的突變打在執行路徑上，每個分支至少兩個觸發輸入，斷言數下限（`MIN`）在案例清單之外計算。
-- staging 一律具名 `git add <file>`；commit 用 `git commit --no-gpg-sign`，且是該次 Bash 呼叫的第一個命令、`-C` 寫字面絕對路徑；commit 訊息尾端加 `Claude-Session: https://claude.ai/code/session_0148JKVpQNWWuW6Fk6ybUwQt`。
+- staging 一律具名 `git add <file>`；commit 用 `git commit --no-gpg-sign`，且是該次 Bash 呼叫的第一個命令、`-C` 寫字面絕對路徑；commit 訊息尾端加 `Claude-Session: https://claude.ai/code/<session-id>`。
 - 沙盒內 `gh`、`git push`、`claude plugin eval`、`npm`、`openspec` 對外連線用 `dangerouslyDisableSandbox: true`；Bash 不用裸 `cd`。
 - 既有三套測試（`archive-gate`、`skip-gate`、`reconcile-check`）與 `node scripts/validate-fixtures.cjs` 在每個 task 結束時必須全綠。
 - eval 每次執行都帶 `--max-cost-usd`（pilot 15、正式 25），總花費上限約 $80；超過先停下回報。
@@ -63,14 +63,14 @@
 - [ ] **Step 3: 實作** `openspec-archive-stats.cjs`，簽名與輸出如 Interfaces。用 `fs.readdirSync` 加 `statSync`，讀不到的目錄略過而不丟例外。
 - [ ] **Step 4: 執行確認通過**：同上命令；Expected: 全 PASS，且實際斷言數達 `MIN`。
 - [ ] **Step 5: 突變**：複製腳本到 `$TMPDIR`，用 perl 把勾選框的 matcher 改成只認 `[x]`，以 `STATS=<副本>` 重跑；Expected: 至少 `totals`、`nested` 兩案轉 FAIL。再把 `--since` 的比較改成 `<=`，Expected: 邊界案轉 FAIL。
-- [ ] **Step 6: 對本機資料跑一次**（只看，不 commit 輸出）：`node …/openspec-archive-stats.cjs --root /Users/scl/web`，把 `totals` 抄進帳本 Log 作為新基準（對照設計 §4.2 的 133／51／26）。
-- [ ] **Step 7: Commit**：`git -C /Users/scl/web/claude-dev-workflow add plugins/openspec-superpowers-workflow/scripts/openspec-archive-stats.cjs plugins/openspec-superpowers-workflow/tests/archive-stats.test.sh` 後 commit，訊息 `feat(openspec-workflow): archive stats script measures tasks left unchecked at archive`。
+- [ ] **Step 6: 對本機資料跑一次**（只看，不 commit 輸出）：`node …/openspec-archive-stats.cjs --root <projects-root>`，把 `totals` 抄進帳本 Log 作為新基準（對照設計 §4.2 的 133／51／26）。
+- [ ] **Step 7: Commit**：`git -C <repo> add plugins/openspec-superpowers-workflow/scripts/openspec-archive-stats.cjs plugins/openspec-superpowers-workflow/tests/archive-stats.test.sh` 後 commit，訊息 `feat(openspec-workflow): archive stats script measures tasks left unchecked at archive`。
 
 ---
 
-### Task 2: 盲測規則與禁用字掃描（claude-config 另一個 repo）
+### Task 2: 盲測規則與禁用字掃描（個人設定 repo 另一個 repo）
 
-**Files（repo：`/Users/scl/.claude`，分支 `feat/eval-blind-scan`，先 `git -C /Users/scl/.claude checkout -b feat/eval-blind-scan`；該 repo 另有一個使用者的未追蹤 `skills/show-me`，不得 stage）:**
+**Files（repo：`~/.claude`，分支 `feat/eval-blind-scan`，先 `git -C ~/.claude checkout -b feat/eval-blind-scan`；該 repo 另有一個使用者的未追蹤 `skills/show-me`，不得 stage）:**
 - Create: `scripts/audit/eval-blind-scan.cjs`
 - Create: `scripts/hooks/tests/eval-blind-scan.test.sh`（`run-all.sh` 會自動收錄 `*.test.sh`）
 - Modify: `refs/plugin-eval.md`（新增「盲測規則」一節，並在 §4 開頭一句指向它）；`refs/INDEX.md` 若有該檔的觸發描述就補一句
@@ -85,12 +85,12 @@
   - `case dir named with eval → exit 1`、`extra file beside prompt.md containing a word → exit 1`
   - `test and 測試 are not flagged by default`（prompt 本文含 TDD 字樣 → exit 0）
   - `missing dir → exit 2`、`--words overrides the list`
-- [ ] **Step 2: 執行確認失敗**：`bash scripts/hooks/tests/eval-blind-scan.test.sh`（用 `git -C` 不適用，使用絕對路徑 `bash /Users/scl/.claude/scripts/hooks/tests/eval-blind-scan.test.sh`）；Expected: FAIL，腳本不存在。
+- [ ] **Step 2: 執行確認失敗**：`bash scripts/hooks/tests/eval-blind-scan.test.sh`（用 `git -C` 不適用，使用絕對路徑 `bash ~/.claude/scripts/hooks/tests/eval-blind-scan.test.sh`）；Expected: FAIL，腳本不存在。
 - [ ] **Step 3: 實作** `eval-blind-scan.cjs`。
 - [ ] **Step 4: 通過**：同上命令；Expected: 全 PASS。
 - [ ] **Step 5: 突變**：副本中把詞表少一個詞，以 `SCAN=<副本>` 重跑；Expected: 恰好該詞的案例轉 FAIL。把「略過 graders/」拿掉；Expected: `word in graders/` 轉 FAIL。
 - [ ] **Step 6: 寫 `refs/plugin-eval.md` 的「盲測規則」**，來源 pstack `playbooks/eval.md`（MIT，© 2026 Lauren Tan，文中註明）：禁用詞表（不含 test、測試，理由寫明；只套用新 suite，不回頭掃舊 `evals/`）；prompt 要像真實使用者請求、只講目標不講量測；不要求受測者列出用了哪些規則；目錄與檔名用像專案的名字；不告訴受測者有其他受測者；judge 只看以中性標籤命名的輸出；兩個版本比較時同一個 judge 同一把尺。並寫明「跑 eval 前先 `node scripts/audit/eval-blind-scan.cjs <eval-dir>`」。
-- [ ] **Step 7: 全套與 commit**：`bash /Users/scl/.claude/scripts/hooks/tests/run-all.sh`（約 2 分鐘，可能被移到背景）；Expected: exit 0。具名 `git add` 四個檔後 commit，訊息 `feat(evals): blind-testing rules and a forbidden-word scan for eval prompts`。**不 push、不開 PR**，留到 Task 3 用真實 prompt 驗過掃描腳本之後（Task 7 之後與本 repo 的 PR 同期處理）。
+- [ ] **Step 7: 全套與 commit**：`bash ~/.claude/scripts/hooks/tests/run-all.sh`（約 2 分鐘，可能被移到背景）；Expected: exit 0。具名 `git add` 四個檔後 commit，訊息 `feat(evals): blind-testing rules and a forbidden-word scan for eval prompts`。**不 push、不開 PR**，留到 Task 3 用真實 prompt 驗過掃描腳本之後（Task 7 之後與本 repo 的 PR 同期處理）。
 
 ---
 
@@ -120,11 +120,11 @@
 | evals-phase6 | 03 憲法項走 config.yaml | D | `[CONSTITUTION] Y` 寫進 `openspec/config.yaml`，不進 spec |
 
 - [ ] **Step 1: 撰寫三個 suite**。先 `claude plugin eval --help` 讀完整輸出，確認 `scaffold_script`、`--eval-dir`、`--runs`、`--max-cost-usd` 的現行寫法；每個 eval 目錄放 `.gitignore`。
-- [ ] **Step 2: 盲測掃描**：`node /Users/scl/.claude/scripts/audit/eval-blind-scan.cjs plugins/openspec-superpowers-workflow/evals-design`（另兩個同），Expected: 全部 exit 0；有命中就改 prompt，不改詞表。
-- [ ] **Step 3: 取出基準版本**：`git -C /Users/scl/web/claude-dev-workflow worktree add "$TMPDIR/os-base" 753baae`；把三個 eval 目錄複製進 `$TMPDIR/os-base/plugins/openspec-superpowers-workflow/`。Expected: 該目錄的 `hooks/` 沒有 `archive-gate.sh`。
+- [ ] **Step 2: 盲測掃描**：`node ~/.claude/scripts/audit/eval-blind-scan.cjs plugins/openspec-superpowers-workflow/evals-design`（另兩個同），Expected: 全部 exit 0；有命中就改 prompt，不改詞表。
+- [ ] **Step 3: 取出基準版本**：`git -C <repo> worktree add "$TMPDIR/os-base" 753baae`；把三個 eval 目錄複製進 `$TMPDIR/os-base/plugins/openspec-superpowers-workflow/`。Expected: 該目錄的 `hooks/` 沒有 `archive-gate.sh`。
 - [ ] **Step 4: pilot（`--runs 1`）**，在基準 plugin 目錄、每個 suite 各一次：`claude plugin eval . --eval-dir evals-design --ablation with-without --judge-model sonnet --allow-tools Write Edit -j 4 --no-publish --runs 1 --max-cost-usd 15`。Expected: 依 `refs/plugin-eval.md` §3 的健康檢查通過（`.suite.plugins` 列出目標 plugin、無 `cannot pass with the granted tools`、非 `$0.00`）。**讀每個 case 的產出**確認 with 組真的依 plugin 文字行事，特別是 superpowers 在 sandbox 內是否可用（設計 §7 的第一個風險）。grader 有歧義就改 grader 再 pilot，記錄在 suite 的 README。
 - [ ] **Step 5: 正式基準（`runs: 3`）**，同一基準 worktree，三個 suite 各跑一次；把每題 with／without 分數填進各 suite README 的基準表。Expected: 每個缺陷（P-B、P-D、P-E）至少一題 with 組低於 1.00 為紅；若沒有，如實記「缺陷不在文字層」，不改題湊紅。
-- [ ] **Step 6: 記帳本 Log 並清理**：基準表的摘要寫進帳本 Log；`git -C /Users/scl/web/claude-dev-workflow worktree remove --force "$TMPDIR/os-base"`；`git status --short` 確認看不到 `evals`。無 commit。
+- [ ] **Step 6: 記帳本 Log 並清理**：基準表的摘要寫進帳本 Log；`git -C <repo> worktree remove --force "$TMPDIR/os-base"`；`git status --short` 確認看不到 `evals`。無 commit。
 
 ---
 
@@ -218,7 +218,7 @@
 - [ ] **Step 4: CHANGELOG 2.0.0**：一個條目涵蓋 PR 2 與本 PR。**Breaking** 逐項列：歸檔閘門、skip-gate v2（聲明檔）、R6 未勾項無 `skip:` 理由即 fail、tasks.md 每 Task 一個框、Phase 2 提問上限。**Added**：`reconcile-check.cjs`、`openspec-archive-stats.cjs`、`DESIGN-RED-FLAGS.md`、cli-claims 測試。**Notes**：eval 基準與 Δ，已安裝副本需 `claude plugin update openspec-superpowers-workflow`。
 - [ ] **Step 5: 全套**：所有 `plugins/*/tests/*.test.sh`、`node scripts/validate-fixtures.cjs`、`bash scripts/hooks/validate-on-plugin-edit.test.sh` 全綠；`git status --short` 看不到 `evals`。
 - [ ] **Step 6: Commit**：具名 `git add` 版本檔與 CHANGELOG、README，訊息 `release(openspec-workflow): 2.0.0 (marketplace 1.14.0)`。
-- [ ] **Step 7: 記錄與後續**：eval 摘要與歸檔統計新基準寫進帳本 Log。之後走 CLAUDE.md 的自審流程（simplify → review-branch 加 codex → security-review → push → PR → CI），claude-config 分支的 push 與 PR 一併處理。
+- [ ] **Step 7: 記錄與後續**：eval 摘要與歸檔統計新基準寫進帳本 Log。之後走 CLAUDE.md 的自審流程（simplify → review-branch 加 codex → security-review → push → PR → CI），個人設定 repo 分支的 push 與 PR 一併處理。
 
 ---
 

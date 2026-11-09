@@ -1,11 +1,11 @@
 # PR 收尾 skill 設計（路線圖 W3，2026-11-09）
 
-> 狀態：已核准（2026-11-09，D1–D7 全照建議）。同日使用者同意改變落點：主體做成本 repo 的新 plugin `pr-closeout`；只有個人設定留在個人設定 repo（下稱 claude-config）。
+> 狀態：已核准（2026-11-09，D1–D7 全照建議）。同日使用者同意改變落點：主體做成本 repo 的新 plugin `pr-closeout`；只有個人設定留在個人設定 repo。
 > 依據：`optimization-roadmap-2026-11-09.md` W3-1、W3-2；`pstack-porting-candidates-2026-11-09.md` §2.3、§3.1。
 
 ## 1. 為什麼做
 
-收尾 SOP（claude-config 的 `refs/pr-closeout.md`）共六步，前四步全靠模型手動拼命令。2026-11-09 同一天走了三次：
+收尾 SOP（個人設定 repo 的 `refs/pr-closeout.md`）共六步，前四步全靠模型手動拼命令。2026-11-09 同一天走了三次：
 
 - 每次都要自己寫 GraphQL 或 REST 查三個 endpoint、`merged_at`、`merge_commit_sha`，比對 SHA，再 `ls-remote` 確認遠端分支已刪。
 - 每次各漏一點，事後才補：
@@ -15,7 +15,7 @@
   - 實例：某 PR 的 review-branch 最後一輪記在 commit A，之後 codex 找到兩個問題，修在 commit B。
   - 合併的是 B。B 的變更只跑過測試與突變，沒有任何審查工具再看過。
   - SOP 第 3 步只證明「合併的是我推上去的」，不證明「合併的是審過的」。
-- claude-config 的 main 沒有分支保護，GitHub 不會因為未解決的 review thread 擋 merge。在那邊，thread 有沒有解決只能靠這次自己查。
+- 個人設定 repo 的 main 沒有分支保護，GitHub 不會因為未解決的 review thread 擋 merge。在那邊，thread 有沒有解決只能靠這次自己查。
 
 ## 2. 目標
 
@@ -54,7 +54,7 @@ plugins/pr-closeout/
 ├── README.md、README.zh-TW.md、CHANGELOG.md
 ```
 
-claude-config 只留個人設定：
+個人設定 repo 只留個人設定：
 
 - `pr-closeout/required-checks.json`：各 repo 必須出現的 check 名單。它是個人資料，不能放進公開 repo。腳本預設讀 `~/.claude/pr-closeout/required-checks.json`，可用環境變數 `PR_CLOSEOUT_CONFIG` 覆寫；檔案不存在時就不檢查必跑項。
 - `refs/pr-closeout.md`：改成一行指向 skill，「決策層原文」段保留（見 D4）。
@@ -175,9 +175,9 @@ JSON 另外帶三組資訊，供模型寫判斷，不參與 exit code：
 | D2 | 審查涵蓋檢查找到未審檔時，算擋下（exit 6）還是只警告 | 擋下，但只在「有 review-branch 紀錄、而且同一個分支」時擋；沒有紀錄時只回報 unknown。理由：那個例子正是有紀錄卻漏了的情況，而強制每次都要有紀錄，會把用 code-audit-rigor 的高風險 PR 也擋下 |
 | D3 | openspec 未歸檔的 change 算擋下還是警告 | 警告。依 workflow，Phase 6 可以在 merge 之後做，PR 本來就可能帶著未歸檔的 change 合併 |
 | D4 | `refs/pr-closeout.md` 怎麼處理 | 縮成一行指向 skill，「決策層原文」段保留在原處。理由：Knowledge Architecture 規定流程放 skill 本文，原文段是給日後核對摘要用的 |
-| D5 | 腳本放哪 | 原建議放 claude-config 的 skill 目錄；2026-11-09 改為本 repo 的 `plugins/pr-closeout/`，測試放同 plugin 的 `tests/`，由 CI 收（見 5.1） |
+| D5 | 腳本放哪 | 原建議放個人設定 repo 的 skill 目錄；2026-11-09 改為本 repo 的 `plugins/pr-closeout/`，測試放同 plugin 的 `tests/`，由 CI 收（見 5.1） |
 | D2b | 涵蓋檢查擋下後，怎麼解除 | 首選是對未審的檔再跑一輪 review-branch，它的跨輪記憶只會重審有變動的檔。另外允許逐檔放行：`--accept-unreviewed <path>=<理由>`，理由是必填的一句話（例如「codex r3 已審」）。放行的檔與理由寫進 JSON，由 skill 抄進帳本 Log。突變測試要涵蓋「沒有理由的放行無效」 |
-| D6 | CI 的安全審查「綠勾但沒真的跑」要不要由腳本抓 | 要，但只抓兩種看得到的徵兆。一是每個 repo 一份必須出現的 check 名單：名單上的 check 沒出現在 rollup 裡就回 4，這能抓到 `paths-ignore` 讓 check 根本沒產生的情況。二是時長下限：claude-code-action 這類 check 低於 30 秒，回報 `suspectedSkip`，只警告不擋。讀 job log 找 `Skipping action` 不做，因為要在 sandbox 外跑，而且 REST 端點回 403。名單是個人資料，放 claude-config 的 `pr-closeout/required-checks.json`，key 是 owner/repo（見 5.1） |
+| D6 | CI 的安全審查「綠勾但沒真的跑」要不要由腳本抓 | 要，但只抓兩種看得到的徵兆。一是每個 repo 一份必須出現的 check 名單：名單上的 check 沒出現在 rollup 裡就回 4，這能抓到 `paths-ignore` 讓 check 根本沒產生的情況。二是時長下限：claude-code-action 這類 check 低於 30 秒，回報 `suspectedSkip`，只警告不擋。讀 job log 找 `Skipping action` 不做，因為要在 sandbox 外跑，而且 REST 端點回 403。名單是個人資料，放個人設定 repo 的 `pr-closeout/required-checks.json`，key 是 owner/repo（見 5.1） |
 | D7 | 要不要加 hook，擋住沒跑 `ready` 就 merge | 要。它符合 CLAUDE.md 的閘門判準：讀的是環境事實，下游消費者是 merge 決策。做法是 PreToolUse hook 攔 `gh pr merge`、`gh api …/merge` 與 GitHub MCP 的 `merge_pull_request`，攔到時自己呼叫 `ready`，exit 0 才放行，否則 deny。使用者可以用 `PR_CLOSEOUT_OK=1` 放行一次。代價是範圍多出 hook 腳本、plugin 的 `hooks.json` 接線與 hook 測試，工作量約多一半。（寫計畫時修正：原本是讓 `ready` 寫標記檔到 `$TMPDIR` 再由 hook 讀取，但 sandbox 內外的 `$TMPDIR` 是不同目錄，hook 讀不到 sandbox 裡寫的標記；而且 sandbox 寫得到 `$TMPDIR`，標記可以偽造。改成 hook 自己查詢就沒有這兩個問題，代價是每次 merge 多一次約 2 秒的查詢。hook 不做涵蓋檢查，因為它無法可靠地知道 PR 對應哪個本機目錄，那一步留在 skill 流程裡） |
 
 ## 7. 留給實作者決定的事
@@ -192,4 +192,4 @@ JSON 另外帶三組資訊，供模型寫判斷，不參與 exit code：
 - **涵蓋檢查只認 review-branch 的紀錄。** codex 與 code-audit-rigor 不留機器可讀的紀錄，用它們審的變更一律是 unknown。要補上，得讓它們也留紀錄，那是另一個工作包。
 - **`landed` 要 fetch。** sandbox 外才能 fetch 私有 repo 時，要記得關掉 sandbox。
 - **已安裝的副本不會自己更新。** plugin 合併後要跑 `claude plugin update pr-closeout`，hook 與腳本才會生效。
-- **必跑名單檔可被改寫。** 從以 `~/.claude` 為專案目錄的 session 裡，sandbox 寫得到 `~/.claude/pr-closeout/`，可以拿掉名單上的 check。claude-config 那邊要把這個目錄加進 `sandbox.filesystem.denyWrite`。
+- **必跑名單檔可被改寫。** 從以 `~/.claude` 為專案目錄的 session 裡，sandbox 寫得到 `~/.claude/pr-closeout/`，可以拿掉名單上的 check。個人設定 repo 那邊要把這個目錄加進 `sandbox.filesystem.denyWrite`。

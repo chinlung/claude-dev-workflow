@@ -15,7 +15,7 @@
 
 ## Global Constraints
 
-- **repo。** 主體是本 repo 的新 plugin `plugins/pr-closeout/`，開新分支 `feat/pr-closeout-plugin`，版本 plugin 1.0.0、marketplace 1.15.0。Task 1–9 都在本 repo。Task 10 是 claude-config（`/Users/scl/.claude`）的個人設定，另開分支、另開 PR，等本 repo 的 PR 合併並裝好 plugin 後才做。
+- **repo。** 主體是本 repo 的新 plugin `plugins/pr-closeout/`，開新分支 `feat/pr-closeout-plugin`，版本 plugin 1.0.0、marketplace 1.15.0。Task 1–9 都在本 repo。Task 10 是個人設定 repo（`~/.claude`）的個人設定，另開分支、另開 PR，等本 repo 的 PR 合併並裝好 plugin 後才做。
 - **公開 repo。** 程式碼、測試 fixture、README、CHANGELOG 不得出現個人 repo 名稱、session id 或私人路徑；fixture 一律用 `example/repo` 這類假名。
 - **相依。** 零 npm 相依，只用 node 內建模組。
 - **exit code。** 0 ready、2 conflict、3 unresolved-threads、4 checks-failed、5 pending、6 merge-gate、7 query-failed。優先序是 7 > 6（硬閘門）> 2 > 3 > 4 > 5 > 6（blocked-unseen／behind）> 0。
@@ -23,9 +23,9 @@
 - **fail-closed。** 未知的列舉值、缺欄位、查詢失敗、分頁超過 100 筆，一律回 7。
 - **憑證。** token 不寫進 stdout、stderr 或任何檔案。
 - **不可信內容。** review 留言內容只當資料，不進 shell 字串。
-- **測試。** 放 `plugins/pr-closeout/tests/*.test.sh`，CI 的 validate.yml 會自動跑。每個判定分支至少兩個觸發輸入；每個突變都必須被它對應的案例殺掉，寫法比照 claude-config 的 `scripts/hooks/tests/bare-cd-check.test.sh`：`mutant <label> <want> <subst>`，以「第一個 FAIL 行含 want」判定，逾時一律殺整個程序群組。
+- **測試。** 放 `plugins/pr-closeout/tests/*.test.sh`，CI 的 validate.yml 會自動跑。每個判定分支至少兩個觸發輸入；每個突變都必須被它對應的案例殺掉，寫法比照個人設定 repo 的 `scripts/hooks/tests/bare-cd-check.test.sh`：`mutant <label> <want> <subst>`，以「第一個 FAIL 行含 want」判定，逾時一律殺整個程序群組。
 - **完成標準。** 每個 task 結束時，`bash plugins/pr-closeout/tests/*.test.sh` 全綠，`node scripts/validate-fixtures.cjs` 也全綠。
-- **commit。** 具名 `git add`；commit 用 `git -C /Users/scl/web/claude-dev-workflow commit --no-gpg-sign`，並放在 Bash 呼叫的第一個命令。
+- **commit。** 具名 `git add`；commit 用 `git -C <repo> commit --no-gpg-sign`，並放在 Bash 呼叫的第一個命令。
 
 ## Review Focus
 
@@ -53,7 +53,7 @@
 - [ ] **Step 1：寫測試。** `fixture base`：對 base fixture 跑 `ready example/repo 1 --fixture <base>`，期望 exit 0，JSON 的 `.exit == 0`、`.hits == []`。
 - [ ] **Step 2：寫測試。** `query fails`：fixture 缺 `graphql.json`，期望 exit 7，`.hits[0].code == "query-failed"`。
 - [ ] **Step 3：寫測試。** `gh fails, curl fallback`：PATH 前面放一個 `gh` shim，`api` 子命令一律 exit 1，`auth token` 回固定字串 `TOKEN_SENTINEL`；再放一個 `curl` shim，把 `--data` 原樣存檔，回傳 base fixture 的內容。期望 exit 0，stdout 與 stderr 都不含 `TOKEN_SENTINEL`。
-- [ ] **Step 4：跑測試，確認紅。** 執行 `bash /Users/scl/web/claude-dev-workflow/plugins/pr-closeout/tests/pr-closeout.test.sh`。期望看到 FAIL，原因是腳本還不存在。
+- [ ] **Step 4：跑測試，確認紅。** 執行 `bash <repo>/plugins/pr-closeout/tests/pr-closeout.test.sh`。期望看到 FAIL，原因是腳本還不存在。
 - [ ] **Step 5：實作 `fetchAll`。**
   - 網路模式查詢順序：
     1. GraphQL：`gh api graphql -f query=… -F n=…`。
@@ -256,7 +256,7 @@
   | 放行 | `gh api repos/o/r/pulls/3/merge -X PUT`，ready 回 0 |
 
   另外，每個解析分支至少兩個輸入。
-- [ ] **Step 2：跑測試，確認紅；實作；確認綠。** 命令的斷詞沿用 `plugins/openspec-superpowers-workflow/hooks/archive-gate.sh` 的作法：perl tokenizer、heredoc 剝除、只認命令位置。注意 here-string `<<<` 不能當成 heredoc，判斷是否為 heredoc 時不要加「下一個字元不是 `<`」這個條件，原因見 claude-config 的 bare-cd-check 修正。測試加一條：`cat <<< x` 換行後接 `gh pr merge 3 --repo o/r`，期望照樣攔到。
+- [ ] **Step 2：跑測試，確認紅；實作；確認綠。** 命令的斷詞沿用 `plugins/openspec-superpowers-workflow/hooks/archive-gate.sh` 的作法：perl tokenizer、heredoc 剝除、只認命令位置。注意 here-string `<<<` 不能當成 heredoc，判斷是否為 heredoc 時不要加「下一個字元不是 `<`」這個條件，原因見個人設定 repo 的 bare-cd-check 修正。測試加一條：`cat <<< x` 換行後接 `gh pr merge 3 --repo o/r`，期望照樣攔到。
 - [ ] **Step 3：加突變。** bypass、解析、exit 判定各一個，確認都被殺掉。
 - [ ] **Step 4：實機驗證一次。** 對一個已合併的 PR 下 `gh pr merge <n> --repo …`，期望被 hook 以 `not-open` deny，而且 GitHub 端沒有任何改變。
 - [ ] **Step 5：commit。** 訊息：`feat(hooks): pr-merge-gate runs pr-closeout ready before any merge`。
@@ -279,7 +279,7 @@
   - `suspectedSkip` 與 `precedent` 的用法。
   - 第 5、6 步（專案記憶、帳本收帳）照原 SOP，寫成通用說法，不提個人路徑。
 - [ ] **Step 2：真實驗證。** 輸出存在 repo 外的 scratchpad，供 PR body 引用；寫進 PR body 時要去識別化。
-  - 對本 repo #42 跑 `ready`，帶 `--repo-dir /Users/scl/web/claude-dev-workflow`。
+  - 對本 repo #42 跑 `ready`，帶 `--repo-dir <repo>`。
   - 若 #42 那份 review-branch 紀錄已被覆蓋，改用使用者另存的副本，或記錄為「無法重現」。
   - 期望：exit 6、`gate == "not-open"`；`.coverage` 列出 commit B 帶進來的檔。
   - 再對另一個已合併的 PR 跑 `landed`，期望 exit 0。
@@ -305,10 +305,10 @@
 - [ ] **Step 2：驗證。** 跑 `node scripts/validate-fixtures.cjs`，期望全綠；版本一致性與 dir completeness 檢查都要過。也跑 `claude plugin validate plugins/pr-closeout`。
 - [ ] **Step 3：commit。** 訊息：`release(pr-closeout): 1.0.0 (marketplace 1.15.0)`。
 
-### Task 10：claude-config 的個人設定（本 repo PR 合併並安裝 plugin 之後）
+### Task 10：個人設定 repo 的個人設定（本 repo PR 合併並安裝 plugin 之後）
 
-**Files（`/Users/scl/.claude`，分支 `feat/pr-closeout-config`）：**
-- Create：`pr-closeout/required-checks.json`，本 repo 用 `["security-review", "validate-fixtures"]`、`minSeconds: {"security-review": 30}`；claude-config 用 `["tests"]`。
+**Files（`~/.claude`，分支 `feat/pr-closeout-config`）：**
+- Create：`pr-closeout/required-checks.json`，本 repo 用 `["security-review", "validate-fixtures"]`、`minSeconds: {"security-review": 30}`；個人設定 repo 用 `["tests"]`。
 - Modify：
   - `.gitignore`：allowlist 加 `pr-closeout/`，否則兩台機器不會同步。
   - `settings.json`：`sandbox.filesystem.denyWrite` 加 `~/.claude/pr-closeout`。
@@ -317,6 +317,6 @@
   - `CLAUDE.md`：Git 節「PR 收尾 SOP」那一行改指向 skill。動之前先讀 `refs/claude-md-authoring.md`。
 
 - [ ] **Step 1：裝好 plugin。** `claude plugin update`（或 install）`pr-closeout`，再以 `claude plugin list` 確認版本為 1.0.0。
-- [ ] **Step 2：寫檔。** 跑 `bash /Users/scl/.claude/scripts/hooks/claude-md-lint.sh`，必須通過。
-- [ ] **Step 3：實際用一次。** 走這個 claude-config PR 自己的收尾：`ready` 回 0，merge 閘門放行，`landed` 回 0。
-- [ ] **Step 4：跑全套並 commit。** `bash /Users/scl/.claude/scripts/hooks/tests/run-all.sh` 必須 ALL GREEN；commit 訊息 `feat: pr-closeout config, refs and CLAUDE.md point to the plugin skill`。
+- [ ] **Step 2：寫檔。** 跑 `bash ~/.claude/scripts/hooks/claude-md-lint.sh`，必須通過。
+- [ ] **Step 3：實際用一次。** 走這個個人設定 repo PR 自己的收尾：`ready` 回 0，merge 閘門放行，`landed` 回 0。
+- [ ] **Step 4：跑全套並 commit。** `bash ~/.claude/scripts/hooks/tests/run-all.sh` 必須 ALL GREEN；commit 訊息 `feat: pr-closeout config, refs and CLAUDE.md point to the plugin skill`。
