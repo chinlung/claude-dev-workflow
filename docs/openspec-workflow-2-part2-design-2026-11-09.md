@@ -1,6 +1,6 @@
 # openspec-superpowers-workflow 2.0（下）：紅燈 eval、tasks.md 執行紀錄、Phase 2 提問預算、對齊 OpenSpec 1.16 設計（2026-11-09）
 
-> 狀態：草案，等使用者核准。範圍是路線圖（`docs/optimization-roadmap-2026-11-09.md`）的 W0-3、W2-3、W2-4、W2-5，加上 W0-1 的另一半（歸檔統計腳本）與 2.0.0 出貨，即 PR 3。上半（W2-1、W2-2）已在 PR #41 合併，設計見 `docs/openspec-workflow-2-design-2026-11-09.md`。W2-6（schema fork）仍待 W0-2④ 的 spike，不在本 PR。
+> 狀態：使用者 2026-11-09 核准四個決策點（eval 花費、claude-config 小 PR、CI 裝固定版 OpenSpec、CI 升 Node 22）；建構者檢查已完成，三處缺口（補勾時機、`--yes` 與 verify 的定義、盲測詞表）已併入 4.1、4.3、4.5 與第 8 節。範圍是路線圖（`docs/optimization-roadmap-2026-11-09.md`）的 W0-3、W2-3、W2-4、W2-5，加上 W0-1 的另一半（歸檔統計腳本）與 2.0.0 出貨，即 PR 3。上半（W2-1、W2-2）已在 PR #41 合併，設計見 `docs/openspec-workflow-2-design-2026-11-09.md`。W2-6（schema fork）仍待 W0-2④ 的 spike，不在本 PR。
 
 ## 1. 為什麼做
 
@@ -59,7 +59,7 @@
 
 **規模與成本。** 三個新 suite 共約 10 題，每個 suite 一個 `.gitignore`。先用 `--runs 1` 做 pilot，讀產出確認 with 組真的載入 plugin、grader 會叫，再 `runs: 3` 正式跑。估計新 suite 紅綠各一輪約 $30，加舊 Phase 5 suite 回歸 $11，全程約 $60 到 $80，每次執行帶 `--max-cost-usd` 上限。
 
-**盲測規則（claude-config 的小 PR）。** 取自 pstack 的 eval playbook：candidate 看得到的 prompt 與檔名不出現 eval、test、judge、score、rubric、compare、benchmark、candidate、arena（及中文對應「測試」「評分」）；不要求 candidate 自述用了哪些規則；目錄名用像專案的名字。新增 `refs/plugin-eval.md` 一節與 `scripts/audit/eval-blind-scan.cjs`（掃 prompt.md 與 scaffold 內容，命中就 exit 1），附含突變的測試。
+**盲測規則（claude-config 的小 PR）。** 取自 pstack 的 eval playbook：candidate 看得到的 prompt 與檔名不出現 eval、judge、experiment、score、rubric、compare、benchmark、candidate、arena（及中文「評分」「評審」）。pstack 的詞表還有 test 與「測試」，本 plugin 不禁：題目本身就是開發工作，TDD 的 tasks.md 與程式 scaffold 一定會出現這兩個詞，禁了任何像樣的題目都過不了掃描。掃描只套用新的三個 suite，舊 Phase 5 suite 不動，回歸比對才是同一份題目；不要求 candidate 自述用了哪些規則；目錄名用像專案的名字。新增 `refs/plugin-eval.md` 一節與 `scripts/audit/eval-blind-scan.cjs`（掃 prompt.md 與 scaffold 內容，命中就 exit 1），附含突變的測試。
 
 ### 4.2 W0-1 歸檔統計腳本
 
@@ -97,6 +97,8 @@ Phase 3 的 sync-back 因此多一步：把 writing-plans 的步驟框改成編�
 
 **R6 由 warn 升為 fail。** 未勾且沒有 `skip:` 加非空理由的項，`check` 失敗，歸檔閘門因此擋下。tasks.md 完全沒有勾選框時維持 warn（可能是舊格式或 stub）。舊 change 若沒勾過會被擋，補勾、補 `skip:`，或明確帶 `OPENSPEC_ARCHIVE_OK=1`。這是 2.0 的 breaking 之一。
 
+**補勾的時機。** Phase 5 與 6a 之後 tasks.md 都是凍結的，R5 以 Phase 6 開始時的 snapshot 比對。若等到 6b5 的 `check` 才發現 R6 失敗，就沒有合法時間點可以補，只剩繞過。所以 `snapshot` 在記錄雜湊之前先跑 R6：不過就 exit 1、不寫狀態檔，訊息列出缺理由的行。流程變成：Phase 6 開始，先把每個未勾項補勾或補 `skip:`（只准動框與 `skip:` 後綴，不改任務描述），再 `snapshot`。R5 不受影響，因為 snapshot 發生在補勾之後。Phase 5 期間才發現某項其實沒做完，照舊記成 `[CODE] N` 的條目，到這個 Phase 6 前置步驟再決定補勾還是 `skip:`。`check` 仍會再跑一次 R6，作為縱深防禦。
+
 Phase 5 禁改 tasks.md 的規則不變。SUPERPOWERS-HANDOFF 的「可以 check off」改成只限 Phase 4。
 
 ### 4.4 W2-4 Phase 2 提問預算
@@ -131,7 +133,9 @@ superpowers 7.0 的 brainstorming 自己已在第一則訊息提供「跳過提�
 | apply | Phase 4（其勾選動作與 W2-3 一致） |
 | verify | Phase 5 入口，以及 Phase 6 核查的輸入；它的發現依標籤記進 review-notes |
 | sync | 僅 Phase 6，且在 6b5 之後；archive 本來就會同步 main specs，所以通常不必 |
-| archive、bulk-archive | Phase 6c，歸檔閘門適用，bulk 中每個 change 都要過 `verify` |
+| archive、bulk-archive | Phase 6c，歸檔閘門適用，bulk 中每個 change 都要有新鮮的 `reconcile-check.cjs` 通過結果（指本 plugin 的 `verify` 子命令，不是 `/opsx:verify`） |
+
+`--yes` 的處理（1.16.1 實測）：tasks.md 只要有一個帶 `skip:` 的未勾項，不帶 `--yes` 的非互動 `openspec archive` 會因讀不到 stdin 而 exit 1，change 不會被歸檔。所以 CLI 備援指令保留 `--yes`；刪掉的只是 6c 那句「用 `--yes` 略過未完成警告」的說法，改成「警告若只列出帶 `skip:` 的項屬預期，非互動時需帶 `--yes`」。歸檔前的把關是閘門與 R6，不是警告。
 | onboard | 不屬任何階段（教學用） |
 
 **Phase 4 主推改成 executing-plans**，SDD 列為「task 彼此獨立時」，與 CLAUDE.md 的決策樹一致。
@@ -184,6 +188,9 @@ superpowers 7.0 的 brainstorming 自己已在第一則訊息提供「跳過提�
 4. 歸檔統計輸出預設匿名專案。
 5. 紅燈跑在 PR 2 之前的 plugin，不強求每個缺陷都有紅題。
 6. 盲測掃描腳本與 refs 放 claude-config。
+7. `snapshot` 先跑 R6，補勾補 `skip:` 發生在 snapshot 之前（4.3）。
+8. CLI 備援指令保留 `--yes`；bulk 的把關指本 plugin 的 `verify`，不是 `/opsx:verify`（4.5）。
+9. 盲測詞表不含 test 與「測試」，且只掃新的三個 suite（4.1）。
 
 **留給實作者**：各 eval 題的具體情境與 grader 措辭、統計 JSON 的欄位命名、`DESIGN-RED-FLAGS.md` 的行文、Phase 4 出口檢查的確切用語。
 
