@@ -194,8 +194,8 @@ Expected: `PASS=14 FAIL=0`.
 - [ ] **Step 5: Commit**
 
 ```bash
-git -C /Users/scl/web/claude-dev-workflow add plugins/scope-ledger/hooks/_ledger.sh plugins/scope-ledger/tests/scope-hooks.test.sh
-git -C /Users/scl/web/claude-dev-workflow commit --no-gpg-sign -m "feat(scope-ledger): ledger parsing helpers with fixture tests"
+git -C <repo> add plugins/scope-ledger/hooks/_ledger.sh plugins/scope-ledger/tests/scope-hooks.test.sh
+git -C <repo> commit --no-gpg-sign -m "feat(scope-ledger): ledger parsing helpers with fixture tests"
 ```
 
 ---

@@ -1,6 +1,6 @@
 # openspec-superpowers-workflow 2.0（下）：紅燈 eval、tasks.md 執行紀錄、Phase 2 提問預算、對齊 OpenSpec 1.16 設計（2026-11-09）
 
-> 狀態：使用者 2026-11-09 核准四個決策點（eval 花費、claude-config 小 PR、CI 裝固定版 OpenSpec、CI 升 Node 22）；建構者檢查已完成，三處缺口（補勾時機、`--yes` 與 verify 的定義、盲測詞表）已併入 4.1、4.3、4.5 與第 8 節。範圍是路線圖（`docs/optimization-roadmap-2026-11-09.md`）的 W0-3、W2-3、W2-4、W2-5，加上 W0-1 的另一半（歸檔統計腳本）與 2.0.0 出貨，即 PR 3。上半（W2-1、W2-2）已在 PR #41 合併，設計見 `docs/openspec-workflow-2-design-2026-11-09.md`。W2-6（schema fork）仍待 W0-2④ 的 spike，不在本 PR。
+> 狀態：使用者 2026-11-09 核准四個決策點（eval 花費、個人設定 repo 小 PR、CI 裝固定版 OpenSpec、CI 升 Node 22）；建構者檢查已完成，三處缺口（補勾時機、`--yes` 與 verify 的定義、盲測詞表）已併入 4.1、4.3、4.5 與第 8 節。範圍是路線圖（`docs/optimization-roadmap-2026-11-09.md`）的 W0-3、W2-3、W2-4、W2-5，加上 W0-1 的另一半（歸檔統計腳本）與 2.0.0 出貨，即 PR 3。上半（W2-1、W2-2）已在 PR #41 合併，設計見 `docs/openspec-workflow-2-design-2026-11-09.md`。W2-6（schema fork）仍待 W0-2④ 的 spike，不在本 PR。
 
 ## 1. 為什麼做
 
@@ -37,7 +37,7 @@
 - SKILL.md 的 description 已用 1506／1536 字，本 PR 的新規則只能進正文與參考檔，不能進 description。
 - `reconcile-check.cjs`、兩支 hook 的 fail-open 契約與 exit code 契約（0／1／2／3）不變。
 - eval 沒授權 Bash，本機 `~/.docker` 含 symlink 時授權 Bash 會整輪拒跑。因此 eval 只能測「只用 Write／Edit／Read 就能表現的行為」。
-- 兩個 repo：本 repo 與 `~/.claude`（claude-config，另有 git）。W0-3 要求的 `refs/plugin-eval.md` 與禁用字掃描腳本屬後者，另開一個小 PR。
+- 兩個 repo：本 repo 與 `~/.claude`（個人設定 repo，另有 git）。W0-3 要求的 `refs/plugin-eval.md` 與禁用字掃描腳本屬後者，另開一個小 PR。
 
 ## 4. 設計
 
@@ -59,7 +59,7 @@
 
 **規模與成本。** 三個新 suite 共約 10 題，每個 suite 一個 `.gitignore`。先用 `--runs 1` 做 pilot，讀產出確認 with 組真的載入 plugin、grader 會叫，再 `runs: 3` 正式跑。估計新 suite 紅綠各一輪約 $30，加舊 Phase 5 suite 回歸 $11，全程約 $60 到 $80，每次執行帶 `--max-cost-usd` 上限。
 
-**盲測規則（claude-config 的小 PR）。** 取自 pstack 的 eval playbook：candidate 看得到的 prompt 與檔名不出現 eval、judge、experiment、score、rubric、compare、benchmark、candidate、arena（及中文「評分」「評審」）。pstack 的詞表還有 test 與「測試」，本 plugin 不禁：題目本身就是開發工作，TDD 的 tasks.md 與程式 scaffold 一定會出現這兩個詞，禁了任何像樣的題目都過不了掃描。掃描只套用新的三個 suite，舊 Phase 5 suite 不動，回歸比對才是同一份題目；不要求 candidate 自述用了哪些規則；目錄名用像專案的名字。新增 `refs/plugin-eval.md` 一節與 `scripts/audit/eval-blind-scan.cjs`（掃 prompt.md 與 scaffold 內容，命中就 exit 1），附含突變的測試。
+**盲測規則（個人設定 repo 的小 PR）。** 取自 pstack 的 eval playbook：candidate 看得到的 prompt 與檔名不出現 eval、judge、experiment、score、rubric、compare、benchmark、candidate、arena（及中文「評分」「評審」）。pstack 的詞表還有 test 與「測試」，本 plugin 不禁：題目本身就是開發工作，TDD 的 tasks.md 與程式 scaffold 一定會出現這兩個詞，禁了任何像樣的題目都過不了掃描。掃描只套用新的三個 suite，舊 Phase 5 suite 不動，回歸比對才是同一份題目；不要求 candidate 自述用了哪些規則；目錄名用像專案的名字。新增 `refs/plugin-eval.md` 一節與 `scripts/audit/eval-blind-scan.cjs`（掃 prompt.md 與 scaffold 內容，命中就 exit 1），附含突變的測試。
 
 ### 4.2 W0-1 歸檔統計腳本
 
@@ -176,7 +176,7 @@ superpowers 7.0 的 brainstorming 自己已在第一則訊息提供「跳過提�
 - **R6 升級會擋住進行中的 change。** 有繞過變數，且是 2.0 已宣告的 breaking。
 - **成本。** 估 $60 到 $80，皆帶上限。
 - **CI 多裝一個 npm 套件，且 Node 要升級。** 用 `--ignore-scripts` 與固定版本降低面積。OpenSpec 要求 Node 22.12.0 以上，CI 因此由 20 升到 22，影響所有套件。
-- **兩個 repo。** claude-config 的小 PR 與本 PR 之間無程式依賴，但紅燈 eval 要先過盲測掃描，所以順序是先 claude-config 後跑 eval。
+- **兩個 repo。** 個人設定 repo 的小 PR 與本 PR 之間無程式依賴，但紅燈 eval 要先過盲測掃描，所以順序是先個人設定 repo 後跑 eval。
 - **版號。** 若不 bump，已安裝副本永遠拿不到。
 
 ## 8. 已決定與留給實作者的
@@ -187,7 +187,7 @@ superpowers 7.0 的 brainstorming 自己已在第一則訊息提供「跳過提�
 3. CI 固定 OpenSpec 版本並安裝，版本字串單一來源。
 4. 歸檔統計輸出預設匿名專案。
 5. 紅燈跑在 PR 2 之前的 plugin，不強求每個缺陷都有紅題。
-6. 盲測掃描腳本與 refs 放 claude-config。
+6. 盲測掃描腳本與 refs 放個人設定 repo。
 7. `snapshot` 先跑 R6，補勾補 `skip:` 發生在 snapshot 之前（4.3）。
 8. CLI 備援指令保留 `--yes`；bulk 的把關指本 plugin 的 `verify`，不是 `/opsx:verify`（4.5）。
 9. 盲測詞表不含 test 與「測試」，且只掃新的三個 suite（4.1）。
@@ -197,6 +197,6 @@ superpowers 7.0 的 brainstorming 自己已在第一則訊息提供「跳過提�
 ## 9. 需要使用者裁決
 
 1. 核准 eval 花費（上限內約 $60 到 $80）？
-2. 同意另開 claude-config 的小 PR（refs 加一節、新增一支掃描腳本）？
+2. 同意另開個人設定 repo 的小 PR（refs 加一節、新增一支掃描腳本）？
 3. 同意 CI 安裝固定版本的 OpenSpec CLI？
 4. 同意 CI 的 Node 由 20 升到 22（OpenSpec 的硬性要求，連帶影響所有套件）？

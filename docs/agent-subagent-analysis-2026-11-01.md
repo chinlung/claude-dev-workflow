@@ -21,7 +21,7 @@
 | **P2** | review-branch 補上「大 diff 怎麼切」的規則；`diff-reviewer` agent 是選配 | 先改 command 本文 | 19 次切塊審查都是主迴圈自己臨場決定的（command 沒寫）。quotedCode 契約帶到 18/19，帶得不錯；缺的是切法與輸出合併規則 |
 | **P3（僅 high-precision-dev 一列 11-02 已做，見 §11）** | 既有 plugin agent 補 `model`／`effort` | frontmatter | 你自己的歷史裡 0 次使用（10-03 以來）。受益的是 marketplace 使用者，以及「session 預設模型很低」的情境 |
 | 撤回 | ~~`diff-security-reviewer`~~ | — | 51 次安全審查派發中有 43 次緊接在內建 `/security-review` 之後，屬於內建流程，不是手寫 |
-| 撤回 | ~~eval runner／grader agent~~ | — | 21 次 eval 派發全部來自 VietMoney 專案的 `skill-creator`；pr plugin 本來就在用 `claude plugin eval` |
+| 撤回 | ~~eval runner／grader agent~~ | — | 21 次 eval 派發全部來自工作專案 A 的 `skill-creator`；pr plugin 本來就在用 `claude plugin eval` |
 | 維持 | `dev-workflow` 評估退役 | 你決定 | 0 次使用，又是線性鏈的角色 agent |
 
 **不建議**做成 agent 的項目：scope-ledger、save-session、reflect 主流程、pr、codegraph、security-audit、openspec-superpowers-workflow、codex review、tree。這部分 r1 的判斷不變，見 §5。
@@ -35,7 +35,7 @@
 | # | r1 的說法 | 查證結果 | r2 的處置 |
 |---|---|---|---|
 | 1 | 「約 30 次手寫的安全審查，多半是內建工具涵蓋不到的範圍」→ P1 建 `diff-security-reviewer` | 51 次安全類派發中，**43 次**前一個 Skill 呼叫就是 `security-review`。「two unpushed commits」「trim-fix commit」這些描述也都在內建流程裡。其餘 8 次接在 pr、scope、review-branch 之後 | **撤回**。剩下 8 次的量撐不起一個 agent |
-| 2 | eval 派發「看起來像手動 ablation」，建議改用 `claude plugin eval` | 21 次全部在 VietMoney 專案、緊接 `skill-creator`，是 skill-creator 自己的 eval 迴圈（另有 `iter3-runs`／`iter3-grade` 兩個 Workflow）。pr plugin 的記憶顯示它已經用 `claude plugin eval … --ablation with-without` | **撤回**。流程由第三方 skill 決定 |
+| 2 | eval 派發「看起來像手動 ablation」，建議改用 `claude plugin eval` | 21 次全部在工作專案 A、緊接 `skill-creator`，是 skill-creator 自己的 eval 迴圈（另有 `iter3-runs`／`iter3-grade` 兩個 Workflow）。pr plugin 的記憶顯示它已經用 `claude plugin eval … --ablation with-without` | **撤回**。流程由第三方 skill 決定 |
 | 3 | finding-verifier frontmatter 寫 `disallowedTools: Edit, Write`，理由是「驗證者會順手修掉」 | 200 個判定類子代理共呼叫 Edit／Write 179 次：**169 次寫進 `$TMPDIR`**（重現用的實驗檔，prompt 本來就要求「實驗檔放 $TMPDIR」），10 次是照指示寫的交付檔，**改到受審程式碼 0 次** | **移除這條限制**。它防的事從沒發生過，卻會讓最有力的證據（實際跑出來的輸出）做不出來 |
 | 4 | 「claude-security 的 verifier 固定 model，防止降級」 | `scan-verifier`、`scan-researcher`、`patch-verifier` 都是 **`model: inherit`**，固定的是 `effort: xhigh` 和 `tools`。10-31 跑在 haiku 上的正是它們 | 改寫成反例：inherit 加上低 session 設定，就是判定落到 haiku 的途徑 |
 | 5 | high-precision-dev 選項 A 引用 commit「same-family pairings barely decorrelate」來說明 Opus 與 Sonnet 同代、去相關有限 | 那句話在 commit 裡指的是**同一家族的不同版本**（例如 Opus 4.6 對 4.8）。commit 把 Opus 對 Sonnet 當成**跨**家族 | 改寫選項 A 的理由，不再借用那句話（§4.3） |
@@ -92,7 +92,7 @@
 
 - 現存資料：521 份主 transcript、275 份子代理 transcript，主迴圈 Agent 呼叫 248 次，時間是 **2026-10-03 ～ 10-31**。更早的已被清掉，`subagent-model-tiers.md` 裡 9 月的 895 次稽核無法重跑。
 - 每週分布：10-04 週 47、10-11 週 20、**10-18 週 149**、10-25 週 29。集中在一週，所以單週的作業型態會左右比例。
-- 專案分布：`~/.claude` 98、VietMoney 83、本 repo 51、contract-assay 9、其他 7。
+- 專案分布：`~/.claude` 98、工作專案 A 83、本 repo 51、contract-assay 9、其他 7。
 - Workflow 只呼叫過 3 次（claude-security:scan、skill-creator 的 iter3-runs／iter3-grade），裡面的 32 個 agent 不在 248 次之內。
 - 子代理 `.meta.json` 的 agentType：general-purpose 234、workflow-subagent 15、claude-security:scan-verifier 12、scan-researcher 4、fork 2、claude-code-guide 2、web-fetch／code-simplifier／scan-redactor 各 1。
 
@@ -104,7 +104,7 @@
 | finding 驗證 | 37 | **review-branch 32**、TDD 3、reflect 2 | ✓ review-branch 是你的 plugin |
 | review-branch 切塊審查 | 19 | review-branch（主迴圈臨場切） | ✓ |
 | simplify 各角度 | 約 84 | 內建 `/simplify` | ✗ |
-| eval 執行與評分 | 21 | skill-creator（VietMoney） | ✗ |
+| eval 執行與評分 | 21 | skill-creator（工作專案 A） | ✗ |
 | 合約 audit、slippage | 約 12 | scope 之後的專案特有工作 | 專案層 agent 可以考慮，量小 |
 | Builder check on design | 6 | brainstorming 之後 | 量小 |
 
@@ -114,7 +114,7 @@ Skill 使用次數（模型呼叫）：review-branch 37、security-review 36、s
 
 用 description 與 agentType 篩出判定類子代理共 217 個：opus 167、fable 29、**haiku 16**、不明 5。
 
-**16 個 haiku 全部出自 10-31 VietMoney session 的那一次 claude-security 掃描**（scan-researcher 4 個、scan-verifier 12 個，4 個 candidate 各 3 票）。它們的 frontmatter 是 `model: inherit`，Workflow 的 `agent()` 呼叫沒有帶 model。發起掃描時，主迴圈的 assistant 訊息顯示 `claude-opus-5-5`。
+**16 個 haiku 全部出自 10-31 工作專案 A session 的那一次 claude-security 掃描**（scan-researcher 4 個、scan-verifier 12 個，4 個 candidate 各 3 票）。它們的 frontmatter 是 `model: inherit`，Workflow 的 `agent()` 呼叫沒有帶 model。發起掃描時，主迴圈的 assistant 訊息顯示 `claude-opus-5-5`。
 
 這是歷史紀錄裡**唯一一次**違反「不可降級」，而且出現在**安全審查的投票面板**上。
 
@@ -323,7 +323,7 @@ disallowedTools: Agent
 | 層 | 適合 | 限制 |
 |---|---|---|
 | plugin（本 repo） | 綁在某個 plugin 流程上的角色（finding-verifier 對應 review-branch） | 會忽略 `permissionMode`／`hooks`／`mcpServers` 等欄位；改內容要 bump 版號，已安裝的副本才拿得到 |
-| 使用者層 `~/.claude/agents/` | 你個人跨 repo 的流程 | 在 sandbox 的 denyWrite 清單上；跟 claude-config 一起同步 |
+| 使用者層 `~/.claude/agents/` | 你個人跨 repo 的流程 | 在 sandbox 的 denyWrite 清單上；跟個人設定 repo 一起同步 |
 | 專案層 `.claude/agents/` | 只對某個 repo 成立（例如 contract-assay 的合約 audit） | 會跟著 repo 給協作者 |
 
 ### 6.3 `memory`：判定類不要用
@@ -393,9 +393,9 @@ side agent 提示的內容：「某次 claude-security 掃描的 12 個 scan-ver
 
 ### 9.4 那次掃描與結果的可信度
 
-- **掃描範圍**：`/Users/scl/web/EUI_PhilMoney_API`，分支 `VPT-2310-family-api-2.0`，範圍 `5937fc0b..7ef3b6fa`，57 個檔、約 6,197 行，medium effort，工作樹是 dirty 狀態。
+- **掃描範圍**：`<工作專案 B>`，分支 `<功能分支>`，範圍 `5937fc0b..7ef3b6fa`，57 個檔、約 6,197 行，medium effort，工作樹是 dirty 狀態。
 - **掃描結果**：4 項（HIGH 1、MEDIUM 1、LOW 2）。F1（v2.8／v2.9 萊爾富回呼可替全家訂單入帳）由 3/3 個 haiku verifier 確認。
-- **後續處理**：主迴圈（opus）逐項核對後，判 F1、F2「前提不成立」，依帳本規則分類。結果在 `CLAUDE-SECURITY-20261031-151433/`；**沒有寫進 `security-scans.log`**，PhilMoney 與 VietMoney 兩個 repo 都沒有這個檔。
+- **後續處理**：主迴圈（opus）逐項核對後，判 F1、F2「前提不成立」，依帳本規則分類。結果在 `CLAUDE-SECURITY-20261031-151433/`；**沒有寫進 `security-scans.log`**，工作專案 B 與工作專案 A 兩個 repo 都沒有這個檔。
 - **判讀**：haiku verifier 的「確認」有兩項被 opus 推翻，顯示驗證面板偏向誤確認。更大的風險在 researcher：**那次掃描「沒找到其他問題」的部分不可信**。建議在 session 模型 ≥ opus 下，用同一個範圍重跑 changes scan，並補上 `security-scans.log` 的紀錄。
 
 ### 9.5 新查到的機制事實（binary 2.1.316）
@@ -408,7 +408,7 @@ side agent 提示的內容：「某次 claude-security 掃描的 12 個 scan-ver
 
 ## 10. 2026-11-02 補充：兩個 mod 的修正
 
-兩個 mod 都在 `~/.claude/skills/`（隨 claude-config 版控），版本 0.1.0 → 0.2.0。改法照 TDD：先寫紅測試，再實作，最後對每個新分支做突變測試。
+兩個 mod 都在 `~/.claude/skills/`（隨個人設定 repo 版控），版本 0.1.0 → 0.2.0。改法照 TDD：先寫紅測試，再實作，最後對每個新分支做突變測試。
 
 ### 10.1 `subagent-tiers`：判定類模型下限
 

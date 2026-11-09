@@ -252,7 +252,7 @@ Expected: `14 passed, 0 failed`(10 案例:c6/c7 各 2 條斷言、c8 有 3 條,�
 git add plugins/session-reflect/tests/gate.test.sh plugins/session-reflect/hooks/reflect-gate.sh .github/workflows/validate.yml
 git commit -m "feat(session-reflect): Stop hook 閘門 + fixture 測試 + CI wiring
 
-Claude-Session: https://claude.ai/code/session_01FgQkhuqDGN4SFeut4va6Tp"
+Claude-Session: https://claude.ai/code/<session-id>"
 ```
 
 ---
@@ -329,7 +329,7 @@ Expected: 兩份 JSON 正常輸出,exit 0
 git add plugins/session-reflect/hooks/hooks.json plugins/session-reflect/.claude-plugin/plugin.json
 git commit -m "feat(session-reflect): plugin manifest 與 Stop hook 註冊
 
-Claude-Session: https://claude.ai/code/session_01FgQkhuqDGN4SFeut4va6Tp"
+Claude-Session: https://claude.ai/code/<session-id>"
 ```
 
 ---
@@ -452,7 +452,7 @@ Expected: frontmatter 以 `---` 開頭,含 `name: reflect` 與 `description:`(sk
 git add plugins/session-reflect/skills/reflect/SKILL.md plugins/session-reflect/commands/reflect.md
 git commit -m "feat(session-reflect): reflect skill playbook 與 /reflect command
 
-Claude-Session: https://claude.ai/code/session_01FgQkhuqDGN4SFeut4va6Tp"
+Claude-Session: https://claude.ai/code/<session-id>"
 ```
 
 ---
@@ -581,7 +581,7 @@ Expected: 無 error 級問題(warning 逐項判斷後處置)
 git add .claude-plugin/marketplace.json CHANGELOG.md CHANGELOG.zh-TW.md README.md README.zh-TW.md
 git commit -m "feat(plugins): 發布 session-reflect 1.0.0,marketplace 1.9.1 → 1.10.0
 
-Claude-Session: https://claude.ai/code/session_01FgQkhuqDGN4SFeut4va6Tp"
+Claude-Session: https://claude.ai/code/<session-id>"
 ```
 
 ---
