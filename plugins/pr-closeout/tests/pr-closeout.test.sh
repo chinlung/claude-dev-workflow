@@ -250,6 +250,11 @@ cov_case 0 "accepted with a reason" --accept-unreviewed "a.sh=codex r3 reviewed 
 jqeq "accepted: recorded" '[.coverage.status, .coverage.accepted[0].path, .coverage.accepted[0].reason]' '["covered","a.sh","codex r3 reviewed it"]'
 cov_case 7 "accepted without a reason" --accept-unreviewed "a.sh="
 cov_case 6 "accepting another file does not cover this one" --accept-unreviewed "z.sh=not this one"
+# a closed PR is the more basic fact: not-open outranks unreviewed when both hold
+mkrepo4; record4 feat/x "a.sh=$(blob4 a.sh)" "b.md=$(blob4 b.md)"; echo a2 > "$R4/a.sh"; $G -C "$R4" commit -q -am fix
+sha=$(git -C "$R4" rev-parse HEAD)
+ready_case 6 "merged and unreviewed" "$(fixture t4m "$P.headRefOid = \"$sha\" | $P.headRefName = \"feat/x\" | $P.state = \"MERGED\"")" --repo-dir "$R4"
+jqeq "merged and unreviewed: gate" '.gate' '"not-open"'
 
 # ── Task 5: unarchived openspec changes (a warning, never the exit) ───────────────────────────────
 mkrepo4; cov_case 0 "no openspec dir"
@@ -309,8 +314,18 @@ mkdir -p "$tmp/gshim"; printf '#!/bin/bash\ncase " $* " in *" fetch "*) echo "gi
 PATH="$tmp/gshim:$PATH" landed_case 7 "fetch fails" "$(lfix l9)" --expect-head "$H6"
 landed_case 7 "landed without --expect-head" "$(lfix l10)"
 
+# ── Task 8: the skill body names only what the script has ────────────────────────────────────────
+SKILL="$here/../skills/pr-closeout/SKILL.md"
+if [ -f "$SKILL" ] && head -5 "$SKILL" | command grep -q '^name: pr-closeout$' && head -5 "$SKILL" | command grep -q '^description: .'; then ok; else failed "[skill frontmatter] name: pr-closeout and a description"; fi
+usage=$(node "$SCRIPT" 2>&1 >/dev/null)
+for w in $(command grep -o -E 'pr-closeout\.mjs (ready|landed)|--(expect-head|repo-dir|branch|fixture|accept-unreviewed)' "$SKILL" 2>/dev/null | sed 's/^pr-closeout\.mjs //' | sort -u); do
+  if [[ $usage == *"$w"* ]]; then ok; else failed "[skill names $w] not in the script's usage"; fi
+done
+skill_words=$(command grep -c -E 'pr-closeout\.mjs (ready|landed)' "$SKILL" 2>/dev/null)
+if [ "${skill_words:-0}" -ge 2 ]; then ok; else failed "[skill shows both subcommands] found ${skill_words:-0}"; fi
+
 # ── summary and mutants ──────────────────────────────────────────────────────────────────────────
-MIN_PASS=134
+MIN_PASS=143
 if [ "$pass" -lt "$MIN_PASS" ] && [ "${STOP_ON_FAIL:-0}" != 1 ]; then failed "only $pass checks passed, expected at least $MIN_PASS"; fi
 echo "pr-closeout: $pass passed, $fail failed"
 

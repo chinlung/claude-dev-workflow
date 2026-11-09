@@ -290,9 +290,6 @@ function extras(raw, pr) {
 export function assess(raw, { expectHead, owner, repo, pr, config, cover } = {}) {
   const p = prOf(raw.graphql);
   const hits = [];
-  if (cover && cover.status === 'unreviewed') {
-    hits.push({ code: 'merge-gate', gate: 'unreviewed', detail: `not covered by the last review: ${cover.unreviewed.join(', ')}` });
-  }
   if (config && config.error) hits.push({ code: 'query-failed', detail: config.error });
   const policy = (config && config.repos && config.repos[`${owner}/${repo}`]) || {};
   const unknown = (field, value) => hits.push({ code: 'query-failed', detail: `unknown ${field}: ${JSON.stringify(value)}` });
@@ -307,6 +304,8 @@ export function assess(raw, { expectHead, owner, repo, pr, config, cover } = {})
   }
   if (typeof p.headRefOid !== 'string') unknown('headRefOid', p.headRefOid);
   else if (expectHead && p.headRefOid !== expectHead) gate('head-mismatch', `head is ${p.headRefOid}, expected ${expectHead}`);
+  // after the PR's own state: equal ranks keep their order, and "the PR is closed" is the more basic fact
+  if (cover && cover.status === 'unreviewed') gate('unreviewed', `not covered by the last review: ${cover.unreviewed.join(', ')}`);
 
   const mergeableKnown = known('mergeable', p.mergeable);
   const stateKnown = known('mergeStateStatus', p.mergeStateStatus);

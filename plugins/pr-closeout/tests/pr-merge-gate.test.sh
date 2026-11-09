@@ -92,6 +92,8 @@ called "ready o/r 9" "query string: args"
 gate deny "graphql mergePullRequest" "$(bash_in "gh api graphql -f query='mutation{mergePullRequest(input:{pullRequestId:\"x\"}){clientMutationId}}'")"
 called "" "graphql: ready not called"
 gate deny "graphql auto-merge" "$(bash_in "gh api graphql -f query='mutation{enablePullRequestAutoMerge(input:{pullRequestId:\"x\"}){clientMutationId}}'")"
+gate deny "endpoint with a fragment" "$(bash_in "gh api 'repos/o/r/pulls/3/merge#x' -X PUT")"
+called "" "fragment: ready not called"
 FAKE_RC=0 gate allow "gh api without merge" "$(bash_in 'gh api repos/o/r/pulls/3 --jq .merged')"
 called "" "api no merge: ready not called"
 FAKE_RC=0 gate allow "a heredoc that never closes" "$(bash_in $'cat <<EOF\ngh pr merge 3 --repo o/r')"
@@ -108,7 +110,7 @@ gate allow "merge inside a heredoc body" "$(bash_in $'cat > n.md <<EOF\ngh pr me
 called "" "heredoc: ready not called"
 gate allow "nothing about merge" "$(bash_in 'ls -la')"
 
-MIN_PASS=62
+MIN_PASS=64
 if [ "$pass" -lt "$MIN_PASS" ] && [ "${STOP_ON_FAIL:-0}" != 1 ]; then failed "only $pass checks passed, expected at least $MIN_PASS"; fi
 echo "pr-merge-gate: $pass passed, $fail failed"
 

@@ -96,7 +96,7 @@ for my $s (@segs) {
       if ($x =~ m{^/?repos/([^/]+/[^/]+)/pulls/(\d+)/merge/?(?:\?.*)?$}) { print "$1 $2 -\n"; $found = 1; last; }
     }
     # a merge this parser cannot pin to a PR (a GraphQL mergePullRequest, an odd endpoint): unreadable
-    print "- - -\n" if !$found && grep { /mergePullRequest|AutoMerge|\/merge(?:[\/?]|$)/i } @t[2 .. $#t];
+    print "- - -\n" if !$found && grep { /mergePullRequest|AutoMerge|\/merge/i } @t[2 .. $#t];
   }
 }
 PERL
