@@ -268,8 +268,49 @@ git -C "$R4" add openspec; $G -C "$R4" commit -q -m archived
 cov_case 0 "only an archived change"
 jqeq "archived only: none" '[.openspec.present, .openspec.unarchivedChanges]' '[true,[]]'
 
+# ── Task 6: landed ───────────────────────────────────────────────────────────────────────────────
+O6="$tmp/o6.git"; C6="$tmp/c6"
+mkrepo6() {   # origin with main; the clone pushes feat/y, then a squash commit lands on origin/main
+  rm -rf "$O6" "$C6"; git init -q --bare -b main "$O6"; git init -q -b main "$C6"; git -C "$C6" remote add origin "$O6"
+  echo base > "$C6/c.txt"; git -C "$C6" add c.txt; $G -C "$C6" commit -q -m base; git -C "$C6" push -q origin main 2>/dev/null
+  git -C "$C6" switch -q -c feat/y; echo y > "$C6/y.sh"; git -C "$C6" add y.sh; $G -C "$C6" commit -q -m y
+  git -C "$C6" push -q origin feat/y 2>/dev/null; H6=$(git -C "$C6" rev-parse HEAD)
+  git -C "$C6" switch -q main; echo y > "$C6/y.sh"; git -C "$C6" add y.sh; $G -C "$C6" commit -q -m "y (squash)"
+  git -C "$C6" push -q origin main 2>/dev/null; MC6=$(git -C "$C6" rev-parse HEAD)
+}
+# lfix <name> [jq on pull.json] [open pulls json]: a landed fixture dir
+lfix() {
+  local d="$tmp/lfx/$1"; rm -rf "$d"; mkdir -p "$d"
+  jq -n --arg h "$H6" --arg m "$MC6" '{merged_at:"2026-11-09T00:00:00Z", head:{sha:$h, ref:"feat/y"}, merge_commit_sha:$m, base:{ref:"main"}}' | jq "${2:-.}" > "$d/pull.json"
+  printf '%s' "${3:-[]}" > "$d/open-pulls.json"
+  printf '%s' "$d"
+}
+landed_case() { local want=$1 label=$2 fx=$3; shift 3; run_cli "$want" "$label" landed example/repo 1 --fixture "$fx" --repo-dir "$C6" "$@"; }
+mkrepo6
+landed_case 0 "merged, head matches, on base" "$(lfix l1)" --expect-head "$H6"
+jqeq "landed: facts" '[.headMatches, .onBase]' '[true,true]'
+landed_case 6 "not merged" "$(lfix l2 '.merged_at = null')" --expect-head "$H6"
+jqeq "not merged: gate" '.gate' '"not-merged"'
+landed_case 6 "another head was merged" "$(lfix l3)" --expect-head 2222222222222222222222222222222222222222
+jqeq "other head: gate" '.gate' '"head-mismatch"'
+git -C "$C6" switch -q -c side "$MC6~1"; echo s > "$C6/s.txt"; git -C "$C6" add s.txt; $G -C "$C6" commit -q -m side; SIDE=$(git -C "$C6" rev-parse HEAD); git -C "$C6" switch -q main
+landed_case 6 "merge commit not on the base" "$(lfix l4 ".merge_commit_sha = \"$SIDE\"")" --expect-head "$H6"
+jqeq "not on base: gate" '.gate' '"not-on-base"'
+landed_case 6 "remote branch still there" "$(lfix l5)" --expect-head "$H6" --branch feat/y
+jqeq "remote still there: where" '[.branch.remote, .branch.local]' '[true,true]'
+git -C "$C6" push -q origin --delete feat/y 2>/dev/null
+landed_case 6 "local branch still there" "$(lfix l6)" --expect-head "$H6" --branch feat/y
+jqeq "local still there: where" '[.branch.remote, .branch.local]' '[false,true]'
+git -C "$C6" branch -q -D feat/y
+landed_case 6 "an open PR on the branch" "$(lfix l7 . '[{"number":5}]')" --expect-head "$H6" --branch feat/y
+jqeq "open PR: counted" '.branch.openPulls' '1'
+landed_case 0 "everything cleaned up" "$(lfix l8)" --expect-head "$H6" --branch feat/y
+mkdir -p "$tmp/gshim"; printf '#!/bin/bash\ncase " $* " in *" fetch "*) echo "git: forced fetch failure" >&2; exit 128 ;; esac\nexec %q "$@"\n' "$(command -v git)" > "$tmp/gshim/git"; chmod +x "$tmp/gshim/git"
+PATH="$tmp/gshim:$PATH" landed_case 7 "fetch fails" "$(lfix l9)" --expect-head "$H6"
+landed_case 7 "landed without --expect-head" "$(lfix l10)"
+
 # ── summary and mutants ──────────────────────────────────────────────────────────────────────────
-MIN_PASS=117
+MIN_PASS=134
 if [ "$pass" -lt "$MIN_PASS" ] && [ "${STOP_ON_FAIL:-0}" != 1 ]; then failed "only $pass checks passed, expected at least $MIN_PASS"; fi
 echo "pr-closeout: $pass passed, $fail failed"
 
@@ -315,7 +356,11 @@ if [ "${NO_MUTANTS:-0}" != 1 ]; then
   mutant accept-any    "[accepting another file does not cover this one]" "s/accept\.find\(\(a\) => a\.path === file\)/accept[0]/"
   mutant archive-excl  "[archived only: none]"             "s/m && m\[1\] !== 'archive'/m/"
   mutant verify-read   "[unarchived: verify read]"         "s/if \(r\.status === 0 \|\| r\.status === 3\) verify/if (false) verify/"
-  MUT_WANT_N=28
+  mutant tip-ancestor  "[merged, head matches, on base]"   "s/\['merge-base', '--is-ancestor', mc,/['merge-base', '--is-ancestor', pull.head.sha,/"
+  mutant remote-left   "[remote still there: where]"       "s/remote: ls\.out\.trim\(\) !== ''/remote: false/"
+  mutant open-pulls    "[an open PR on the branch]"        "s/\[open\.length && /[0 && /"
+  mutant not-merged    "[not merged]"                      "s/if \(!pull\.merged_at\) gate/if (false) gate/"
+  MUT_WANT_N=32
   if [ "$mut_n" != "$MUT_WANT_N" ]; then echo "FAIL: $mut_n of $MUT_WANT_N mutants ran"; mut_bad=1; fi
   [ "$mut_bad" = 0 ] || fail=$((fail + 1))
 fi

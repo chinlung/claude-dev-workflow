@@ -395,6 +395,48 @@ export function assess(raw, { expectHead, owner, repo, pr, config, cover } = {})
   };
 }
 
+// ── landed: was it merged, as reviewed, onto the base, and is the branch gone? ───────────────────
+// merged_at proves the merge; the merge commit (never the branch tip: a squash leaves the tip off the
+// base) proves where it landed. Gates: not-merged, head-mismatch, not-on-base, branch-remains.
+export function landed(o) {
+  if (!o.expectHead || !o.repoDir) throw new UsageError('landed needs --expect-head and --repo-dir');
+  const base = `repos/${o.owner}/${o.repo}`;
+  const read = (file, apiPath) => (o.fixture
+    ? (fs.existsSync(path.join(o.fixture, file)) ? parse(fs.readFileSync(path.join(o.fixture, file), 'utf8'), `fixture ${file}`) : (() => { throw new QueryError(`fixture ${file} missing`); })())
+    : rest(apiPath));
+  const pull = read('pull.json', `${base}/pulls/${o.pr}`);
+  if (!pull || typeof pull !== 'object' || !pull.base || !pull.head) throw new QueryError('PR answer is missing head or base');
+  const hits = [];
+  const gate = (g, detail) => hits.push({ code: 'merge-gate', gate: g, detail });
+  if (!pull.merged_at) gate('not-merged', 'merged_at is empty');
+  const headMatches = pull.head.sha === o.expectHead;
+  if (!headMatches) gate('head-mismatch', `merged head is ${pull.head.sha}, expected ${o.expectHead}`);
+
+  const baseRef = pull.base.ref;
+  if (!git(o.repoDir, ['fetch', '-q', 'origin', baseRef]).ok) throw new QueryError(`git fetch origin ${baseRef} failed`);
+  const mc = pull.merge_commit_sha;
+  // merge_commit_sha before merged_at is GitHub's trial merge: only judged once merged
+  const onBase = !!(pull.merged_at && mc && git(o.repoDir, ['merge-base', '--is-ancestor', mc, `origin/${baseRef}`]).ok);
+  if (pull.merged_at && !onBase) gate('not-on-base', `merge commit ${mc} is not on origin/${baseRef}`);
+
+  let branch = null;
+  if (o.branch) {
+    const open = read('open-pulls.json', `${base}/pulls?head=${o.owner}:${encodeURIComponent(o.branch)}&state=open&per_page=${PAGE}`);
+    if (!Array.isArray(open)) throw new QueryError('open PR list is not a list');
+    const ls = git(o.repoDir, ['ls-remote', '--heads', 'origin', `refs/heads/${o.branch}`]);
+    if (!ls.ok) throw new QueryError('git ls-remote origin failed');
+    const local = git(o.repoDir, ['branch', '--list', o.branch]).out.trim() !== '';
+    branch = { name: o.branch, openPulls: open.length, remote: ls.out.trim() !== '', local };
+    const left = [open.length && `${open.length} open PR`, branch.remote && 'remote branch', local && 'local branch'].filter(Boolean);
+    if (left.length) gate('branch-remains', `still there: ${left.join(', ')}`);
+  }
+  const top = hits[0];
+  return {
+    exit: top ? 6 : 0, gate: top ? top.gate : null, hits,
+    mergedAt: pull.merged_at || null, mergeCommit: mc || null, headMatches, onBase, branch,
+  };
+}
+
 // ── CLI ──────────────────────────────────────────────────────────────────────────────────────────
 function parseArgs(argv) {
   const [cmd, slug, prArg, ...rest] = argv;
@@ -439,6 +481,7 @@ export function main(argv) {
   }
   const head = { pr: { owner: o.owner, repo: o.repo, number: o.pr } };
   try {
+    if (o.cmd === 'landed') return emit({ ...head, ...landed(o) });
     const raw = fetchAll(o);
     const p = prOf(raw.graphql);
     const cover = o.repoDir
@@ -447,6 +490,10 @@ export function main(argv) {
     const spec = o.repoDir ? openspecChanges(o.repoDir, { headOid: p.headRefOid, baseRef: p.baseRefName }) : null;
     return emit({ ...head, ...assess(raw, { ...o, config: loadConfig(), cover }), openspec: spec });
   } catch (e) {
+    if (e instanceof UsageError) {
+      process.stderr.write(`${e.message}\n${USAGE}\n`);
+      return emit({ ...head, exit: 7, gate: null, hits: [{ code: 'query-failed', detail: `usage: ${e.message}` }] });
+    }
     if (!(e instanceof QueryError)) throw e;
     return emit({ ...head, exit: 7, gate: null, hits: [{ code: 'query-failed', detail: e.message }] });
   }
