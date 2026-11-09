@@ -1,0 +1,27 @@
+{
+  "description": "pr-merge-gate：gh pr merge、gh api …/pulls/<n>/merge 與 GitHub MCP 的 merge_pull_request 執行前，先跑 pr-closeout ready，exit 0 才放行；其餘一律擋下並列出原因（PR_CLOSEOUT_OK=1 可對 gh 略過一次）。不是 merge 的命令以 shell 內建比對立即放行",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/pr-merge-gate.sh\"",
+            "timeout": 30
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__.*__merge_pull_request",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/pr-merge-gate.sh\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}
