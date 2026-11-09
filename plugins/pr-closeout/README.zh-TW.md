@@ -44,13 +44,13 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/pr-closeout.mjs ready <owner/repo> <pr> \
 | `blocked-unseen` | GitHub 回報 BLOCKED，但看不出原因（例如需要 review、ruleset） |
 | `behind` | base 要求分支先跟上 |
 
-**fail-closed。** 不認得的列舉值、缺欄位、查詢失敗、清單超過 100 筆，一律回 7，絕不判為可合併。
+**fail-closed。** 不認得的列舉值、缺欄位、查詢失敗、清單超過 100 筆，一律回 7，絕不判為可合併。所有查詢共用一個 20 秒的總時限（`PR_CLOSEOUT_DEADLINE_MS`），讓 `ready` 在 merge 閘門 hook 的 30 秒時限內結束。
 
 **查詢方式。** 先用 `gh api`。失敗時用 `gh auth token` 取得 token，經 stdin 交給 curl，所以 token 不會出現在命令列參數或輸出裡。
 
 **帶 `--repo-dir`（PR 所在 repo 的本機 clone）時多兩項：**
 
-- **審查涵蓋。** PR 新增或修改的每個檔，逐一比對 blob 與 mode，對照 review-branch 最後一次的紀錄（`<gitdir>/review-branch-last.json`，限同一個分支）。文件列在 `docsOnly`，不擋。`--accept-unreviewed <path>=<理由>` 可以放行單一檔，理由必填。沒有紀錄、分支不同、本地沒有 head 時，`coverage.status` 為 `"unknown"`，不擋。
+- **審查涵蓋。** PR 新增或修改的每個檔，逐一比對 blob 與 mode，對照 review-branch 最後一次的紀錄（`<gitdir>/review-branch-last.json`，限同一個分支）。文件列在 `docsOnly`，不擋；但 `skills/`、`commands/`、`agents/`、`output-styles/`、`hooks/` 底下的 prompt 檔，以及 `requirements*.txt`、`CMakeLists.txt` 不算文件。review-branch 在較早一輪之後判定未變動而略過的檔（帶 `unchangedSince`），算已審。`--accept-unreviewed <path>=<理由>` 可以放行單一檔，理由必填。沒有紀錄、分支不同、本地沒有 head 時，`coverage.status` 為 `"unknown"`，不擋。
 - **openspec。** repo 有 `openspec/` 時，列出 PR 動到、但還不在 `archive/` 底下的 change，附上 `reconcile-check verify` 的結果。只是提醒。
 
 **JSON 另外附三樣資訊，不影響 exit：** `precedent`（前一個已合併的 PR 是 squash 還是 merge）、`baseBehind`、各 endpoint 的留言數與作者，以及 `suspectedSkip`（見下節）。

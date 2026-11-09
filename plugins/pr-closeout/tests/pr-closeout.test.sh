@@ -324,8 +324,30 @@ done
 skill_words=$(command grep -c -E 'pr-closeout\.mjs (ready|landed)' "$SKILL" 2>/dev/null)
 if [ "${skill_words:-0}" -ge 2 ]; then ok; else failed "[skill shows both subcommands] found ${skill_words:-0}"; fi
 
+# ── found by the final review ───────────────────────────────────────────────────────────────────
+# round 2+: review-branch records a file it did not re-read as skipped with unchangedSince — settled
+mkrepo4; jq -n --arg a "$(blob4 a.sh)" --arg b "$(blob4 b.md)" '{branch:"feat/x", head:"x", scopedFiles:[{file:"a.sh",blob:$a,status:"skipped",skipReason:"unchanged since r1 (blob match)",unchangedSince:1},{file:"b.md",blob:$b,status:"reviewed"}]}' > "$R4/.git/review-branch-last.json"
+cov_case 0 "skipped as unchanged since an earlier round"
+jqeq "skipped unchanged: covered" '.coverage.status' '"covered"'
+jq '.scopedFiles[0] |= del(.unchangedSince) | .scopedFiles[0].skipReason = "out of focus"' "$R4/.git/review-branch-last.json" > "$tmp/rb.json" && mv "$tmp/rb.json" "$R4/.git/review-branch-last.json"
+cov_case 6 "skipped for another reason"
+# a prompt file carries behaviour in a plugin repo: not a document
+mkrepo4; mkdir -p "$R4/skills/s"; echo s > "$R4/skills/s/SKILL.md"; git -C "$R4" add skills; $G -C "$R4" commit -q -m skill
+record4 feat/x "a.sh=$(blob4 a.sh)" "b.md=$(blob4 b.md)"
+cov_case 6 "a skill file is not a document"
+jqeq "skill file: unreviewed" '.coverage.unreviewed' '["skills/s/SKILL.md"]'
+mkrepo4; echo req > "$R4/requirements-dev.txt"; git -C "$R4" add requirements-dev.txt; $G -C "$R4" commit -q -m req
+record4 feat/x "a.sh=$(blob4 a.sh)" "b.md=$(blob4 b.md)"
+cov_case 6 "a requirements file is not a document"
+# a slow GitHub ends in exit 7 inside the deadline, never past the hook's own timeout
+printf '#!/bin/bash\ncase " $* " in *" auth token "*) echo T; exit 0 ;; esac\nsleep 5; exit 1\n' > "$tmp/shim/gh"
+printf '#!/bin/bash\ncat >/dev/null; sleep 5; exit 1\n' > "$tmp/shim/curl"; chmod +x "$tmp/shim/gh" "$tmp/shim/curl"
+t0=$(date +%s)
+PATH="$tmp/shim:$PATH" PR_CLOSEOUT_DEADLINE_MS=1500 run_cli 7 "slow GitHub hits the deadline" ready example/repo 1
+t1=$(date +%s); if [ $((t1 - t0)) -le 4 ]; then ok; else failed "[deadline] took $((t1 - t0))s, expected under 4s"; fi
+
 # ── summary and mutants ──────────────────────────────────────────────────────────────────────────
-MIN_PASS=143
+MIN_PASS=152
 if [ "$pass" -lt "$MIN_PASS" ] && [ "${STOP_ON_FAIL:-0}" != 1 ]; then failed "only $pass checks passed, expected at least $MIN_PASS"; fi
 echo "pr-closeout: $pass passed, $fail failed"
 
@@ -365,7 +387,7 @@ if [ "${NO_MUTANTS:-0}" != 1 ]; then
   mutant precedent     "[precedent squash: method]"        "s/parents === 1 \? 'squash' : parents === 2 \? 'merge'/parents === 1 ? 'merge' : parents === 2 ? 'squash'/"
   mutant rollup-field   "[rollup field missing]"            "s/if \(r !== null && typeof r !== 'object'\) unknown/if (false) unknown/"
   mutant mode-norm     "[executable bit added after the review]" "s/if \(mode === '100755'\) return/if (false) return/"
-  mutant docs-exempt   "[only a document changed after the review]" "s/if \(DOC_PATH\.test\(file\)\) out\.docsOnly/if (false) out.docsOnly/"
+  mutant docs-exempt   "[only a document changed after the review]" "s/if \(DOC_PATH\.test\(file\) && !NOT_DOC_PATH\.test\(file\)\) out\.docsOnly/if (false) out.docsOnly/"
   mutant reason-req    "[accepted without a reason]"       "s/if \(!p \|\| !reason\) throw/if (!p) throw/"
   mutant branch-check  "[other branch: unknown]" "s/state\.branch !== headRefName\) return/false) return/"
   mutant accept-any    "[accepting another file does not cover this one]" "s/accept\.find\(\(a\) => a\.path === file\)/accept[0]/"
@@ -375,7 +397,10 @@ if [ "${NO_MUTANTS:-0}" != 1 ]; then
   mutant remote-left   "[remote still there: where]"       "s/remote: ls\.out\.trim\(\) !== ''/remote: false/"
   mutant open-pulls    "[an open PR on the branch]"        "s/\[open\.length && /[0 && /"
   mutant not-merged    "[not merged]"                      "s/if \(!pull\.merged_at\) gate/if (false) gate/"
-  MUT_WANT_N=32
+  mutant settled       "[skipped as unchanged since an earlier round]" "s/\(f\.status === 'reviewed' \|\| \(f\.status === 'skipped' && Number\.isInteger\(f\.unchangedSince\)\)\)/f.status === 'reviewed'/"
+  mutant not-doc       "[a skill file is not a document]" "s/DOC_PATH\.test\(file\) && !NOT_DOC_PATH\.test\(file\)/DOC_PATH.test(file)/"
+  mutant deadline      "[deadline]"                        "s/, timeout: left, killSignal: 'SIGKILL'//"
+  MUT_WANT_N=35
   if [ "$mut_n" != "$MUT_WANT_N" ]; then echo "FAIL: $mut_n of $MUT_WANT_N mutants ran"; mut_bad=1; fi
   [ "$mut_bad" = 0 ] || fail=$((fail + 1))
 fi

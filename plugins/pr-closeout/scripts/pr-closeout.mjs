@@ -37,8 +37,13 @@ commits(last:1){nodes{commit{oid statusCheckRollup{state contexts(first:${PAGE})
 ... on CheckRun{name status conclusion startedAt completedAt} ... on StatusContext{context state}}}}}}}}}}`;
 
 // ── query layer ──────────────────────────────────────────────────────────────────────────────────
+// One deadline for every query of a run (PR_CLOSEOUT_DEADLINE_MS, default 20 s), under the merge
+// gate hook's 30 s timeout: a slow GitHub ends in exit 7 here, never in a hook the harness gave up on.
+const DEADLINE = Date.now() + (Number(process.env.PR_CLOSEOUT_DEADLINE_MS) || 20000);
 function run(cmd, args, input) {
-  const r = spawnSync(cmd, args, { input, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  const left = DEADLINE - Date.now();
+  if (left <= 0) throw new QueryError('deadline passed before the queries finished');
+  const r = spawnSync(cmd, args, { input, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: left, killSignal: 'SIGKILL' });
   return { ok: r.status === 0 && !r.error, stdout: r.stdout || '' };
 }
 const parse = (text, what) => {
@@ -128,6 +133,8 @@ function git(dir, args) {
   return { ok: r.status === 0 && !r.error, out: r.stdout || '' };
 }
 const DOC_PATH = /\.(md|mdx|txt|rst|adoc)$|^docs?\//;
+// prose that is code: prompts carry behaviour in a plugin repo, and these .txt files are build input
+const NOT_DOC_PATH = /(^|\/)(skills|commands|agents|output-styles|hooks)\/|(^|\/)requirements[^\/]*\.txt$|(^|\/)CMakeLists\.txt$/;
 // review-branch records a file as <hash>, <hash>+x (executable) or link:<hash> (symlink)
 function blobKey(mode, hash) {
   if (mode === '100755') return `${hash}+x`;
@@ -150,7 +157,8 @@ export function coverage(repoDir, { headRefName, headOid, baseRef, accept = [] }
   try { state = JSON.parse(fs.readFileSync(stateFile, 'utf8')); } catch { return unknown('review-branch record is not JSON'); }
   if (!state || state.branch !== headRefName) return unknown(`review-branch record is for ${state && state.branch}, not ${headRefName}`);
   const reviewed = new Map((Array.isArray(state.scopedFiles) ? state.scopedFiles : [])
-    .filter((f) => f && f.status === 'reviewed' && typeof f.blob === 'string').map((f) => [f.file, f.blob]));
+    // settled the way review-branch itself counts it: reviewed, or skipped as unchanged since an earlier round
+    .filter((f) => f && (f.status === 'reviewed' || (f.status === 'skipped' && Number.isInteger(f.unchangedSince))) && typeof f.blob === 'string').map((f) => [f.file, f.blob]));
   let mb = git(repoDir, ['merge-base', `origin/${baseRef}`, headOid]);
   if (!mb.ok) mb = git(repoDir, ['merge-base', baseRef, headOid]);
   if (!mb.ok) return unknown(`no merge base with ${baseRef}`);
@@ -162,7 +170,7 @@ export function coverage(repoDir, { headRefName, headOid, baseRef, accept = [] }
     const m = /^(\d+) \w+ ([0-9a-f]+)\t/.exec(lt.out);
     if (m && reviewed.get(file) === blobKey(m[1], m[2])) continue;
     const ok = accept.find((a) => a.path === file);
-    if (DOC_PATH.test(file)) out.docsOnly.push(file);
+    if (DOC_PATH.test(file) && !NOT_DOC_PATH.test(file)) out.docsOnly.push(file);
     else if (ok) out.accepted.push({ path: file, reason: ok.reason });
     else out.unreviewed.push(file);
   }

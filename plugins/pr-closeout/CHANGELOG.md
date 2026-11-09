@@ -19,9 +19,9 @@ All notable changes to the `pr-closeout` plugin will be documented in this file.
   | 7 | Query failed or a value is unknown |
 
   The gates in exit 6 are `not-open`, `draft`, `changes-requested`, `head-mismatch`, `unreviewed`, `blocked-unseen` and `behind`. `blocked-unseen` is GitHub reporting BLOCKED while nothing visible is wrong; it is never read as green.
-- **Fail-closed.** An unknown enum, a missing field or a list of 100 or more entries is exit 7.
+- **Fail-closed.** An unknown enum, a missing field or a list of 100 or more entries is exit 7. All queries share one 20 s deadline (`PR_CLOSEOUT_DEADLINE_MS`), under the merge gate hook's 30 s timeout.
 - **Query path.** `gh api` runs first. When it fails, the token from `gh auth token` reaches curl on stdin (`-H @-`), so it never appears in argv or output.
-- **`--repo-dir`: reviewed bytes equal merged bytes.** Each file the PR adds or changes is compared, blob and mode, with review-branch's last record. A file the review never saw, or saw in another version, is gate `unreviewed`. Documents are listed but do not block. `--accept-unreviewed <path>=<reason>` lets one file through; the reason is required. No record, a different branch or a head not fetched gives `unknown`.
+- **`--repo-dir`: reviewed bytes equal merged bytes.** Each file the PR adds or changes is compared, blob and mode, with review-branch's last record. A file the review never saw, or saw in another version, is gate `unreviewed`. Documents are listed but do not block; prompt files (`skills/`, `commands/`, `agents/`, `output-styles/`, `hooks/`) and `requirements*.txt` / `CMakeLists.txt` are not documents. A file review-branch skipped as unchanged since an earlier round counts as reviewed, as review-branch itself counts it. `--accept-unreviewed <path>=<reason>` lets one file through; the reason is required. No record, a different branch or a head not fetched gives `unknown`.
 - **`--repo-dir`: openspec warning.** Changes the PR leaves unarchived are listed, each with `reconcile-check verify`'s answer. This never sets the exit.
 - **Required checks.** A per-user list in `PR_CLOSEOUT_CONFIG`, default `~/.claude/pr-closeout/required-checks.json`, names the checks a repo's PRs must show. A missing one is exit 4. A check that finished under its `minSeconds` is listed in `suspectedSkip`.
 - **Extra facts.** The JSON also carries the precedent (how the last PR was merged), `baseBehind` and comment counts per endpoint.
@@ -41,7 +41,7 @@ All notable changes to the `pr-closeout` plugin will be documented in this file.
 
 ### Notes
 
-- Tests: `tests/pr-closeout.test.sh` (144 checks, 32 mutants) and `tests/pr-merge-gate.test.sh` (64 checks, 12 mutants). Each mutant must fail on the case written for it.
+- Tests: `tests/pr-closeout.test.sh` (152 checks, 35 mutants) and `tests/pr-merge-gate.test.sh` (64 checks, 12 mutants). Each mutant must fail on the case written for it.
 - Verified against real PRs before release:
   - `ready` on a merged PR reported `not-open` and listed the five code files a fix commit added after the last review-branch round.
   - `landed` on another merged PR reported exit 0 with the branch gone everywhere.

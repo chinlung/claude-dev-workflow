@@ -44,13 +44,13 @@ It prints one JSON object. Every check runs and `hits[]` lists each condition me
 | `blocked-unseen` | GitHub reports BLOCKED and nothing visible explains it (a required review, a ruleset) |
 | `behind` | The base requires the branch to be up to date |
 
-**Fail-closed.** An unknown enum value, a missing field, a failed query or a list of 100 or more entries is exit 7, never ready.
+**Fail-closed.** An unknown enum value, a missing field, a failed query or a list of 100 or more entries is exit 7, never ready. All queries share one 20 s deadline (`PR_CLOSEOUT_DEADLINE_MS`), so `ready` ends before the merge gate hook's 30 s timeout.
 
 **Queries.** `gh api` runs first. If it fails, the token from `gh auth token` is passed to curl on stdin, so it never appears in argv or output.
 
 **With `--repo-dir`** (the local clone of the PR's repo):
 
-- **Review coverage.** Each file the PR adds or changes is compared, blob and mode, with review-branch's last record (`<gitdir>/review-branch-last.json`, same branch only). Documents are listed under `docsOnly` and never block. `--accept-unreviewed <path>=<reason>` lets one file through; the reason is required. No record, a different branch or a head that is not fetched gives `coverage.status: "unknown"`, which does not block.
+- **Review coverage.** Each file the PR adds or changes is compared, blob and mode, with review-branch's last record (`<gitdir>/review-branch-last.json`, same branch only). Documents are listed under `docsOnly` and never block; prompt files under `skills/`, `commands/`, `agents/`, `output-styles/` or `hooks/`, `requirements*.txt` and `CMakeLists.txt` are not documents. A file review-branch skipped as unchanged since an earlier round (`unchangedSince`) counts as reviewed. `--accept-unreviewed <path>=<reason>` lets one file through; the reason is required. No record, a different branch or a head that is not fetched gives `coverage.status: "unknown"`, which does not block.
 - **openspec.** If the repo has `openspec/`, the changes the PR touches that are still outside `archive/` are listed, with `reconcile-check verify`'s answer. This is a warning only.
 
 **Also in the JSON**, without affecting the exit: `precedent` (whether the previous merged PR was squashed or merged), `baseBehind`, comment counts and authors per endpoint, and `suspectedSkip` (see below).
