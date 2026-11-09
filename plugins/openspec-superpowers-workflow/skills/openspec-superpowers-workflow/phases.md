@@ -16,8 +16,8 @@ They NEVER overlap. Follow the phase sequence below for every feature.
 
 Two interfaces to OpenSpec exist, and the project may have either, both, or neither:
 
-- **`openspec` CLI** — installed globally via npm (`@fission-ai/openspec`). Commands: `openspec new change <name>`, `openspec status --change <name> --json`, `openspec instructions <artifact> --change <name> --json`, `openspec validate`, `openspec archive <name>`, `openspec list`.
-- **`/opsx:*` slash commands** — project-local prompt expansions at `.claude/commands/opsx/*.md`. These are NOT built in; they ship with an OpenSpec init for Claude Code and wrap the CLI with a scripted workflow. Typical members: `/opsx:propose`, `/opsx:apply`, `/opsx:archive`.
+- **`openspec` CLI** — installed globally via npm (`@fission-ai/openspec`). Commands: `openspec new change <name>`, `openspec status --change <name> --json`, `openspec instructions <artifact> --change <name> --json`, `openspec instructions apply --change <name> --json` (state, progress and task list of the implementation phase), `openspec validate`, `openspec archive <name>`, `openspec list`.
+- **`/opsx:*` slash commands** — project-local prompt expansions at `.claude/commands/opsx/*.md`. These are NOT built in; they ship with an OpenSpec init for Claude Code and wrap the CLI with a scripted workflow. Which ones exist depends on the profile chosen at `openspec init`: `core` ships `/opsx:propose`, `/opsx:explore`, `/opsx:apply`, `/opsx:update`, `/opsx:sync`, `/opsx:archive`; a custom profile can add `/opsx:new`, `/opsx:continue`, `/opsx:ff`, `/opsx:verify`, `/opsx:bulk-archive`, `/opsx:onboard`. The section "`/opsx:*` commands by phase" below says in which phase each may be used.
 
 **How to tell which is available**:
 ```bash
@@ -33,8 +33,23 @@ If the project is not initialized, run `openspec init .` first (note: no `--here
 | Slash command | CLI equivalent |
 |---|---|
 | `/opsx:propose <name>` | `openspec new change <name>` then loop through `openspec instructions <artifact-id> --change <name> --json` to fill each artifact |
-| `/opsx:apply` (or start implementation) | no direct CLI equivalent — proceed to Phase 4 manually |
+| `/opsx:apply` (or start implementation) | `openspec instructions apply --change <name> --json` returns `state` (`blocked` / `ready` / `all_done`), `progress` and the task list; then implement the tasks yourself (Phase 4) |
 | `/opsx:archive <name>` | `openspec archive <name> --yes` |
+
+### `/opsx:*` commands by phase
+
+OpenSpec's slash commands are actions on a change, not phases. Use each one only in the phase shown:
+
+| Command | Phase | Rule |
+|---|---|---|
+| `/opsx:propose`, `/opsx:new`, `/opsx:continue`, `/opsx:ff` | 1 | Creates proposal, specs, design and tasks. `ff` writes all four at once; treat design.md and tasks.md as drafts that Phases 2 and 3 overwrite |
+| `/opsx:update` | 1–3 | Patches existing planning artifacts in place. Not from Phase 4 on: tasks.md is then the execution record, Phase 5 forbids spec edits and Phase 6a is a clean rewrite |
+| `/opsx:explore` | 0–2 | Thinking before and during design. From Phase 4 on it must not edit any spec file |
+| `/opsx:apply` | 4 | Works through tasks.md and ticks boxes, consistent with the Phase 4 rules |
+| `/opsx:verify` | 5 entry, 6 input | Its findings go into review-notes.md with a tag. It lists unchecked tasks as CRITICAL; for lines that carry a `skip:` reason that is expected |
+| `/opsx:sync` | 6, after 6b5 | Merges delta specs into the main specs. Archiving already does this, so it is rarely needed. Never before Phase 6 |
+| `/opsx:archive`, `/opsx:bulk-archive` | 6c | The archive gate applies. In a bulk run every change needs a fresh `reconcile-check.cjs` pass (this plugin's `verify`, not `/opsx:verify`) |
+| `/opsx:onboard` | none | A tutorial, not part of the workflow |
 
 ### Path convention
 
@@ -156,7 +171,7 @@ A checkbox on every step makes progress count several times too large and "tick 
 **Trigger**: User approves Phase 3 tasks, or says "implement", "start coding", "execute"
 
 **Actions**:
-1. Activate `/subagent-driven-development` or `/executing-plans`
+1. Activate `/executing-plans`. Use `/subagent-driven-development` instead only when the tasks are independent of each other and each can be written as a self-contained brief; tasks that share files or depend on one another cannot
 2. Create a git worktree for isolated development. Superpowers >= 6.0.0 keeps worktrees in the project under a local worktree *root* — it reuses an existing `.worktrees/` or `worktrees/` if present, otherwise defaults to a `.worktrees/` root at the project top level. Each worktree is created under that root at `<root>/<branch>` (e.g. `.worktrees/<branch>/`), not at the root itself. The legacy global `~/.config/superpowers/worktrees/` was removed; ensure the root is git-ignored.
 3. For each task:
    - Write test first (RED)
@@ -295,7 +310,7 @@ Run `/opsx:archive <feature-name>` (or `openspec archive <feature-name> --yes` i
 - Merge final requirements into `openspec/specs/<capability>/spec.md` (OpenSpec source of truth)
 - Move the change folder to `openspec/changes/archive/<YYYY-MM-DD>-<feature-name>/` — the archive command auto-prefixes with the archive date, so the folder name is NOT just the feature name
 - `review-notes.md` is preserved inside the archive for historical reference
-- Note: archive warns when tasks.md has unchecked items (`Warning: N incomplete task(s) found`). After the snapshot every unchecked item carries a `skip:` reason, so the warning is expected and lists only those lines. If it lists a line without a reason, stop: fix tasks.md and take a new snapshot before archiving
+- Note: archive warns when tasks.md has unchecked items (`Warning: N incomplete task(s) found`). After the snapshot every unchecked item carries a `skip:` reason, so the warning is expected and lists only those lines. If it lists a line without a reason, stop: fix tasks.md and take a new snapshot before archiving. When any `skip:` line is present, a non-interactive `openspec archive` exits 1 without `--yes` (it cannot read the confirmation), which is why the CLI fallback keeps `--yes`
 - The archive gate hook runs before both `openspec archive` and the OpenSpec 1.16 `/opsx:archive` template's `mkdir` + `mv` into `changes/archive/`, and denies either one without a fresh pass verdict from Step 6b5. Prefix the command with `OPENSPEC_ARCHIVE_OK=1` to bypass it, and only when the user explicitly asks
 
 ### Step 6d: Constitution updates (if any)
@@ -356,7 +371,7 @@ Should I extract the reusable portions to shared-specs?
 | Refine requirements | OpenSpec | Edit `openspec/changes/<name>/proposal.md` and `specs/<capability>/spec.md` |
 | Deep design thinking | Superpowers | `/brainstorming` → OVERWRITE `openspec/changes/<name>/design.md` |
 | Task breakdown | Superpowers | `/writing-plans` → OVERWRITE `openspec/changes/<name>/tasks.md` |
-| Write code | Superpowers | `/subagent-driven-development` with TDD |
+| Write code | Superpowers | `/executing-plans` with TDD (`/subagent-driven-development` when the tasks are independent) |
 | Code review feedback | Neither | Record in `openspec/changes/<name>/review-notes.md`, fix code only |
 | Before archive | OpenSpec | Reconcile specs (clean rewrite — NOT incremental patches) |
 | Validate during authoring | OpenSpec | `openspec validate <name> --strict` |

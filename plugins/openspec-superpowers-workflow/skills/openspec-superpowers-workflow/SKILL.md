@@ -38,7 +38,7 @@ If the project is not initialized, run `openspec init .` (note: use `.` for the 
 | 1. Spec definition | OpenSpec | `proposal.md`, `specs/` (user approves) |
 | 2. Design refinement | Superpowers `brainstorming` | OVERWRITES `design.md` |
 | 3. Task planning | Superpowers `writing-plans` | OVERWRITES `tasks.md` |
-| 4. Implementation | Superpowers `subagent-driven-development` / `executing-plans` + TDD | code |
+| 4. Implementation | Superpowers `executing-plans` (or `subagent-driven-development` when the tasks are independent) + TDD | code |
 | 5. Review & fix | neither — record in `review-notes.md`, fix code only | `review-notes.md` entries |
 | 6. Reconcile & archive | OpenSpec | clean-rewritten specs, reconciliation criteria gate, `/opsx:archive` |
 

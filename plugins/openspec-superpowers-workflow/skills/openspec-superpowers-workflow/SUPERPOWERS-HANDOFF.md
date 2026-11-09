@@ -81,14 +81,14 @@ Write(path: "plan.md", content: <tasks output>)  # 計畫沒有放在 OpenSpec �
 
 ---
 
-## Phase 4 Handoff 模板：tasks.md → subagent-driven-development with TDD
+## Phase 4 Handoff 模板：tasks.md → executing-plans with TDD
 
 ### 輸入
 - `openspec/changes/<name>/tasks.md`（Phase 3 產出，已由使用者審核）
 
 ### 執行
 ```
-啟動 /subagent-driven-development 或 /executing-plans
+啟動 /executing-plans（task 彼此獨立、各自寫得成自包含 brief 時才改用 /subagent-driven-development）
 每個 task 的順序：
   1. 寫測試（RED）
   2. 實作讓測試通過（GREEN）

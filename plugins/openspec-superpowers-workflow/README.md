@@ -4,7 +4,7 @@
 
 ## 前置需求
 
-- **[OpenSpec CLI](https://github.com/Fission-AI/OpenSpec)**（`npm i -g @fission-ai/openspec`）— 規格生命週期管理
+- **[OpenSpec CLI](https://github.com/Fission-AI/OpenSpec)**（`npm i -g @fission-ai/openspec`，需要 Node 22.12 以上）— 規格生命週期管理。文件裡的 CLI 與 `/opsx:*` 敘述以 `tests/openspec-version` 記的版本為準，由 `tests/cli-claims.test.sh` 對照真實 CLI 檢查
 - **[Superpowers](https://github.com/anthropic-experimental/claude-code-plugins/tree/main/superpowers)** — 開發紀律 skills（`brainstorming`、`writing-plans`、`subagent-driven-development`、`test-driven-development` 等）
 - 專案需先跑過 `openspec init .`（無 `--here` flag）
 
@@ -19,7 +19,7 @@
 | 1. Spec Definition | OpenSpec | `openspec new change` + 填入 proposal / specs | `proposal.md`、`specs/<capability>/spec.md`（使用者審核） |
 | 2. Design Refinement | Superpowers `brainstorming` | 先列假設、全 phase 至多 2 題提問，對照設計紅旗後精煉設計 | **覆寫** `design.md` |
 | 3. Task Planning | Superpowers `writing-plans` | 切出 2-5 分鐘粒度任務 | **覆寫** `tasks.md` |
-| 4. Implementation | Superpowers `subagent-driven-development` + TDD | RED → GREEN → REFACTOR | 程式碼 |
+| 4. Implementation | Superpowers `executing-plans`（task 獨立時 `subagent-driven-development`）+ TDD | RED → GREEN → REFACTOR | 程式碼 |
 | 5. Review & Feedback | 人類主導 | 分類 `[REQUIREMENT\|DESIGN\|CODE\|CONSTITUTION]` + Y/N | `review-notes.md`，**spec 一律不動** |
 | 6. Reconcile & Archive | OpenSpec | Clean rewrite spec（非 patch）+ `openspec archive` | 歸檔至 `openspec/changes/archive/<date>-<name>/`，合併到 `openspec/specs/` |
 
