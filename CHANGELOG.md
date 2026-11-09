@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.15.0] - 2026-11-09
+
+### Added
+
+- **pr-closeout 1.0.0** (new plugin) turns the PR closeout from hand-typed queries into facts.
+  - **`ready`** reads one PR from GitHub with one GraphQL query plus the three review endpoints. It answers with an exit code: 0 ready, 2 conflict, 3 unresolved threads, 4 checks failed or a required check missing, 5 pending, 6 a merge gate, 7 query failed. The `gate` field says which merge gate: not open, draft, changes requested, an unexpected head, BLOCKED with nothing visible wrong, behind, or files the last review never saw. It is fail-closed: an unknown value is never green.
+  - **With the local clone**, `ready` compares each merged file, blob and mode, against the last review-branch round's record, and lists openspec changes the PR leaves unarchived.
+  - **`landed`** proves the merge afterwards: merged_at, the head, the merge commit on the base, and that the branch is gone everywhere.
+  - **A PreToolUse hook** runs `ready` before `gh pr merge`, `gh api …/merge` and the GitHub MCP merge tool, and lets only a ready PR through.
+  - **Required checks** live in a per-user list outside the plugin, so a check that never ran counts as failed, not green.
+
+  See that plugin's CHANGELOG [1.0.0].
+- `docs/` gains the pr-closeout design and plan (roadmap W3).
+
 ## [1.14.0] - 2026-11-09
 
 ### Changed

@@ -4,6 +4,20 @@
 
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
+## [1.15.0] - 2026-11-09
+
+### Added
+
+- **pr-closeout 1.0.0**（新插件）把 PR 收尾從手打查詢變成讀事實。
+  - **`ready`** 用一次 GraphQL 加三個 review endpoint 讀一個 PR，以 exit code 回答：0 可合併、2 衝突、3 未解決 thread、4 check 失敗或必跑 check 沒跑、5 等待中、6 合併閘門、7 查詢失敗。`gate` 欄位說明是哪一種合併閘門：已關閉、draft、要求修改、head 不符、BLOCKED 卻看不出原因、落後 base，或最後一輪 review 沒看過的檔。它是 fail-closed，不認得的值絕不判為可合併。
+  - **給本機 clone 時**，`ready` 會把每個要合併的檔的 blob 與 mode，逐一對照最後一輪 review-branch 的紀錄，並列出 PR 帶著、尚未歸檔的 openspec change。
+  - **`landed`** 在合併後驗證：merged_at、head、merge commit 在 base 上，以及分支已全部刪除。
+  - **PreToolUse hook** 在 `gh pr merge`、`gh api …/merge` 與 GitHub MCP 的 merge 工具之前先跑 `ready`，只放行就緒的 PR。
+  - **必跑 check 名單**是插件外的個人設定，所以沒跑的 check 算失敗，不會被當成綠燈。
+
+  詳見該插件 CHANGELOG [1.0.0]。
+- `docs/` 加入 pr-closeout 的設計與計畫文件（路線圖 W3）。
+
 ## [1.14.0] - 2026-11-09
 
 ### Changed
