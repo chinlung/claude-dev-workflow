@@ -1,0 +1,57 @@
+{
+  "data": {
+    "repository": {
+      "pullRequest": {
+        "state": "OPEN",
+        "isDraft": false,
+        "mergeable": "MERGEABLE",
+        "mergeStateStatus": "CLEAN",
+        "reviewDecision": null,
+        "headRefOid": "1111111111111111111111111111111111111111",
+        "headRefName": "feat/x",
+        "baseRefName": "main",
+        "reviewThreads": {
+          "pageInfo": {
+            "hasNextPage": false
+          },
+          "nodes": []
+        },
+        "commits": {
+          "nodes": [
+            {
+              "commit": {
+                "oid": "1111111111111111111111111111111111111111",
+                "statusCheckRollup": {
+                  "state": "SUCCESS",
+                  "contexts": {
+                    "pageInfo": {
+                      "hasNextPage": false
+                    },
+                    "nodes": [
+                      {
+                        "__typename": "CheckRun",
+                        "name": "security-review",
+                        "status": "COMPLETED",
+                        "conclusion": "SUCCESS",
+                        "startedAt": "2026-11-09T00:00:00Z",
+                        "completedAt": "2026-11-09T00:01:00Z"
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "name": "validate-fixtures",
+                        "status": "COMPLETED",
+                        "conclusion": "SUCCESS",
+                        "startedAt": "2026-11-09T00:00:00Z",
+                        "completedAt": "2026-11-09T00:02:00Z"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}
