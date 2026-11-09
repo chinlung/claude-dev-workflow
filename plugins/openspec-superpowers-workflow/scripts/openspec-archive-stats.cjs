@@ -3,8 +3,8 @@
 // How many archived OpenSpec changes left tasks unchecked? Scans <project>/openspec/changes/archive/*/tasks.md.
 //   node openspec-archive-stats.cjs --root <dir> [--root <dir> …] [--since YYYY-MM-DD] [--names]
 // A --root is either a project (it has openspec/changes/archive) or a directory of projects.
-// Project names are replaced by the first six hex chars of the sha256 of the directory name, so the
-// output can be pasted into a public document; --names shows the real names.
+// Project names are replaced by the first six hex chars of the sha256 of the directory name (an unsalted
+// hash: it hides the name from a reader, not from someone who guesses and checks); --names shows the real names.
 // Exit codes: 0 done (also when nothing was found), 2 usage error or a --root that is not a directory.
 // Design: docs/openspec-workflow-2-part2-design-2026-11-09.md §4.2. Tests: tests/archive-stats.test.sh
 
@@ -13,13 +13,15 @@ const path = require('path');
 const crypto = require('crypto');
 
 const USAGE = 'Usage: openspec-archive-stats.cjs --root <dir> [--root <dir> …] [--since YYYY-MM-DD] [--names]';
-const BOX = /^\s*-\s*\[( |x|X)\]/; // same notion of "task" as OpenSpec: any checkbox bullet, any depth
-const SKIP_REASON = /skip:\s*[\p{L}\p{N}]/u; // same rule as reconcile-check R6: the reason needs a letter or digit
+// The task definition and the skip rule are shared with reconcile-check R6 (one module, same pattern as the OpenSpec CLI).
+const { SKIP_REASON, parseTaskLines } = require('../skills/openspec-superpowers-workflow/validators/task-line.cjs');
 const DEFINITION =
-  'task = a line matching /^\\s*-\\s*\\[( |x|X)\\]/ in tasks.md, at any indentation; ' +
-  'incomplete = at least one unchecked task; incompletePct = incomplete / archived; ' +
-  'incompleteNoReason = an unchecked task without "skip:" and a reason (at least one letter or digit);' +
-  'noTasks = no tasks.md, or none with a checkbox';
+  'task = a line OpenSpec 1.16 counts as a task (bullet -, *, +, 1. or 1), then a [ ]-style box, at any indentation; ' +
+  'done only when the box holds x or X); ' +
+  'incomplete = at least one unfinished task; incompletePct = incomplete / archived; ' +
+  'incompleteNoReason = at least one unfinished task without "skip:" and a reason (a letter or digit); ' +
+  'withSkipReason = at least one unfinished task with such a reason (a change can count in both); ' +
+  'noTasks = no tasks.md, or no task line in it';
 
 function fail(message) {
   console.error(message);
@@ -81,17 +83,16 @@ function main(argv) {
       byMonth[month] = byMonth[month] || { archived: 0, incomplete: 0 };
 
       totals.archived++; entry.archived++; byMonth[month].archived++;
-      const text = readTasks(dir);
-      const lines = (text || '').split('\n').filter((l) => BOX.test(l));
-      if (lines.length === 0) { totals.noTasks++; continue; }
+      const tasks = parseTaskLines(readTasks(dir));
+      if (tasks.length === 0) { totals.noTasks++; continue; }
 
       totals.withTasks++;
-      const open = lines.filter((l) => /\[ \]/.test(l.match(BOX)[0]));
+      const open = tasks.filter((t) => !t.done);
       if (open.length === 0) continue;
       totals.incomplete++; entry.incomplete++; byMonth[month].incomplete++;
-      if (open.length === lines.length) totals.zeroChecked++;
-      if (open.some((l) => !SKIP_REASON.test(l))) totals.incompleteNoReason++;
-      if (open.some((l) => SKIP_REASON.test(l))) totals.withSkipReason++;
+      if (open.length === tasks.length) totals.zeroChecked++;
+      if (open.some((t) => !SKIP_REASON.test(t.line))) totals.incompleteNoReason++;
+      if (open.some((t) => SKIP_REASON.test(t.line))) totals.withSkipReason++;
     }
     projects.push(entry);
   }

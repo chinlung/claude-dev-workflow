@@ -30,7 +30,8 @@ PASS=0; FAIL=0
 eq() { if [ "$2" = "$3" ]; then PASS=$((PASS+1)); echo "PASS: $1"; else FAIL=$((FAIL+1)); echo "FAIL: $1 — expected [$2] got [$3]"; fi; }
 # 隔離 OpenSpec 的全域設定,不吃這台機器的 profile
 mkdir -p "$WORK/xdg" "$WORK/home"
-ox() { XDG_CONFIG_HOME="$WORK/xdg" HOME="$WORK/home" "$OPENSPEC" "$@"; }
+# OPENSPEC_TELEMETRY=0: the isolated HOME would otherwise discard a contributor's telemetry opt-out and mint a new anonymous id per run
+ox() { OPENSPEC_TELEMETRY=0 XDG_CONFIG_HOME="$WORK/xdg" HOME="$WORK/home" "$OPENSPEC" "$@"; }
 
 ver=$(ox --version 2>/dev/null | tr -d '[:space:]')
 if [ "$ver" != "$PINNED" ]; then
@@ -106,7 +107,7 @@ eq "every documented openspec flag exists" "" "$flag_bad"
 ox config set profile custom > /dev/null 2>&1
 ox config set workflows '["propose","explore","new","continue","apply","update","ff","sync","archive","bulk-archive","verify","onboard"]' > /dev/null 2>&1
 mkdir -p "$WORK/full"
-(cd "$WORK/full" && git init -q . && XDG_CONFIG_HOME="$WORK/xdg" HOME="$WORK/home" "$OPENSPEC" init . --tools claude < /dev/null > /dev/null 2>&1)
+(cd "$WORK/full" && git init -q . && OPENSPEC_TELEMETRY=0 XDG_CONFIG_HOME="$WORK/xdg" HOME="$WORK/home" "$OPENSPEC" init . --tools claude < /dev/null > /dev/null 2>&1)
 ls "$WORK/full/.claude/commands/opsx" 2>/dev/null | sed 's/\.md$//' | sort > "$WORK/opsx.names"
 eq "a full-profile init generates 12 command templates" 12 "$(wc -l < "$WORK/opsx.names" | tr -d ' ')"
 PH="$DOCS_DIR/skills/openspec-superpowers-workflow/phases.md"
@@ -129,8 +130,8 @@ eq "phases.md no longer tells to use --yes to get past the incomplete-task warni
 
 # ---- tasks.md 格式主張:每個 Task 一個框 → OpenSpec 算出的 task 數等於 Task 標題數 ----
 proj="$WORK/proj"; mkdir -p "$proj"
-(cd "$proj" && git init -q . && XDG_CONFIG_HOME="$WORK/xdg" HOME="$WORK/home" "$OPENSPEC" init . --tools claude < /dev/null > /dev/null 2>&1 \
-  && XDG_CONFIG_HOME="$WORK/xdg" HOME="$WORK/home" "$OPENSPEC" new change demo > /dev/null 2>&1)
+(cd "$proj" && git init -q . && OPENSPEC_TELEMETRY=0 XDG_CONFIG_HOME="$WORK/xdg" HOME="$WORK/home" "$OPENSPEC" init . --tools claude < /dev/null > /dev/null 2>&1 \
+  && OPENSPEC_TELEMETRY=0 XDG_CONFIG_HOME="$WORK/xdg" HOME="$WORK/home" "$OPENSPEC" new change demo > /dev/null 2>&1)
 cd_="$proj/openspec/changes/demo"; mkdir -p "$cd_/specs/x"
 printf '## Why\nx\n## What Changes\n- x\n## Capabilities\n### New Capabilities\n- `x`: y\n' > "$cd_/proposal.md"
 printf '### Requirement: A\nThe system SHALL do a.\n#### Scenario: s\n- **WHEN** a\n- **THEN** b\n' > "$cd_/specs/x/spec.md"
@@ -138,11 +139,17 @@ printf '## Context\nx\n' > "$cd_/design.md"
 SAMPLE=${TASKS_SAMPLE:-"$PLUGIN_DIR/tests/fixtures/openspec-workflow/tasks-format/tasks.md"}
 cp "$SAMPLE" "$cd_/tasks.md"
 want=$(command grep -c '^### Task ' "$SAMPLE")
-progress() { (cd "$proj" && XDG_CONFIG_HOME="$WORK/xdg" HOME="$WORK/home" "$OPENSPEC" instructions apply --change demo --json 2>/dev/null) | jq -r ".progress.$1"; }
+progress() { (cd "$proj" && OPENSPEC_TELEMETRY=0 XDG_CONFIG_HOME="$WORK/xdg" HOME="$WORK/home" "$OPENSPEC" instructions apply --change demo --json 2>/dev/null) | jq -r ".progress.$1"; }
 eq "format sample: OpenSpec counts one task per Task heading" "$want" "$(progress total)"
 eq "format sample: nothing complete before ticking" 0 "$(progress complete)"
 perl -pi -e 's/\[ \]/[x]/' "$cd_/tasks.md"
 eq "format sample: ticking every box completes every task" "$want" "$(progress complete)"
+
+# ---- task 定義以 OpenSpec 為 oracle:共用模組算出的 total/completed 必須等於 instructions apply 的 progress ----
+TL="$PLUGIN_DIR/skills/openspec-superpowers-workflow/validators/task-line.cjs"
+printf -- '- [ ] a\n* [x] b\n+ [ ] c\n1. [X] d\n2) [ ] e\n- [~] f\n- [] g\n- [doc](./doc.md)\n- [ ](./still.md)\n  - [ ] nested\n- [x]done\n' > "$cd_/tasks.md"
+ours=$(node -e 'const t=require(process.argv[1]).parseTaskLines(require("fs").readFileSync(process.argv[2],"utf8")); console.log(t.length+"/"+t.filter(x=>x.done).length)' "$TL" "$cd_/tasks.md" 2>/dev/null)
+eq "task-line.cjs agrees with OpenSpec on total/complete for every bullet and marker form" "$(progress total)/$(progress complete)" "$ours"
 
 # ---- 缺 CLI 時的行為:CI 失敗、本機 skip(以自己的內層呼叫驗證) ----
 out=$(CLI_CLAIMS_INNER=1 CI=true OPENSPEC_BIN=/nonexistent/openspec bash "${BASH_SOURCE[0]}" 2>&1); rc=$?
@@ -152,7 +159,7 @@ eq "local without openspec exits 0" 0 "$rc"
 eq "local without openspec says SKIP" yes "$(case "$out" in SKIP:*) echo yes;; *) echo no;; esac)"
 
 # ---- summary ----
-MIN=14
+MIN=15
 if [ "$((PASS + FAIL))" -lt "$MIN" ]; then echo "FAIL: ran $((PASS + FAIL)) assertions, expected at least $MIN"; FAIL=$((FAIL+1)); fi
 echo "cli-claims: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]

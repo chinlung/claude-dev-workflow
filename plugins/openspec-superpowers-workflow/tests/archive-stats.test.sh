@@ -93,6 +93,17 @@ eq "skip with an empty, blank or punctuation-only reason counts as no reason" 3 
 eq "skip with a reason counts as withSkipReason" 1 "$(j .totals.withSkipReason)"
 eq "all four are incomplete" 4 "$(j .totals.incomplete)"
 
+# OpenSpec 1.16 的 task 定義：其他清單符號與非 x 標記都是未完成的 task；連結 bullet 不是 task
+R7="$WORK/r7"
+mk_arch "$R7" forms 2026-10-01-star '* [ ] a\n* [x] b\n'
+mk_arch "$R7" forms 2026-10-02-numbered '1. [ ] a\n2) [X] b\n'
+mk_arch "$R7" forms 2026-10-03-tilde '- [~] a\n- [x] b\n'
+mk_arch "$R7" forms 2026-10-04-links '- [doc](./doc.md)\n- [WIP](./wip.md)\n- [A](https://example.com)\n- [1][ref]\n'
+stats --root "$R7"
+eq "other bullets and markers: withTasks" 3 "$(j .totals.withTasks)"
+eq "other bullets and markers: incomplete" 3 "$(j .totals.incomplete)"
+eq "link bullets alone count as noTasks" 1 "$(j .totals.noTasks)"
+
 # 沒有歸檔目錄 / 不存在的根
 mkdir -p "$WORK/r5/plain"
 stats --root "$WORK/r5"
@@ -108,7 +119,7 @@ stats --root "$R1" --root "$R2"
 eq "multiple --root values add up" 5 "$(j .totals.archived)"
 
 # ---- summary ----
-MIN=30
+MIN=33
 if [ "$((PASS + FAIL))" -lt "$MIN" ]; then
   echo "FAIL: ran $((PASS + FAIL)) assertions, expected at least $MIN"; FAIL=$((FAIL+1))
 fi

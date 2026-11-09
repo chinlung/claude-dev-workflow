@@ -125,6 +125,20 @@ P=$WORK/p11i; D=$(make_change "$P" foo); check "$D"
 status "R6: every box checked pass" R6 pass
 P=$WORK/p11j; D=$(make_change "$P" foo); printf -- '- [x] 1.2 done, skip: not needed after all\n' >> "$D/tasks.md"; check "$D"
 status "R6: checked line mentioning skip pass" R6 pass
+# OpenSpec 1.16 的 task 定義（final review r1）：清單符號 - * + 1. 1) 都算，框內不是 x/X 的都算未完成，連結 bullet 不算
+for form in '* [ ] 1.2 b' '+ [ ] 1.2 b' '1. [ ] 1.2 b' '1) [ ] 1.2 b' '- [~] 1.2 deferred' '- [] 1.2 b'; do
+  P=$WORK/p11-$RANDOM; D=$(make_change "$P" foo); printf '%s\n' "$form" >> "$D/tasks.md"; check "$D"
+  status "R6: unchecked form [$form] fail" R6 fail
+done
+P=$WORK/p11q; D=$(make_change "$P" foo); printf -- '* [X] 1.2 b\n1. [x] 1.3 c\n' >> "$D/tasks.md"; check "$D"
+status "R6: other bullets ticked with x/X pass" R6 pass
+P=$WORK/p11r; D=$(make_change "$P" foo); printf -- '- [doc](./doc.md)\n- [WIP](./wip.md)\n- [A](https://example.com)\n- [1][ref]\n' >> "$D/tasks.md"; check "$D"
+status "R6: link bullets (multi- and single-char labels) are not tasks pass" R6 pass
+P=$WORK/p11s; D=$(make_change "$P" foo); printf -- '- [ ](./still-a-task.md)\n' >> "$D/tasks.md"; check "$D"
+status "R6: a whitespace-only box before a link still counts fail" R6 fail
+P=$WORK/p11t; D=$(make_change "$P" foo); printf '# Tasks\n\n- [doc](./doc.md)\n- [1](./one)\n' > "$D/tasks.md"; check "$D"
+status "R6: only link bullets is no checkbox task warn" R6 warn
+
 # 標準格式範例：每個 Task 一個框
 P=$WORK/p11k; D=$(make_change "$P" foo); cp "$FIXTURES/tasks-format/tasks.md" "$D/tasks.md"; check "$D"
 status "R6: format sample unticked fail" R6 fail
@@ -175,7 +189,7 @@ out=$(node -e 'const m = require(process.argv[1]); process.stdout.write(typeof m
 eq "validator require exports findSpecFiles without running main" "function" "$out"
 
 # ---- summary ----
-MIN=55
+MIN=65
 if [ "$((PASS + FAIL))" -lt "$MIN" ]; then
   echo "FAIL: ran $((PASS + FAIL)) assertions, expected at least $MIN"; FAIL=$((FAIL+1))
 fi

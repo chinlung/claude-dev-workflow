@@ -150,7 +150,7 @@ After brainstorming completes, OVERWRITE `openspec/changes/<feature-name>/design
 
 **Do NOT create a separate plan file. Tasks live in OpenSpec's tasks.md.**
 
-**tasks.md format: one checkbox per Task.** OpenSpec counts every `- [ ]` / `- [x]` bullet as a task, at any depth and with any text, and Superpowers' `task-brief` cuts a task out of the plan by its `### Task N` heading. So write each Task as a heading with exactly one checkbox line under it, and turn the step list that `writing-plans` produces into a plain numbered list with no checkboxes:
+**tasks.md format: one checkbox per Task.** OpenSpec counts every checkbox bullet as a task (`-`, `*`, `+` or a numbered bullet, at any depth and with any text; only `[x]` / `[X]` is done, so `[~]` or `[]` is an unfinished task), and Superpowers' `task-brief` cuts a task out of the plan by its `### Task N` heading. So write each Task as a heading with exactly one checkbox line under it, and turn the step list that `writing-plans` produces into a plain numbered list with no checkboxes:
 
 ```markdown
 ## 1. <group>
@@ -310,7 +310,7 @@ Run `/opsx:archive <feature-name>` (or `openspec archive <feature-name> --yes` i
 - Merge final requirements into `openspec/specs/<capability>/spec.md` (OpenSpec source of truth)
 - Move the change folder to `openspec/changes/archive/<YYYY-MM-DD>-<feature-name>/` — the archive command auto-prefixes with the archive date, so the folder name is NOT just the feature name
 - `review-notes.md` is preserved inside the archive for historical reference
-- Note: archive warns when tasks.md has unchecked items (`Warning: N incomplete task(s) found`). After the snapshot every unchecked item carries a `skip:` reason, so the warning is expected and lists only those lines. If it lists a line without a reason, stop: fix tasks.md and take a new snapshot before archiving. When any `skip:` line is present, a non-interactive `openspec archive` exits 1 without `--yes` (it cannot read the confirmation), which is why the CLI fallback keeps `--yes`
+- Note: archive warns when tasks.md has unchecked items (`Warning: N incomplete task(s) found`; it prints the count only, not the lines). After the snapshot every unchecked item carries a `skip:` reason, so the warning is expected; whether a line lacks a reason is decided by R6 in Step 6b5 and by the archive gate, not by this warning. When any `skip:` line is present, a non-interactive `openspec archive` exits 1 without `--yes` (it cannot read the confirmation), which is why the CLI fallback keeps `--yes`
 - The archive gate hook runs before both `openspec archive` and the OpenSpec 1.16 `/opsx:archive` template's `mkdir` + `mv` into `changes/archive/`, and denies either one without a fresh pass verdict from Step 6b5. Prefix the command with `OPENSPEC_ARCHIVE_OK=1` to bypass it, and only when the user explicitly asks
 
 ### Step 6d: Constitution updates (if any)
