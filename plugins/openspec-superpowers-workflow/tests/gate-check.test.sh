@@ -75,117 +75,129 @@ settings() {
   printf '%s' "$3" > "$f"
 }
 
-# run <p1|p2> <change 目錄>：結果在 $RC、$WORK/out.txt
+# run <p1|p2|p3|p6b> <change 目錄>：結果在 $RC、$WORK/out.txt
 run() { node "$GATE" "$1" "$2" > "$WORK/out.txt" 2>&1; RC=$?; }
 first() { head -1 "$WORK/out.txt"; }
+# fresh：新專案＋會「繼續」的 change，設定 $P、$D（不在子 shell 裡，變數帶得出來）
+fresh() { P=$(new_project); D=$(make_change "$P" foo); }
+# stops <名稱> <reason-id>：exit 10，且 stdout 有該理由行（兩條斷言）
+stops() { eq "$1: exit 10" 10 "$RC"; has "$1: reason" "$WORK/out.txt" "- $2:"; }
 
 # ---- 繼續的基準 ----
-P=$(new_project); D=$(make_change "$P" foo); run p1 "$D"
+fresh; run p1 "$D"
 eq "proceed-baseline: p1 exit 0" 0 "$RC"
 eq "proceed-baseline: p1 first line" proceed "$(first)"
-run p2 "$D"
-eq "proceed-baseline: p2 exit 0" 0 "$RC"
+run p2 "$D"; eq "proceed-baseline: p2 exit 0" 0 "$RC"
+run p3 "$D"; eq "proceed-baseline: p3 exit 0" 0 "$RC"
+run p6b "$D"; eq "proceed-baseline: p6b exit 0" 0 "$RC"
 
-# ---- supervised ----
-P=$(new_project); D=$(make_change "$P" foo); settings "$P" committed $'---\ngates: supervised\n---\n'; run p1 "$D"
-eq "supervised: p1 exit 10" 10 "$RC"; eq "supervised: first line" stop "$(first)"; has "supervised: reason" "$WORK/out.txt" "- supervised:"
+# ---- supervised：四個確認點都停 ----
+fresh; settings "$P" committed $'---\ngates: supervised\n---\n'; run p1 "$D"
+stops "supervised p1" supervised; eq "supervised: first line" stop "$(first)"
 run p2 "$D"; eq "supervised: p2 exit 10" 10 "$RC"
-P=$(new_project); D=$(make_change "$P" foo)
-settings "$P" committed $'---\ngates: risk-based\n---\n'; settings "$P" local $'---\ngates: supervised\n---\n'; run p1 "$D"
+run p3 "$D"; stops "supervised p3" supervised
+run p6b "$D"; stops "supervised p6b" supervised
+fresh; settings "$P" committed $'---\ngates: risk-based\n---\n'; settings "$P" local $'---\ngates: supervised\n---\n'; run p1 "$D"
 eq "supervised-local-overrides: exit 10" 10 "$RC"
-P=$(new_project); D=$(make_change "$P" foo)
-settings "$P" committed $'---\ngates: supervised\n---\n'; settings "$P" local $'---\ngates: risk-based\n---\n'; run p1 "$D"
+fresh; settings "$P" committed $'---\ngates: supervised\n---\n'; settings "$P" local $'---\ngates: risk-based\n---\n'; run p1 "$D"
 eq "local-risk-based-overrides: exit 0" 0 "$RC"
 
 # ---- 設定讀不懂 → 偏向問人 ----
-P=$(new_project); D=$(make_change "$P" foo); settings "$P" committed $'---\ngates: risk_based\n---\n'; run p1 "$D"
-eq "settings-typo: exit 10" 10 "$RC"; has "settings-typo: reason" "$WORK/out.txt" "- settings-unreadable:"
+fresh; settings "$P" committed $'---\ngates: risk_based\n---\n'; run p1 "$D"
+stops "settings-typo" settings-unreadable
 run p2 "$D"; eq "settings-typo: p2 exit 10" 10 "$RC"
-P=$(new_project); D=$(make_change "$P" foo); settings "$P" local $'---\ngates: risk-based\n'; run p1 "$D"
-eq "settings-garbage: exit 10" 10 "$RC"; has "settings-garbage: reason" "$WORK/out.txt" "- settings-unreadable:"
+run p6b "$D"; stops "settings-typo p6b" settings-unreadable
+fresh; settings "$P" local $'---\ngates: risk-based\n'; run p1 "$D"
+stops "settings-garbage" settings-unreadable
+run p3 "$D"; stops "settings-garbage p3" settings-unreadable
 
 # ---- no-decisions-section ----
-P=$(new_project); D=$(make_change "$P" foo); perl -0pi -e 's/## Decisions\n.*\z//s' "$D/proposal.md"; run p1 "$D"
-eq "no-decisions-section (missing): exit 10" 10 "$RC"; has "no-decisions-section (missing): reason" "$WORK/out.txt" "- no-decisions-section:"
-P=$(new_project); D=$(make_change "$P" foo); perl -pi -e 's/^## Decisions$/## Decision/' "$D/proposal.md"; run p1 "$D"
-eq "no-decisions-section (singular heading): exit 10" 10 "$RC"; has "no-decisions-section (singular): reason" "$WORK/out.txt" "- no-decisions-section:"
+fresh; perl -0pi -e 's/## Decisions\n.*\z//s' "$D/proposal.md"; run p1 "$D"
+stops "no-decisions-section (missing)" no-decisions-section
+fresh; perl -pi -e 's/^## Decisions$/## Decision/' "$D/proposal.md"; run p1 "$D"
+stops "no-decisions-section (singular heading)" no-decisions-section
 
 # ---- needs-user ----
-P=$(new_project); D=$(make_change "$P" foo); printf -- '- [needs user] pick (a) strict or (b) lenient\n' >> "$D/proposal.md"; run p1 "$D"
-eq "needs-user (dash): exit 10" 10 "$RC"; has "needs-user (dash): reason" "$WORK/out.txt" "- needs-user:"
-P=$(new_project); D=$(make_change "$P" foo); printf -- '* [Needs User] who may export\n' >> "$D/proposal.md"; run p1 "$D"
-eq "needs-user (star, mixed case): exit 10" 10 "$RC"; has "needs-user (star): reason" "$WORK/out.txt" "- needs-user:"
-P=$(new_project); D=$(make_change "$P" foo); printf -- '<!--\n- [needs user] example only\n-->\n' >> "$D/proposal.md"; run p1 "$D"
+fresh; printf -- '- [needs user] pick (a) strict or (b) lenient\n' >> "$D/proposal.md"; run p1 "$D"
+stops "needs-user (dash)" needs-user
+fresh; printf -- '* [Needs User] who may export\n' >> "$D/proposal.md"; run p1 "$D"
+stops "needs-user (star, mixed case)" needs-user
+fresh; printf -- '<!--\n- [needs user] example only\n-->\n' >> "$D/proposal.md"; run p1 "$D"
 eq "needs-user-in-comment: exit 0" 0 "$RC"
-P=$(new_project); D=$(make_change "$P" foo); printf -- '```\n- [needs user] example only\n```\n' >> "$D/proposal.md"; run p1 "$D"
+fresh; printf -- '```\n- [needs user] example only\n```\n' >> "$D/proposal.md"; run p1 "$D"
 eq "needs-user-in-fence: exit 0" 0 "$RC"
-P=$(new_project); D=$(make_change "$P" foo); perl -pi -e 's/^- `src\/export\/invoice.ts`$/- `src\/export\/invoice.ts`\n- [needs user] outside the Decisions section/' "$D/proposal.md"; run p1 "$D"
+fresh; perl -pi -e 's/^- `src\/export\/invoice.ts`$/- `src\/export\/invoice.ts`\n- [needs user] outside the Decisions section/' "$D/proposal.md"; run p1 "$D"
 eq "needs-user outside Decisions: exit 0" 0 "$RC"
 
 # ---- breaking ----
-P=$(new_project); D=$(make_change "$P" foo); perl -pi -e 's/^- Add an invoice export\.$/- **BREAKING** drop the CSV export/' "$D/proposal.md"; run p1 "$D"
-eq "breaking (marker): exit 10" 10 "$RC"; has "breaking (marker): reason" "$WORK/out.txt" "- breaking:"
-P=$(new_project); D=$(make_change "$P" foo); perl -pi -e 's/^Invoices need exporting\.$/This is a BREAKING change for API clients./' "$D/proposal.md"; run p1 "$D"
-eq "breaking (inline word): exit 10" 10 "$RC"; has "breaking (inline): reason" "$WORK/out.txt" "- breaking:"
-P=$(new_project); D=$(make_change "$P" foo); printf '<!-- Mark breaking changes with **BREAKING** -->\n' >> "$D/proposal.md"; run p1 "$D"
+fresh; perl -pi -e 's/^- Add an invoice export\.$/- **BREAKING** drop the CSV export/' "$D/proposal.md"; run p1 "$D"
+stops "breaking (marker)" breaking
+fresh; perl -pi -e 's/^Invoices need exporting\.$/This is a BREAKING change for API clients./' "$D/proposal.md"; run p1 "$D"
+stops "breaking (inline word)" breaking
+fresh; printf '<!-- Mark breaking changes with **BREAKING** -->\n' >> "$D/proposal.md"; run p1 "$D"
 eq "breaking only in a comment: exit 0" 0 "$RC"
 
 # ---- delta-modified ----
 for kind in MODIFIED REMOVED RENAMED; do
-  P=$(new_project); D=$(make_change "$P" foo); mkdir -p "$D/specs/billing"
+  fresh; mkdir -p "$D/specs/billing"
   printf '## %s Requirements\n\n### Requirement: Old\nThe system SHALL do the old thing.\n' "$kind" > "$D/specs/billing/spec.md"; run p1 "$D"
   eq "delta-modified ($kind): exit 10" 10 "$RC"; has "delta-modified ($kind): detail names the heading" "$WORK/out.txt" "$kind"
 done
-P=$(new_project); D=$(make_change "$P" foo); printf '## MODIFIED Requirements\r\n\r\n### Requirement: Old\r\nThe system SHALL change.\r\n' > "$D/specs/api/spec.md"; run p1 "$D"
-eq "crlf: exit 10" 10 "$RC"; has "crlf: reason" "$WORK/out.txt" "- delta-modified:"
+fresh; printf '## MODIFIED Requirements\r\n\r\n### Requirement: Old\r\nThe system SHALL change.\r\n' > "$D/specs/api/spec.md"; run p1 "$D"
+stops "crlf" delta-modified
 # CRLF 設定檔（Windows checkout）：front matter 仍讀得懂，不會被誤判成 settings-unreadable 而一律停
-P=$(new_project); D=$(make_change "$P" foo); settings "$P" committed $'---\r\ngates: risk-based\r\n---\r\n'; run p1 "$D"
+fresh; settings "$P" committed $'---\r\ngates: risk-based\r\n---\r\n'; run p1 "$D"
 eq "crlf settings: risk-based proceeds" 0 "$RC"
-P=$(new_project); D=$(make_change "$P" foo); settings "$P" committed $'---\r\nhigh_risk_paths:\r\n  - src/export/**\r\n---\r\n'; run p1 "$D"
+fresh; settings "$P" committed $'---\r\nhigh_risk_paths:\r\n  - src/export/**\r\n---\r\n'; run p1 "$D"
 eq "crlf settings: high_risk_paths still match" 10 "$RC"
 
 # ---- high-risk-path ----
 for form in '- `src/auth/login.ts`' '- ./src/auth/x.ts' '- src/auth/y.ts changes'; do
-  P=$(new_project); D=$(make_change "$P" foo); settings "$P" committed $'---\nhigh_risk_paths:\n  - src/auth/**\n---\n'
+  fresh; settings "$P" committed $'---\nhigh_risk_paths:\n  - src/auth/**\n---\n'
   F="$form" perl -pi -e 's/^- `src\/export\/invoice.ts`$/$ENV{F}/' "$D/proposal.md"; run p1 "$D"
-  eq "impact-path-forms ($form): exit 10" 10 "$RC"; has "impact-path-forms ($form): reason" "$WORK/out.txt" "- high-risk-path:"
+  stops "impact-path-forms ($form)" high-risk-path
 done
-P=$(new_project); D=$(make_change "$P" foo); settings "$P" committed $'---\nhigh_risk_paths:\n  - src/auth/**\n---\n'; run p1 "$D"
+fresh; settings "$P" committed $'---\nhigh_risk_paths:\n  - src/auth/**\n---\n'; run p1 "$D"
 eq "impact-no-match: exit 0" 0 "$RC"
-P=$(new_project); D=$(make_change "$P" foo); settings "$P" committed $'---\nhigh_risk_paths:\n  - src/*.ts\n---\n'
+fresh; settings "$P" committed $'---\nhigh_risk_paths:\n  - src/*.ts\n---\n'
 perl -pi -e 's/^- `src\/export\/invoice.ts`$/- `src\/export\/invoice.ts`\n- `src\/main.ts`/' "$D/proposal.md"; run p1 "$D"
 eq "single star matches one level: exit 10" 10 "$RC"
-P=$(new_project); D=$(make_change "$P" foo); settings "$P" committed $'---\nhigh_risk_paths:\n  - src/*.ts\n---\n'; run p1 "$D"
+fresh; settings "$P" committed $'---\nhigh_risk_paths:\n  - src/*.ts\n---\n'; run p1 "$D"
 eq "single star does not cross a slash: exit 0" 0 "$RC"
 
 # ---- 錯誤路徑 ----
-mkdir -p "$WORK/elsewhere/foo"; cp "$D/proposal.md" "$WORK/elsewhere/foo/"; run p1 "$WORK/elsewhere/foo"
+fresh; mkdir -p "$WORK/elsewhere/foo"; cp "$D/proposal.md" "$WORK/elsewhere/foo/"; run p1 "$WORK/elsewhere/foo"
 eq "bad-change-dir (not under openspec/changes): exit 1" 1 "$RC"; has "bad-change-dir: message" "$WORK/out.txt" "not under openspec/changes"
-P=$(new_project); D=$(make_change "$P" foo); rm "$D/proposal.md"; run p1 "$D"
+fresh; rm "$D/proposal.md"; run p1 "$D"
 eq "bad-change-dir (no proposal.md): exit 1" 1 "$RC"
-node "$GATE" p9 "$D" > "$WORK/out.txt" 2>&1; eq "unknown gate: exit 1" 1 "$?"
+run p9 "$D"; eq "unknown gate: exit 1" 1 "$RC"
 node "$GATE" > "$WORK/out.txt" 2>&1; eq "no arguments: exit 1" 1 "$?"
 
 # ---- P2 ----
-P=$(new_project); D=$(make_change "$P" foo); printf -- '- [needs user] who sees the archive\n' >> "$D/design.md"; run p2 "$D"
-eq "p2-needs-user (dash): exit 10" 10 "$RC"; has "p2-needs-user (dash): reason" "$WORK/out.txt" "- design-needs-user:"
-P=$(new_project); D=$(make_change "$P" foo); printf -- '* [NEEDS USER] retention period\n' >> "$D/design.md"; run p2 "$D"
+fresh; printf -- '- [needs user] who sees the archive\n' >> "$D/design.md"; run p2 "$D"
+stops "p2-needs-user (dash)" design-needs-user
+fresh; printf -- '* [NEEDS USER] retention period\n' >> "$D/design.md"; run p2 "$D"
 eq "p2-needs-user (star, upper case): exit 10" 10 "$RC"
-P=$(new_project); D=$(make_change "$P" foo); run p2 "$D"
+fresh; run p2 "$D"
 eq "p2-defaults-only: exit 0" 0 "$RC"
-P=$(new_project); D=$(make_change "$P" foo); printf '# Design\n\nDecision: queued job.\n' > "$D/design.md"; run p2 "$D"
+fresh; printf '# Design\n\nDecision: queued job.\n' > "$D/design.md"; run p2 "$D"
 eq "p2-no-open-questions: exit 0" 0 "$RC"
-P=$(new_project); D=$(make_change "$P" foo); printf '# Design\n\n- [needs user] not under Open Questions\n' > "$D/design.md"; run p2 "$D"
+fresh; printf '# Design\n\n- [needs user] not under Open Questions\n' > "$D/design.md"; run p2 "$D"
 eq "p2 needs-user outside Open Questions: exit 0" 0 "$RC"
-P=$(new_project); D=$(make_change "$P" foo); perl -pi -e 's/^- \[default\] export runs.*$/- [needs user] p1 item/' "$D/proposal.md"; run p2 "$D"
+fresh; perl -pi -e 's/^- \[default\] export runs.*$/- [needs user] p1 item/' "$D/proposal.md"; run p2 "$D"
 eq "p2 ignores proposal needs-user: exit 0" 0 "$RC"
+
+# ---- P3／P6b：只看設定，不看 change 內容 ----
+fresh; printf -- '- [needs user] pick one\n' >> "$D/proposal.md"; perl -pi -e 's/^- Add an invoice export\.$/- **BREAKING** drop it/' "$D/proposal.md"; run p3 "$D"
+eq "p3 ignores proposal triggers: exit 0" 0 "$RC"
+run p6b "$D"; eq "p6b ignores proposal triggers: exit 0" 0 "$RC"
 
 # ---- require 不執行 main ----
 out=$(node -e 'const m = require(process.argv[1]); process.stdout.write([typeof m.checkP1, typeof m.checkP2, typeof m.readSettings].join(","))' "$GATE" 2>&1)
 eq "require exports the three functions without running main" "function,function,function" "$out"
 
 # ---- summary ----
-MIN=62
+MIN=74
 if [ "$((PASS + FAIL))" -lt "$MIN" ]; then
   echo "FAIL: ran $((PASS + FAIL)) assertions, expected at least $MIN"; FAIL=$((FAIL+1))
 fi

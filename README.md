@@ -447,7 +447,7 @@ This plugin ships an auto-triggered skill (no slash command) and two PreToolUse 
 | 5. Review & Feedback | Human-driven | Tag feedback `[REQUIREMENT\|DESIGN\|CODE\|CONSTITUTION]` + Y/N | `review-notes.md`; **specs are never touched** |
 | 6. Reconcile & Archive | OpenSpec | Clean rewrite (not patch) + `openspec archive` | Merged into `openspec/specs/<capability>/spec.md` |
 
-**When it stops for you (3.0).** Phases 1 and 2 stop only when `gate-check.cjs` finds a reason: a `BREAKING` marker, a spec delta that modifies, removes or renames an existing requirement, a `[needs user]` decision, a path listed in `high_risk_paths`, or unreadable settings. Before stopping, an independent opus reviewer looks for decisions the proposal makes without saying so. Phase 3 (tasks) and the Phase 6 spec rewrite no longer wait; declaring review converged (Phase 5) stays yours. `gates: supervised` in `.claude/openspec-workflow.local.md` restores a stop at every gate.
+**When it stops for you (3.0).** `gate-check.cjs` decides at each gate, from facts in the change (a `BREAKING` marker, a delta that changes an existing requirement, a `[needs user]` decision, a `high_risk_paths` match) and the settings; a stop at Phases 1–2 starts with an independent opus review. Phase 3 and the Phase 6 rewrite stop only under `gates: supervised`; declaring review converged stays yours. Full rules: the Gates section of the skill's `phases.md`.
 
 ## Six Non-Negotiable Rules
 
@@ -463,8 +463,8 @@ This plugin ships an auto-triggered skill (no slash command) and two PreToolUse 
 ```
 skills/openspec-superpowers-workflow/
 ├── SKILL.md                    # 61 lines — trigger map + SKIP clause + phase table + 6 rules (always loaded)
-├── PHASE-IDENTIFICATION.md     # 101 lines — phase decision tree + SKIP procedure (loaded when phase is unclear)
-├── phases.md                   # 434 lines — full playbook, tag semantics, gotchas (loaded on demand)
+├── PHASE-IDENTIFICATION.md     # 97 lines — phase decision tree + SKIP procedure (loaded when phase is unclear)
+├── phases.md                   # 446 lines — full playbook, tag semantics, gotchas (loaded on demand)
 ├── SUPERPOWERS-HANDOFF.md      # 142 lines — Phase 2/3/4 sync-back templates, sidecar-file anti-patterns
 ├── OUTPUT-CONTRACTS.md         # 219 lines — per-phase output contracts, requirement-writing examples
 ├── RECONCILIATION-CRITERIA.md  # 128 lines — Phase 6 pre-archive gate checklist

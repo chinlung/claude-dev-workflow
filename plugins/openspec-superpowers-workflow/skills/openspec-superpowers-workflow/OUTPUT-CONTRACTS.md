@@ -85,7 +85,7 @@ All exports must be validated before download.
 
 | 檔案 | 內容要求 | 可驗證條件 |
 |------|---------|-----------|
-| `tasks.md` | 完整任務清單（OVERWRITE stub）；每個任務含精確檔案路徑、驗證步驟；每個 `### Task N` 標題下恰有一個勾選框，步驟用編號清單 | 內容非 stub；每個設計決策有對應任務；`validate-openspec-workflow.cjs` 通過（`gates: supervised` 時另需使用者已審核）；框數等於 Task 數 |
+| `tasks.md` | 完整任務清單（OVERWRITE stub）；每個任務含精確檔案路徑、驗證步驟；每個 `### Task N` 標題下恰有一個勾選框，步驟用編號清單 | 內容非 stub；每個設計決策有對應任務；`validate-openspec-workflow.cjs` 與 `gate-check.cjs p3` 通過（停下時另需使用者已核准）；框數等於 Task 數 |
 
 ### 覆蓋定義
 

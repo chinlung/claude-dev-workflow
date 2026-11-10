@@ -19,7 +19,7 @@ Analysis behind this release: `docs/openspec-hitl-gate-analysis-2026-11-10.md` (
 
 ### Added
 
-- `validators/gate-check.cjs` (exit 0 proceed, 10 stop, 1 error). Settings: `.claude/openspec-workflow.md` (committed, `high_risk_paths`) and `.claude/openspec-workflow.local.md` (personal, `gates`). Unreadable settings, an unknown `gates` value, or a session that cannot run gate-check at all count as a stop.
+- `validators/gate-check.cjs <p1|p2|p3|p6b>` (exit 0 proceed, 10 stop, 1 error: fix the call and re-run, a second failure is a stop). Settings: `.claude/openspec-workflow.md` (committed, `high_risk_paths`) and `.claude/openspec-workflow.local.md` (personal, `gates`). Unreadable settings or an unknown `gates` value count as a stop; `p3` and `p6b` look at the settings only. A session without a shell applies the same rules by hand.
 - proposal.md gets a required `## Decisions` section (`[needs user]` / `[default]` items); Phase 6a rewrites it as the decisions taken.
 
 ### Tests

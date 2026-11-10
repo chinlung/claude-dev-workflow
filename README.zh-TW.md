@@ -445,14 +445,9 @@ docs/task-{YYYYMMDD-HHMM}-{簡短名稱}/
 | 5. Review & Feedback | 人類主導 | 分類 `[REQUIREMENT\|DESIGN\|CODE\|CONSTITUTION]` + Y/N | `review-notes.md`；**spec 一律不動** |
 | 6. Reconcile & Archive | OpenSpec | Clean rewrite（非 patch）+ `openspec archive` | 合併至 `openspec/specs/<capability>/spec.md` |
 
-**什麼時候會停下來等你（3.0）**：Phase 1、2 只在 `gate-check.cjs` 找到理由時才停：
-- `BREAKING` 標記；
-- spec delta 修改、移除或改名既有 requirement；
-- `[needs user]` 決策；
-- 命中 `high_risk_paths` 的路徑；
-- 設定檔讀不懂。
+**什麼時候會停下來等你（3.0）**：每個確認點都由 `gate-check.cjs` 依 change 裡的事實與設定決定。這些事實是：`BREAKING` 標記、改到既有 requirement 的 delta、`[needs user]` 決策，以及命中 `high_risk_paths`。
 
-停下前會先派 opus 獨立審查，找出 proposal 沒寫明卻已經做了的決定。Phase 3（拆任務）和 Phase 6 的 spec 改寫不再等你；Phase 5 宣告 review 收斂仍由你決定。在 `.claude/openspec-workflow.local.md` 寫 `gates: supervised`，就回到每個確認點都停。
+Phase 1、2 停下前會先派 opus 獨立審查。Phase 3 與 Phase 6 的改寫只在 `gates: supervised` 時停；宣告 review 收斂仍由你決定。完整規則見 skill 的 `phases.md`「Gates」節。
 
 ## 不可妥協的六條硬規則
 
@@ -468,8 +463,8 @@ docs/task-{YYYYMMDD-HHMM}-{簡短名稱}/
 ```
 skills/openspec-superpowers-workflow/
 ├── SKILL.md                    # 61 行 — trigger map + SKIP 條款 + phase 表 + 6 條硬規則（常駐載入）
-├── PHASE-IDENTIFICATION.md     # 101 行 — Phase 判定決策樹 + SKIP 判定程序（Phase 不明時載入）
-├── phases.md                   # 434 行 — 完整 playbook、tag 語意、gotcha（需要時才載入）
+├── PHASE-IDENTIFICATION.md     # 97 行 — Phase 判定決策樹 + SKIP 判定程序（Phase 不明時載入）
+├── phases.md                   # 446 行 — 完整 playbook、tag 語意、gotcha（需要時才載入）
 ├── SUPERPOWERS-HANDOFF.md      # 142 行 — Phase 2/3/4 sync-back 範本、sidecar 檔 anti-pattern
 ├── OUTPUT-CONTRACTS.md         # 219 行 — 各 Phase 產出契約、requirement 寫法正反例
 ├── RECONCILIATION-CRITERIA.md  # 128 行 — Phase 6 歸檔前核查清單

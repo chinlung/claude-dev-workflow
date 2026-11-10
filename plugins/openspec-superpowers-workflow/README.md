@@ -37,8 +37,8 @@
 ```
 skills/openspec-superpowers-workflow/
 ├── SKILL.md                    # 61 行：trigger 條件、SKIP 條款、phase map、六條硬規則（常駐載入）
-├── PHASE-IDENTIFICATION.md     # 101 行：Phase 判定決策樹、SKIP 判定程序（Phase 不明時載入）
-├── phases.md                   # 434 行：完整六階段 playbook、tag 分類細節、路徑慣例、anti-pattern（需要時才載入）
+├── PHASE-IDENTIFICATION.md     # 97 行：Phase 判定決策樹、SKIP 判定程序（Phase 不明時載入）
+├── phases.md                   # 446 行：完整六階段 playbook、tag 分類細節、路徑慣例、anti-pattern（需要時才載入）
 ├── SUPERPOWERS-HANDOFF.md      # 142 行：Phase 2/3/4 sync-back 範本、sidecar 檔 anti-pattern
 ├── OUTPUT-CONTRACTS.md         # 219 行：各 Phase 產出契約、requirement 寫法正反例、deferred 項慣例
 ├── RECONCILIATION-CRITERIA.md  # 128 行：Phase 6 歸檔前核查清單
@@ -89,18 +89,19 @@ SKIP 的唯一依據是上述契約面判定，沒有其他豁免類別（例如
 
 | 確認點 | 3.0（預設 `risk-based`） |
 |---|---|
-| P1 | `gate-check.cjs p1`：有 `BREAKING`、delta 有 `MODIFIED／REMOVED／RENAMED Requirements`、`## Decisions` 有 `[needs user]`、`## Impact` 命中 `high_risk_paths`、缺 `## Decisions`，或設定讀不懂 → 先派 opus 獨立審查，再停下等核准；否則公告採用的預設後繼續 |
-| P2 | `gate-check.cjs p2`：`## Open Questions` 有 `[needs user]` → 審查後停下；否則繼續 |
-| P3 | 不停：validator 通過就進 Phase 4 |
+| P1 | `gate-check.cjs p1`：結構事實（`BREAKING`、修改／移除／改名既有 requirement 的 delta）、`[needs user]` 決策、命中 `high_risk_paths` 時，先派 opus 獨立審查再停下；否則公告採用的預設後繼續 |
+| P2 | `gate-check.cjs p2`：`## Open Questions` 有 `[needs user]` 才停 |
+| P3、P6b | `gate-check.cjs p3`／`p6b` 只在 `gates: supervised` 或設定讀不懂時停；P6b 的改寫摘要寫進回覆與歸檔 PR，reconcile-check 仍是歸檔閘門 |
 | P5 | 宣告收斂仍由你決定；條件成立時 agent 會主動建議收斂 |
-| P6b | 不停：改寫摘要寫進回覆與歸檔 PR，reconcile-check 是閘門 |
+
+完整的停下規則只寫在 `skills/openspec-superpowers-workflow/phases.md` 的「Gates」節。
 
 **設定**（都是選用，只讀 front matter）：
 - `.claude/openspec-workflow.md`（進版控，描述專案）：`high_risk_paths:` 底下列 `  - <glob>`（`**` 跨目錄，`*` 不跨）。
 - `.claude/openspec-workflow.local.md`（gitignored，個人偏好）：`gates: supervised` 回到 2.x 的每個確認點都停。這個檔案設定的 key 會覆蓋前者。
 
 **界線**：
-- 設定檔讀不懂、`gates` 值認不得、或 agent 跑不了 gate-check（沒有 shell），一律視同停下。方向刻意和兩支 hook 的 fail-open 相反：這裡出錯的代價是跳過人類決策。
+- 設定檔讀不懂、`gates` 值認不得，一律視同停下。方向刻意和兩支 hook 的 fail-open 相反：這裡出錯的代價是跳過人類決策。沒有 shell 的 session 照同一份規則手動判定。
 - `[needs user]`／`[default]` 是 agent 自己寫的標記，gate-check 分辨不出誠實與否，只是提醒。真正擋得住漏判的只有結構事實（BREAKING、delta 標題）。
 
 **測試**：`bash plugins/openspec-superpowers-workflow/tests/gate-check.test.sh`（已接 CI；每個停下的理由至少兩個觸發輸入，七個突變各自轉紅）。

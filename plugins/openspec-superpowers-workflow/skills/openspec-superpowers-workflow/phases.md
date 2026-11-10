@@ -68,23 +68,35 @@ The OpenSpec validator enforces that **every `### Requirement:` block MUST conta
 
 ## Gates: when the workflow stops for the user
 
-A gate stops only when a fact says the user is needed. `gate-check.cjs` reads the change and the project settings and answers with its exit code:
+This section is the one place the gate rules live; the phases below only say which gate to run.
+
+A gate stops only when a fact says the user is needed. `gate-check.cjs` reads the change and the project settings and answers with its exit code. Run it at each of the four gates:
 
 ```bash
-node ${CLAUDE_PLUGIN_ROOT}/skills/openspec-superpowers-workflow/validators/gate-check.cjs p1 openspec/changes/<feature-name>   # end of Phase 1
-node ${CLAUDE_PLUGIN_ROOT}/skills/openspec-superpowers-workflow/validators/gate-check.cjs p2 openspec/changes/<feature-name>   # end of Phase 2
+node ${CLAUDE_PLUGIN_ROOT}/skills/openspec-superpowers-workflow/validators/gate-check.cjs p1 openspec/changes/<feature-name>    # end of Phase 1
+node ${CLAUDE_PLUGIN_ROOT}/skills/openspec-superpowers-workflow/validators/gate-check.cjs p2 openspec/changes/<feature-name>    # end of Phase 2
+node ${CLAUDE_PLUGIN_ROOT}/skills/openspec-superpowers-workflow/validators/gate-check.cjs p3 openspec/changes/<feature-name>    # Phase 3 → 4
+node ${CLAUDE_PLUGIN_ROOT}/skills/openspec-superpowers-workflow/validators/gate-check.cjs p6b openspec/changes/<feature-name>   # Step 6b
 ```
 
 - **exit 0 (`proceed`)**: list the defaults you took (every `[default]` item) and why, then carry on to the next phase in the same turn. The user can interrupt at any time, and the defaults stay in the artifact for them to overrule later.
-- **exit 10 (`stop`) or 1 (error), or you cannot run gate-check at all** (no shell): dispatch an independent reviewer (subagent, `model: "opus"`; this is a judgement, never a cheaper model), fold its result into the artifact, then present the reviewer's findings together with every `- <reason>` line gate-check printed, and **wait for the user's approval**. Do not decide on your own that a stop can be skipped.
+- **exit 10 (`stop`)**: at P1 and P2, first dispatch an independent reviewer (subagent, `model: "opus"`; this is a judgement, never a cheaper model) and fold its result into the artifact. Then present its findings together with every `- <reason>` line gate-check printed, and **wait for the user's approval**. Do not decide on your own that a stop can be skipped.
+- **exit 1 (error)**: a wrong path or argument. Fix the call and run it again; if it fails again, treat it as a stop.
+- **No shell to run it**: apply the rules below by hand, reading the same files, and act on the result as if gate-check had printed it.
 
-What stops P1: `gates: supervised`, unreadable settings, no `## Decisions` section in proposal.md, a `[needs user]` item under it, a `BREAKING` marker, a spec delta with `MODIFIED`, `REMOVED` or `RENAMED Requirements`, or an `## Impact` path matching `high_risk_paths`. What stops P2: the same settings rules, or a `[needs user]` item under `## Open Questions` in design.md.
+What stops each gate:
+- **every gate**: `gates: supervised`, or settings that cannot be read (including an unknown `gates` value);
+- **P1**: no `## Decisions` section in proposal.md, a `[needs user]` item under it, a `BREAKING` marker, a spec delta with `MODIFIED`, `REMOVED` or `RENAMED Requirements`, or an `## Impact` path matching `high_risk_paths`;
+- **P2**: a `[needs user]` item under `## Open Questions` in design.md;
+- **P3, P6b**: nothing else — only the two rules for every gate.
+
+Text inside HTML comments and code fences does not count.
 
 **Settings** (both optional; front matter only):
 - `.claude/openspec-workflow.md` (committed — it describes the project): `high_risk_paths:` followed by `  - <glob>` lines (`**` crosses directories, `*` does not).
 - `.claude/openspec-workflow.local.md` (gitignored — personal): `gates: supervised` stops at every gate (the 2.x behaviour); `gates: risk-based` is the default. A key set here wins over the committed file.
 
-**`[needs user]` vs `[default]`**: `[needs user]` is a decision that changes *what* gets built and needs a value or risk trade-off only the user can make; `[default]` is a choice you made and can defend. An item you or the reviewer marked `[needs user]` is never downgraded to `[default]`. These markers are reminders you write yourself — gate-check cannot tell whether they are honest — so when in doubt, mark `[needs user]`.
+**`[needs user]` vs `[default]`**: `[needs user]` is a decision that changes *what* gets built and needs a value or risk trade-off only the user can make; `[default]` is a choice you made and can defend. When in doubt, mark `[needs user]`: these markers are reminders you write yourself, and gate-check cannot tell whether they are honest. An item you or the reviewer marked `[needs user]` is never downgraded to `[default]` — with one exception: the user has delegated the call in their own words ("skip the questions", "跳過提問", "you decide"). Then mark it `[default]`, say in the reply that it was delegated, and let the gate rules above decide as usual.
 
 ---
 
@@ -143,7 +155,7 @@ What stops P1: `gates: supervised`, unreadable settings, no `## Decisions` secti
    - Classify before you ask. Anything you can find out by reading code, running a command or looking at output is a fact, not a question: go and look.
    - Ask at most **2** questions in total, and only ones whose answer changes *what* gets built (scope, behavior, who is affected), not *how*. Write `design.md` in the same reply anyway, taking your recommended answer to each question as the assumption, and put the questions at the end of the reply. Do not hold the file back until they are answered. Each such question goes under `## Open Questions` marked `[needs user]`, which makes `gate-check.cjs p2` stop.
    - Everything else is an assumption: write it into `design.md` under `## Open Questions` marked `[default]`, each with the default you chose.
-   - If the user says to skip the questions (any wording, e.g. "skip the questions", "跳過提問", "just write design.md"), ask nothing and write `design.md` now. They have delegated these calls: mark every open question `[default]` (never `[needs user]`), and Phase 2 does not stop for them — not even when you cannot run gate-check. A conflict you notice (for example between the spec and the design) goes into the reply as a statement with the default you chose, not as a question.
+   - If the user says to skip the questions (any wording, e.g. "skip the questions", "跳過提問", "just write design.md"), ask nothing and write `design.md` now. They have delegated these calls, so every open question is `[default]` (see "Gates"). A conflict you notice (for example between the spec and the design) goes into the reply as a statement with the default you chose, not as a question.
    - If a fork can be settled by trying it, build a throwaway prototype in `$TMPDIR` or a scratch directory outside `openspec/`, and write the decision plus the evidence (one line) into `design.md`. A prototype is a disposable experiment, not a second design file, so it does not break the sidecar rule below.
 4. Work through the areas a design must cover — boundary conditions and error handling, impact on the existing system, performance and scalability, security — and end each as a decision or an assumption in `design.md`, not as a question.
 5. Before overwriting `design.md`, read `DESIGN-RED-FLAGS.md` and check the draft against it. Write each flag that applies, and what you did about it, under `## Trade-offs`.
@@ -190,7 +202,7 @@ After brainstorming completes, OVERWRITE `openspec/changes/<feature-name>/design
 
 A checkbox on every step makes progress count several times too large and "tick it when done" a chore nobody does. That is how tasks.md ended up as a plan that nothing updated.
 
-**No user gate in Phase 3** (except under `gates: supervised`, where the user reviews the task breakdown first). Once `tasks.md` is written, run the bundled validator (without a shell, check its format rules yourself: one checkbox under each `### Task N`, numbered steps); when it passes, go on to Phase 4 in the same turn and name the execution method you chose (rule in Phase 4 step 1):
+**Gate (P3)**: once `tasks.md` is written, run the bundled validator (without a shell, check its rules by hand: one checkbox under each `### Task N`, numbered steps), then `gate-check.cjs p3` (see "Gates"). When both pass, go on to Phase 4 in the same turn and name the execution method you chose (rule in Phase 4 step 1); the user does not review the task breakdown.
 ```bash
 node ${CLAUDE_PLUGIN_ROOT}/skills/openspec-superpowers-workflow/validators/validate-openspec-workflow.cjs openspec/changes/<feature-name>
 ```
@@ -199,7 +211,7 @@ node ${CLAUDE_PLUGIN_ROOT}/skills/openspec-superpowers-workflow/validators/valid
 
 ## Phase 4: Implementation (Superpowers leads exclusively)
 
-**Trigger**: Phase 3's validator passes (under `gates: supervised`, the user approves the tasks), or the user says "implement", "start coding", "execute"
+**Trigger**: Phase 3's gate passes (or the user approves after a stop), or the user says "implement", "start coding", "execute"
 
 **Actions**:
 1. Activate `/executing-plans`. Use `/subagent-driven-development` instead only when the tasks are independent of each other and each can be written as a self-contained brief; tasks that share files or depend on one another cannot
@@ -318,7 +330,7 @@ not a changelog with amendments.
 
 ### Step 6b: Summarize the reconciled specs
 
-Do not stop here (except under `gates: supervised`, where the user confirms the rewritten specs first). Write a short summary of the rewrite — for each `Y` entry, the file it landed in — into the reply and into the description of the PR that carries the archive, then go straight on to Step 6b5. The user reviews the rewrite when they merge that PR; reconcile-check (6b5) is the gate here.
+Run `gate-check.cjs p6b` (see "Gates"); on a stop the user confirms the rewritten specs first. Otherwise write a short summary of the rewrite — for each `Y` entry, the file it landed in — into the reply and into the description of the PR that carries the archive, then go straight on to Step 6b5. The user reviews the rewrite when they merge that PR; reconcile-check (6b5) is the gate here.
 
 ### Step 6b5: Reconciliation Criteria Gate（歸檔前核查）
 
@@ -430,5 +442,5 @@ Should I extract the reusable portions to shared-specs?
 - ❌ Put [CONSTITUTION] items into the feature's spec files
 - ❌ Skip Phase 2 brainstorming and go straight to implementation
 - ❌ Modify tasks.md during reconciliation (it's execution history)
-- ❌ Carry on past a gate-check `stop` (exit 10 or 1) without the user's approval
-- ❌ Downgrade a `[needs user]` item to `[default]` so that gate-check proceeds
+- ❌ Carry on past a gate-check `stop` (exit 10, or exit 1 twice) without the user's approval
+- ❌ Downgrade a `[needs user]` item to `[default]` so that gate-check proceeds (only the user's own delegation does that)

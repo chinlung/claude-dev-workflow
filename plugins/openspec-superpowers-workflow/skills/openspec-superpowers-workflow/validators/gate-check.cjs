@@ -2,10 +2,11 @@
 'use strict';
 // gate-check: does this change stop for the user at P1 (proposal + specs) or P2 (design)?
 //
-//   node gate-check.cjs <p1|p2> <change-dir>
+//   node gate-check.cjs <p1|p2|p3|p6b> <change-dir>
 //   exit 0  proceed  — announce the defaults and carry on
-//   exit 10 stop     — run the independent review, then wait for the user
-//   exit 1  error    — usage, or the change cannot be read; the skill treats it as a stop
+//   exit 10 stop     — run the independent review (p1/p2), then wait for the user
+//   exit 1  error    — usage, or the change cannot be read; fix the call and re-run, a second failure is a stop
+// p3 and p6b only read the settings: they stop under gates: supervised or unreadable settings, never on content.
 // stdout: first line `stop` or `proceed`, then one `- <reason-id>: <detail>` line per reason.
 //
 // It reads files only (no network). Doubt resolves toward asking: an unreadable settings file or an unknown
@@ -16,6 +17,7 @@
 // Design: docs/openspec-workflow-3-gates-design-2026-11-10.md §4. Tests: tests/gate-check.test.sh
 const fs = require('fs');
 const path = require('path');
+const { findSpecFiles } = require('./validate-openspec-workflow.cjs');
 
 const GATES = ['risk-based', 'supervised'];
 const NEEDS_USER = /^\s*[-*]\s*\[needs user\]/im;
@@ -35,6 +37,8 @@ function section(text, title) {
   return m ? m[1] : null;
 }
 
+const unquote = (s) => s.replace(/^["']|["']$/g, '');
+
 // Minimal front matter: `gates: <value>` and `high_risk_paths:` followed by `  - <glob>` lines.
 function parseFrontMatter(text) {
   const m = text.match(/^---\n([\s\S]*?)\n---\s*(?:\n|$)/);
@@ -43,12 +47,10 @@ function parseFrontMatter(text) {
   let list = null;
   for (const line of m[1].split('\n')) {
     const item = line.match(/^\s+-\s+(.+?)\s*$/);
-    if (item && list) { list.push(item[1].replace(/^["']|["']$/g, '')); continue; }
+    if (item && list) { list.push(unquote(item[1])); continue; }
     const kv = line.match(/^([A-Za-z_]+):\s*(.*?)\s*$/);
-    if (!kv) { list = null; continue; }
-    if (kv[1] === 'gates') { out.gates = kv[2].replace(/^["']|["']$/g, ''); list = null; }
-    else if (kv[1] === 'high_risk_paths') { out.highRiskPaths = []; list = out.highRiskPaths; }
-    else list = null;
+    if (kv && kv[1] === 'gates') out.gates = unquote(kv[2]);
+    list = kv && kv[1] === 'high_risk_paths' ? (out.highRiskPaths = []) : null;
   }
   return out;
 }
@@ -104,14 +106,15 @@ function checkP1(changeDir, settings) {
   else if (NEEDS_USER.test(decisions)) reasons.push({ id: 'needs-user', detail: '## Decisions lists a [needs user] item' });
   if (/\bBREAKING\b/.test(proposal)) reasons.push({ id: 'breaking', detail: 'proposal.md marks a BREAKING change' });
   const kinds = new Set();
-  for (const spec of findSpecs(path.join(changeDir, 'specs'))) {
+  for (const spec of findSpecFiles(changeDir)) {
     for (const m of stripExamples(read(spec) || '').matchAll(/^##\s+(MODIFIED|REMOVED|RENAMED)\s+Requirements/gm)) kinds.add(m[1]);
   }
   if (kinds.size) reasons.push({ id: 'delta-modified', detail: `spec deltas change existing requirements: ${[...kinds].sort().join(', ')}` });
   const hits = [];
-  for (const glob of settings.highRiskPaths || []) {
+  const paths = impactPaths(proposal);
+  for (const glob of settings.highRiskPaths) {
     const re = globToRegExp(glob);
-    for (const p of impactPaths(proposal)) if (re.test(p)) hits.push(`${p} (${glob})`);
+    for (const p of paths) if (re.test(p)) hits.push(`${p} (${glob})`);
   }
   if (hits.length) reasons.push({ id: 'high-risk-path', detail: `## Impact names high-risk paths: ${hits.join(', ')}` });
   return { stop: reasons.length > 0, reasons };
@@ -125,22 +128,19 @@ function checkP2(changeDir, settings) {
   return { stop: reasons.length > 0, reasons };
 }
 
-function findSpecs(dir) {
-  let out = [];
-  let entries;
-  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return out; }
-  for (const e of entries) {
-    const p = path.join(dir, e.name);
-    if (e.isDirectory()) out = out.concat(findSpecs(p));
-    else if (e.name === 'spec.md') out.push(p);
-  }
-  return out;
+// Phase 3 → 4 and Step 6b: no content rule, only the settings can stop them.
+function checkSettingsOnly(_changeDir, settings) {
+  const reasons = modeReasons(settings);
+  return { stop: reasons.length > 0, reasons };
 }
+
+const CHECKS = { p1: checkP1, p2: checkP2, p3: checkSettingsOnly, p6b: checkSettingsOnly };
 
 function main(argv) {
   const [gate, dir] = argv;
-  if (!['p1', 'p2'].includes(gate) || !dir) {
-    console.error('usage: gate-check.cjs <p1|p2> <openspec/changes/<name>>');
+  const check = Object.hasOwn(CHECKS, gate) ? CHECKS[gate] : null;
+  if (!check || !dir) {
+    console.error(`usage: gate-check.cjs <${Object.keys(CHECKS).join('|')}> <openspec/changes/<name>>`);
     return 1;
   }
   const changeDir = path.resolve(dir);
@@ -154,7 +154,7 @@ function main(argv) {
     return 1;
   }
   const settings = readSettings(path.dirname(path.dirname(changes)));
-  const result = (gate === 'p1' ? checkP1 : checkP2)(changeDir, settings);
+  const result = check(changeDir, settings);
   console.log(result.stop ? 'stop' : 'proceed');
   for (const r of result.reasons) console.log(`- ${r.id}: ${r.detail}`);
   return result.stop ? 10 : 0;
