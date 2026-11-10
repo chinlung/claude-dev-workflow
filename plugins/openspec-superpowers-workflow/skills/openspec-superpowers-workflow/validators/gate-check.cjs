@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 'use strict';
-// gate-check: does this change stop for the user at P1 (proposal + specs) or P2 (design)?
+// gate-check: does this change stop for the user at P1 (proposal + specs), P2 (design), Phase 3 → 4 or Step 6b?
 //
 //   node gate-check.cjs <p1|p2|p3|p6b> <change-dir>
 //   exit 0  proceed  — announce the defaults and carry on
 //   exit 10 stop     — run the independent review (p1/p2), then wait for the user
 //   exit 1  error    — usage, or the change cannot be read; fix the call and re-run, a second failure is a stop
-// p3 and p6b only read the settings: they stop under gates: supervised or unreadable settings, never on content.
+// p3 and p6b stop only under gates: supervised or unreadable settings; p3 first checks the tasks.md format
+// (one checkbox per "### Task N") and exits 1 when it is broken.
 // stdout: first line `stop` or `proceed`, then one `- <reason-id>: <detail>` line per reason.
 //
 // It reads files only (no network). Doubt resolves toward asking: an unreadable settings file or an unknown
@@ -18,6 +19,7 @@
 const fs = require('fs');
 const path = require('path');
 const { findSpecFiles } = require('./validate-openspec-workflow.cjs');
+const { parseTaskLines } = require('./task-line.cjs');
 
 const GATES = ['risk-based', 'supervised'];
 const NEEDS_USER = /^\s*[-*]\s*\[needs user\]/im;
@@ -39,18 +41,42 @@ function section(text, title) {
 
 const unquote = (s) => s.replace(/^["']|["']$/g, '');
 
-// Minimal front matter: `gates: <value>` and `high_risk_paths:` followed by `  - <glob>` lines.
+// A YAML comment starts at `#` at the line start or after whitespace, outside quotes.
+function stripComment(line) {
+  let quote = null;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (quote) { if (c === quote) quote = null; }
+    else if (c === '"' || c === "'") quote = c;
+    else if (c === '#' && (i === 0 || /\s/.test(line[i - 1]))) return line.slice(0, i);
+  }
+  return line;
+}
+
+// Minimal front matter: `gates: <value>` and `high_risk_paths:` followed by `- <glob>` lines (indented or not;
+// blank and comment lines in between are fine). Any other shape is an error rather than a silently empty list:
+// an empty high_risk_paths would let a high-risk change proceed.
 function parseFrontMatter(text) {
   const m = text.match(/^---\n([\s\S]*?)\n---\s*(?:\n|$)/);
   if (!m) return { error: 'no closing --- for the front matter' };
   const out = {};
   let list = null;
-  for (const line of m[1].split('\n')) {
-    const item = line.match(/^\s+-\s+(.+?)\s*$/);
-    if (item && list) { list.push(unquote(item[1])); continue; }
-    const kv = line.match(/^([A-Za-z_]+):\s*(.*?)\s*$/);
-    if (kv && kv[1] === 'gates') out.gates = unquote(kv[2]);
-    list = kv && kv[1] === 'high_risk_paths' ? (out.highRiskPaths = []) : null;
+  for (const raw of m[1].split('\n')) {
+    const line = stripComment(raw).trimEnd();
+    if (!line.trim()) continue;
+    const item = line.match(/^\s*-\s+(.+)$/);
+    if (item) {
+      if (!list) return { error: `list item "${item[1]}" does not belong to a key` };
+      list.push(unquote(item[1]));
+      continue;
+    }
+    const kv = line.match(/^([A-Za-z_]+):\s*(.*)$/);
+    if (!kv) return { error: `cannot read "${line.trim()}"` };
+    if (kv[1] === 'gates') { out.gates = unquote(kv[2]); list = null; }
+    else if (kv[1] === 'high_risk_paths') {
+      if (kv[2] !== '') return { error: 'high_risk_paths must be followed by "- <glob>" lines, not an inline value' };
+      list = out.highRiskPaths = [];
+    } else list = kv[2] === '' ? [] : null;   // another key: its list items are read and ignored
   }
   return out;
 }
@@ -85,11 +111,12 @@ function globToRegExp(glob) {
   return new RegExp(`^${re}$`);
 }
 
-// Path-like tokens of the Impact section: anything with a slash, without backticks or a leading ./
+// Every word of the Impact section is a candidate path (a root-level `Dockerfile` has no slash), without
+// backticks, trailing punctuation or a leading ./ — the globs decide what counts.
 function impactPaths(proposal) {
   const body = section(proposal, 'Impact') || '';
-  return body.split(/\s+/).map((t) => t.replace(/`/g, '').replace(/[,;:)]+$/, '').replace(/^\.\//, ''))
-    .filter((t) => t.includes('/'));
+  return body.split(/\s+/).map((t) => t.replace(/`/g, '').replace(/[,;:.)]+$/, '').replace(/^\.\//, ''))
+    .filter(Boolean);
 }
 
 function modeReasons(settings) {
@@ -122,13 +149,35 @@ function checkP1(changeDir, settings) {
 
 function checkP2(changeDir, settings) {
   const reasons = modeReasons(settings);
-  const design = stripExamples(read(path.join(changeDir, 'design.md')) || '');
-  const open = section(design, 'Open Questions');
+  const raw = read(path.join(changeDir, 'design.md'));
+  if (raw === null) {
+    reasons.push({ id: 'design-unreadable', detail: 'design.md is missing or cannot be read' });
+    return { stop: true, reasons };
+  }
+  const open = section(stripExamples(raw), 'Open Questions');
   if (open !== null && NEEDS_USER.test(open)) reasons.push({ id: 'design-needs-user', detail: '## Open Questions lists a [needs user] item' });
   return { stop: reasons.length > 0, reasons };
 }
 
-// Phase 3 → 4 and Step 6b: no content rule, only the settings can stop them.
+// P3 format rule: every "### Task N" section holds exactly one checkbox (the task line OpenSpec counts), and no
+// checkbox sits outside them. A broken tasks.md is the agent's to fix, so it is an error (exit 1), not a stop.
+function tasksFormatErrors(changeDir) {
+  const text = read(path.join(changeDir, 'tasks.md'));
+  if (text === null) return ['tasks.md is missing or cannot be read'];
+  const parts = stripExamples(text).split(/^(?=###\s+Task\b)/m);
+  const head = /^###\s+Task\b/.test(parts[0]) ? null : parts.shift();
+  const errors = [];
+  if (!parts.length) errors.push('tasks.md has no "### Task N" heading');
+  if (head && parseTaskLines(head).length) errors.push('a checkbox sits outside every "### Task N" section');
+  for (const part of parts) {
+    const name = part.match(/^###\s+(Task\b[^:\n]*)/)[1].trim();
+    const n = parseTaskLines(part).length;
+    if (n !== 1) errors.push(`${name} has ${n} checkboxes, expected exactly 1`);
+  }
+  return errors;
+}
+
+// Phase 3 → 4 and Step 6b: beyond the format rule above, only the settings can stop them.
 function checkSettingsOnly(_changeDir, settings) {
   const reasons = modeReasons(settings);
   return { stop: reasons.length > 0, reasons };
@@ -152,6 +201,13 @@ function main(argv) {
   if (!fs.existsSync(path.join(changeDir, 'proposal.md'))) {
     console.error(`gate-check: ${dir} has no proposal.md`);
     return 1;
+  }
+  if (gate === 'p3') {
+    const errors = tasksFormatErrors(changeDir);
+    if (errors.length) {
+      for (const e of errors) console.error(`gate-check: ${e}`);
+      return 1;
+    }
   }
   const settings = readSettings(path.dirname(path.dirname(changes)));
   const result = check(changeDir, settings);

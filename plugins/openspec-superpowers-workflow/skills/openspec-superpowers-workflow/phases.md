@@ -81,19 +81,19 @@ node ${CLAUDE_PLUGIN_ROOT}/skills/openspec-superpowers-workflow/validators/gate-
 
 - **exit 0 (`proceed`)**: list the defaults you took (every `[default]` item) and why, then carry on to the next phase in the same turn. The user can interrupt at any time, and the defaults stay in the artifact for them to overrule later.
 - **exit 10 (`stop`)**: at P1 and P2, first dispatch an independent reviewer (subagent, `model: "opus"`; this is a judgement, never a cheaper model) and fold its result into the artifact. Then present its findings together with every `- <reason>` line gate-check printed, and **wait for the user's approval**. Do not decide on your own that a stop can be skipped.
-- **exit 1 (error)**: a wrong path or argument. Fix the call and run it again; if it fails again, treat it as a stop.
+- **exit 1 (error)**: something you can fix — a wrong path or argument, or (p3 only) a tasks.md that breaks the format rule below; the reason is on stderr. Fix it and run again; if it fails again, treat it as a stop.
 - **No shell to run it**: apply the rules below by hand, reading the same files, and act on the result as if gate-check had printed it.
 
 What stops each gate:
 - **every gate**: `gates: supervised`, or settings that cannot be read (including an unknown `gates` value);
 - **P1**: no `## Decisions` section in proposal.md, a `[needs user]` item under it, a `BREAKING` marker, a spec delta with `MODIFIED`, `REMOVED` or `RENAMED Requirements`, or an `## Impact` path matching `high_risk_paths`;
-- **P2**: a `[needs user]` item under `## Open Questions` in design.md;
-- **P3, P6b**: nothing else — only the two rules for every gate.
+- **P2**: design.md missing or unreadable, or a `[needs user]` item under `## Open Questions` in it;
+- **P3, P6b**: nothing else — only the two rules for every gate. P3 first checks the tasks.md format (every `### Task N` section holds exactly one checkbox, none outside them) and exits 1 when it is broken.
 
 Text inside HTML comments and code fences does not count.
 
 **Settings** (both optional; front matter only):
-- `.claude/openspec-workflow.md` (committed — it describes the project): `high_risk_paths:` followed by `  - <glob>` lines (`**` crosses directories, `*` does not).
+- `.claude/openspec-workflow.md` (committed — it describes the project): `high_risk_paths:` followed by `- <glob>` lines, indented or not; blank lines and `#` comments are fine (`**` crosses directories, `*` does not; a glob without `/` matches a root-level file such as `Dockerfile`). An inline value (`high_risk_paths: [a, b]`) is not read: it counts as unreadable settings.
 - `.claude/openspec-workflow.local.md` (gitignored — personal): `gates: supervised` stops at every gate (the 2.x behaviour); `gates: risk-based` is the default. A key set here wins over the committed file.
 
 **`[needs user]` vs `[default]`**: `[needs user]` is a decision that changes *what* gets built and needs a value or risk trade-off only the user can make; `[default]` is a choice you made and can defend. When in doubt, mark `[needs user]`: these markers are reminders you write yourself, and gate-check cannot tell whether they are honest. An item you or the reviewer marked `[needs user]` is never downgraded to `[default]` — with one exception: the user has delegated the call in their own words ("skip the questions", "跳過提問", "you decide"). Then mark it `[default]`, say in the reply that it was delegated, and let the gate rules above decide as usual.
@@ -202,7 +202,7 @@ After brainstorming completes, OVERWRITE `openspec/changes/<feature-name>/design
 
 A checkbox on every step makes progress count several times too large and "tick it when done" a chore nobody does. That is how tasks.md ended up as a plan that nothing updated.
 
-**Gate (P3)**: once `tasks.md` is written, run the bundled validator (without a shell, check its rules by hand: one checkbox under each `### Task N`, numbered steps), then `gate-check.cjs p3` (see "Gates"). When both pass, go on to Phase 4 in the same turn and name the execution method you chose (rule in Phase 4 step 1); the user does not review the task breakdown.
+**Gate (P3)**: once `tasks.md` is written, run the bundled validator, then `gate-check.cjs p3` (see "Gates"; it is the check that tasks.md has one checkbox under each `### Task N`). When both pass, go on to Phase 4 in the same turn and name the execution method you chose (rule in Phase 4 step 1); the user does not review the task breakdown.
 ```bash
 node ${CLAUDE_PLUGIN_ROOT}/skills/openspec-superpowers-workflow/validators/validate-openspec-workflow.cjs openspec/changes/<feature-name>
 ```

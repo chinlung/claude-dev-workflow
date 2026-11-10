@@ -65,6 +65,7 @@ Decision: export runs as a queued job.
 ## Open Questions
 - [default] keep files for 24 hours
 EOF
+  printf '## 1. Export\n### Task 1: export job\n- [ ] 1.1 export job with its test\n1. Write the failing test\n2. Implement\n### Task 2: download link\n- [ ] 2.1 download link with its test\n1. Write the failing test\n' > "$d/tasks.md"
   echo "$d"
 }
 
@@ -165,6 +166,29 @@ eq "single star matches one level: exit 10" 10 "$RC"
 fresh; settings "$P" committed $'---\nhigh_risk_paths:\n  - src/*.ts\n---\n'; run p1 "$D"
 eq "single star does not cross a slash: exit 0" 0 "$RC"
 
+# ---- 設定的 YAML 寫法：讀得懂就照讀，讀不懂就停，不可靜默變成空清單 ----
+fresh; settings "$P" committed $'---\nhigh_risk_paths:\n- src/export/**\n---\n'; run p1 "$D"
+stops "yaml list item at column 0" high-risk-path
+fresh; settings "$P" committed $'---\nhigh_risk_paths:\n  - src/export/**   # export code\n---\n'; run p1 "$D"
+stops "yaml list item with a trailing comment" high-risk-path
+fresh; settings "$P" committed $'---\ngates: risk-based   # or supervised\n---\n'; run p1 "$D"
+eq "yaml gates with a trailing comment proceeds" 0 "$RC"
+fresh; settings "$P" local $'---\nhigh_risk_paths: [src/export/**]\n---\n'; run p1 "$D"
+stops "yaml flow list is not read silently" settings-unreadable
+fresh; settings "$P" committed $'---\nhigh_risk_paths: src/export/**\n---\n'; run p1 "$D"
+stops "yaml inline scalar is not read silently" settings-unreadable
+fresh; settings "$P" committed $'---\nhigh_risk_paths:\n\n  - src/export/**\n---\n'; run p1 "$D"
+stops "yaml blank line inside the list" high-risk-path
+fresh; settings "$P" committed $'---\nhigh_risk_paths:\n  # export code\n  - src/export/**\n---\n'; run p1 "$D"
+stops "yaml comment line inside the list" high-risk-path
+# 根目錄檔名（沒有 /）也是路徑
+fresh; settings "$P" committed $'---\nhigh_risk_paths:\n  - Dockerfile\n---\n'
+perl -pi -e 's/^- `src\/export\/invoice.ts`$/- `src\/export\/invoice.ts`\n- `Dockerfile`/' "$D/proposal.md"; run p1 "$D"
+stops "root-level file name in Impact" high-risk-path
+# 設計文件 §4.6 範例的原文（註解、縮排清單）照常解析
+fresh; settings "$P" committed $'---\ngates: risk-based        # 或 supervised\nhigh_risk_paths:         # 選填，glob\n  - app/Http/Middleware/**\n  - src/auth/**\n---\n'; run p1 "$D"
+eq "design doc example parses (no match, proceeds)" 0 "$RC"
+
 # ---- 錯誤路徑 ----
 fresh; mkdir -p "$WORK/elsewhere/foo"; cp "$D/proposal.md" "$WORK/elsewhere/foo/"; run p1 "$WORK/elsewhere/foo"
 eq "bad-change-dir (not under openspec/changes): exit 1" 1 "$RC"; has "bad-change-dir: message" "$WORK/out.txt" "not under openspec/changes"
@@ -187,6 +211,24 @@ eq "p2 needs-user outside Open Questions: exit 0" 0 "$RC"
 fresh; perl -pi -e 's/^- \[default\] export runs.*$/- [needs user] p1 item/' "$D/proposal.md"; run p2 "$D"
 eq "p2 ignores proposal needs-user: exit 0" 0 "$RC"
 
+# ---- P2：讀不到 design.md 不能當成「沒有問題」 ----
+fresh; rm "$D/design.md"; run p2 "$D"
+stops "p2 design.md missing" design-unreadable
+fresh; rm "$D/design.md"; mkdir "$D/design.md"; run p2 "$D"
+stops "p2 design.md unreadable (a directory)" design-unreadable
+
+# ---- P3：tasks.md 格式（每個 ### Task 恰好一個勾選框）不合格 → exit 1，修好再跑 ----
+fresh; printf -- '- [ ] 1.2 a second box\n' >> "$D/tasks.md"; run p3 "$D"
+eq "p3 a Task with two checkboxes: exit 1" 1 "$RC"; has "p3 two checkboxes: message names the Task" "$WORK/out.txt" "Task 2"
+fresh; perl -0pi -e 's/- \[ \] 2\.1 download link with its test\n//' "$D/tasks.md"; run p3 "$D"
+eq "p3 a Task with no checkbox: exit 1" 1 "$RC"
+fresh; printf '# Tasks\n\n- [ ] do everything\n' > "$D/tasks.md"; run p3 "$D"
+eq "p3 no ### Task heading: exit 1" 1 "$RC"
+fresh; rm "$D/tasks.md"; run p3 "$D"
+eq "p3 tasks.md missing: exit 1" 1 "$RC"
+fresh; printf -- '<!--\n- [ ] 2.2 example\n-->\n' >> "$D/tasks.md"; run p3 "$D"
+eq "p3 a checkbox inside a comment does not count: exit 0" 0 "$RC"
+
 # ---- P3／P6b：只看設定，不看 change 內容 ----
 fresh; printf -- '- [needs user] pick one\n' >> "$D/proposal.md"; perl -pi -e 's/^- Add an invoice export\.$/- **BREAKING** drop it/' "$D/proposal.md"; run p3 "$D"
 eq "p3 ignores proposal triggers: exit 0" 0 "$RC"
@@ -197,7 +239,7 @@ out=$(node -e 'const m = require(process.argv[1]); process.stdout.write([typeof 
 eq "require exports the three functions without running main" "function,function,function" "$out"
 
 # ---- summary ----
-MIN=74
+MIN=100
 if [ "$((PASS + FAIL))" -lt "$MIN" ]; then
   echo "FAIL: ran $((PASS + FAIL)) assertions, expected at least $MIN"; FAIL=$((FAIL+1))
 fi

@@ -19,13 +19,13 @@ Analysis behind this release: `docs/openspec-hitl-gate-analysis-2026-11-10.md` (
 
 ### Added
 
-- `validators/gate-check.cjs <p1|p2|p3|p6b>` (exit 0 proceed, 10 stop, 1 error: fix the call and re-run, a second failure is a stop). Settings: `.claude/openspec-workflow.md` (committed, `high_risk_paths`) and `.claude/openspec-workflow.local.md` (personal, `gates`). Unreadable settings or an unknown `gates` value count as a stop; `p3` and `p6b` look at the settings only. A session without a shell applies the same rules by hand.
+- `validators/gate-check.cjs <p1|p2|p3|p6b>` (exit 0 proceed, 10 stop, 1 error: fix the call, or at p3 a tasks.md that breaks the one-checkbox-per-Task rule, and re-run; a second failure is a stop). P2 also stops when design.md cannot be read. Settings: `.claude/openspec-workflow.md` (committed, `high_risk_paths`) and `.claude/openspec-workflow.local.md` (personal, `gates`). Unreadable settings or an unknown `gates` value count as a stop; `p3` and `p6b` look at the settings only. A session without a shell applies the same rules by hand.
 - proposal.md gets a required `## Decisions` section (`[needs user]` / `[default]` items); Phase 6a rewrites it as the decisions taken.
 
 ### Tests
 
-- `gate-check.test.sh`: 62 checks; seven mutations against a copy each turn it red. `skill-docs.test.sh`: 24 checks (validators named in phases.md exist, gate-check p1/p2 are run, the old Phase 1 hard stop is gone).
-- Eval (local, not committed): design suite 05 (Phase 1 trigger stops) with 1.00 / without 0.73; 06 (Phase 3 does not wait) with 1.00 / without 1.00, so it shows 3.0 does not stop there but cannot show uplift; 01, 02, 04 unchanged; 03 (skip the questions) fell to 0.56 on the first run, fixed by the delegation rule, back to 0.85 as before. Phase 6 suite: 01 and 03 at 1.00, 02 at 0.92 (0.83 before). Phase 5 suite: 8 of 8 cases at 1.00 with the plugin, as before. Sessions without a shell (all eval runs) stop at P1, so the P1 proceed path has unit coverage only.
+- `gate-check.test.sh`: 100 checks, including the settings YAML shapes (unindented list, comments, blank lines, inline values), root-level file names, an unreadable design.md and the tasks.md format; seventeen mutations against a copy each turn it red. `skill-docs.test.sh`: 24 checks (validators named in phases.md exist, gate-check p1/p2 are run, the old Phase 1 hard stop is gone).
+- Eval (local, not committed): design suite 05 (Phase 1 trigger stops) with 1.00 / without 0.73; 06 (Phase 3 does not wait) with 1.00 / without 1.00, so it shows 3.0 does not stop there but cannot show uplift; 01, 02, 04 unchanged; 03 (skip the questions) fell to 0.56 on the first run, fixed by the delegation rule, back to 0.85 as before. Phase 6 suite: 01 and 03 at 1.00, 02 at 0.92 (0.83 before). Phase 5 suite: 8 of 8 cases at 1.00 with the plugin, as before. Eval runs have no shell. The numbers above were measured while a shell-less session stopped at every P1/P2 gate; under the final rule (apply the gate rules by hand) 03, 05 and 06 were rerun: 03 with 1.00 / without 0.56, 05 with 1.00 / without 1.00, 06 with 1.00 / without 1.00.
 
 ## [2.2.1] - 2026-11-10
 

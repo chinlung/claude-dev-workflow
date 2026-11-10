@@ -81,7 +81,7 @@
 | 設定為 `supervised` | 停 |
 | 沒有 `## Decisions` 段（內容可以是「無」，但段落要存在） | 停，理由「待決事項未記錄」：缺紀錄時偏向問人 |
 | `## Decisions` 至少一項 `[needs user]` | 停 |
-| proposal 含 `**BREAKING**` | 停 |
+| proposal 含 `BREAKING` 字樣（任何形式，否定句也算；寧可多停） | 停 |
 | spec delta 有 `## MODIFIED／REMOVED／RENAMED Requirements` | 停（改變既有契約） |
 | proposal `## Impact` 列出的路徑命中設定的 `high_risk_paths` | 停 |
 | 以上都不成立 | 繼續 |
@@ -89,7 +89,7 @@
 - exit code：0 = 繼續、10 = 停、1 = 錯誤（視同停）。stdout 列出命中的理由，agent 照抄進回覆。
 
 **兩種觸發，強度不同。** 判定由腳本執行，但它讀的內容有兩種：
-- **結構事實**：`**BREAKING**`、delta 的 `MODIFIED／REMOVED／RENAMED` 標題。這些也是 agent 寫的，但 OpenSpec 會驗證 delta 格式，而且使用者在 review 時看得到。
+- **結構事實**：`BREAKING` 字樣、delta 的 `MODIFIED／REMOVED／RENAMED` 標題。這些也是 agent 寫的，但 OpenSpec 會驗證 delta 格式，而且使用者在 review 時看得到。
 - **流程標記**：`[needs user]`、`reviewed:` 標記、不得降級的規則。這些全靠 agent 自律，**是提醒，不是閘門**。agent 可以把待決事項寫成 `[default]`，或不跑審查就寫上 `reviewed:`，腳本分辨不出來，這和 §8 R1 否決的弱點相同。審查只在要停時才跑，所以公告後繼續的 change 裡，`[needs user]` 只會來自作者自己。
 
 所以實際能擋住 agent 漏判的只有結構事實；流程標記只能降低漏判的機率。
