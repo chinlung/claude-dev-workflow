@@ -438,12 +438,16 @@ docs/task-{YYYYMMDD-HHMM}-{簡短名稱}/
 
 | Phase | 主導工具 | 動作 | 產出 |
 |-------|---------|------|------|
-| 1. Spec Definition | OpenSpec | `openspec new change` + 填入 `proposal.md` / `specs/` | 使用者審核的 proposal + specs |
+| 1. Spec Definition | OpenSpec | `openspec new change` + 填入 `proposal.md`（含 `## Decisions`）/ `specs/` | proposal + specs；由 `gate-check.cjs` 決定進 Phase 2 前要不要等你核准 |
 | 2. Design Refinement | Superpowers `brainstorming` | 先列假設、全 phase 至多 2 題提問、對照設計紅旗 | **覆寫** `design.md` 原位 |
 | 3. Task Planning | Superpowers `writing-plans` | 切出 2-5 分鐘粒度任務 | **覆寫** `tasks.md` 原位 |
 | 4. Implementation | Superpowers `executing-plans`（task 獨立時 `subagent-driven-development`）+ TDD | RED → GREEN → REFACTOR | 可運行程式碼 |
 | 5. Review & Feedback | 人類主導 | 分類 `[REQUIREMENT\|DESIGN\|CODE\|CONSTITUTION]` + Y/N | `review-notes.md`；**spec 一律不動** |
 | 6. Reconcile & Archive | OpenSpec | Clean rewrite（非 patch）+ `openspec archive` | 合併至 `openspec/specs/<capability>/spec.md` |
+
+**什麼時候會停下來等你（3.0）**：每個確認點都由 `gate-check.cjs` 依 change 裡的事實與設定決定。這些事實是：`BREAKING` 標記、改到既有 requirement 的 delta、`[needs user]` 決策，以及命中 `high_risk_paths`。
+
+Phase 1、2 停下前會先派 opus 獨立審查。Phase 3 與 Phase 6 的改寫只在 `gates: supervised` 時停；宣告 review 收斂仍由你決定。完整規則見 skill 的 `phases.md`「Gates」節。
 
 ## 不可妥協的六條硬規則
 
@@ -459,15 +463,16 @@ docs/task-{YYYYMMDD-HHMM}-{簡短名稱}/
 ```
 skills/openspec-superpowers-workflow/
 ├── SKILL.md                    # 61 行 — trigger map + SKIP 條款 + phase 表 + 6 條硬規則（常駐載入）
-├── PHASE-IDENTIFICATION.md     # 95 行 — Phase 判定決策樹 + SKIP 判定程序（Phase 不明時載入）
-├── phases.md                   # 330 行 — 完整 playbook、tag 語意、gotcha（需要時才載入）
-├── SUPERPOWERS-HANDOFF.md      # 140 行 — Phase 2/3/4 sync-back 範本、sidecar 檔 anti-pattern
-├── OUTPUT-CONTRACTS.md         # 218 行 — 各 Phase 產出契約、requirement 寫法正反例
-├── RECONCILIATION-CRITERIA.md  # 116 行 — Phase 6 歸檔前核查清單
+├── PHASE-IDENTIFICATION.md     # 97 行 — Phase 判定決策樹 + SKIP 判定程序（Phase 不明時載入）
+├── phases.md                   # 446 行 — 完整 playbook、tag 語意、gotcha（需要時才載入）
+├── SUPERPOWERS-HANDOFF.md      # 142 行 — Phase 2/3/4 sync-back 範本、sidecar 檔 anti-pattern
+├── OUTPUT-CONTRACTS.md         # 219 行 — 各 Phase 產出契約、requirement 寫法正反例
+├── RECONCILIATION-CRITERIA.md  # 128 行 — Phase 6 歸檔前核查清單
 ├── DESIGN-RED-FLAGS.md         # 八條設計紅旗（Phase 2 覆寫 design.md 前自檢）
 └── validators/
     ├── validate-openspec-workflow.cjs  # change folder 寬鬆 pre-check
-    └── reconcile-check.cjs             # Phase 6 歸檔前核查（snapshot／check／verify）
+    ├── reconcile-check.cjs             # Phase 6 歸檔前核查（snapshot／check／verify）
+    └── gate-check.cjs                  # p1／p2／p3／p6b 確認點：停下等使用者（exit 10）或繼續（exit 0）
 ```
 
 Skill 啟動時 Claude 先讀 `SKILL.md`，辨認當前 Phase 後只載入該 Phase 需要的 reference（Phase 不明讀 `PHASE-IDENTIFICATION.md`、playbook 讀 `phases.md` 對應段落、Phase 2/3/4 交接讀 `SUPERPOWERS-HANDOFF.md`、歸檔前讀 `RECONCILIATION-CRITERIA.md`），即使有近 900 行 playbook 也不會爆 context。

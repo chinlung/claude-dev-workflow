@@ -440,12 +440,14 @@ This plugin ships an auto-triggered skill (no slash command) and two PreToolUse 
 
 | Phase | Leader | Action | Output |
 |-------|--------|--------|--------|
-| 1. Spec Definition | OpenSpec | `openspec new change` + fill `proposal.md` / `specs/` | User-reviewed proposal + specs |
+| 1. Spec Definition | OpenSpec | `openspec new change` + fill `proposal.md` (with `## Decisions`) / `specs/` | Proposal + specs; `gate-check.cjs` decides whether you approve before Phase 2 |
 | 2. Design Refinement | Superpowers `brainstorming` | Assumptions first, at most two questions, design red-flag check | **OVERWRITES** `design.md` in place |
 | 3. Task Planning | Superpowers `writing-plans` | 2-5 min granularity tasks | **OVERWRITES** `tasks.md` in place |
 | 4. Implementation | Superpowers `executing-plans` (`subagent-driven-development` for independent tasks) + TDD | RED → GREEN → REFACTOR | Working code |
 | 5. Review & Feedback | Human-driven | Tag feedback `[REQUIREMENT\|DESIGN\|CODE\|CONSTITUTION]` + Y/N | `review-notes.md`; **specs are never touched** |
 | 6. Reconcile & Archive | OpenSpec | Clean rewrite (not patch) + `openspec archive` | Merged into `openspec/specs/<capability>/spec.md` |
+
+**When it stops for you (3.0).** `gate-check.cjs` decides at each gate, from facts in the change (a `BREAKING` marker, a delta that changes an existing requirement, a `[needs user]` decision, a `high_risk_paths` match) and the settings; a stop at Phases 1–2 starts with an independent opus review. Phase 3 and the Phase 6 rewrite stop only under `gates: supervised`; declaring review converged stays yours. Full rules: the Gates section of the skill's `phases.md`.
 
 ## Six Non-Negotiable Rules
 
@@ -461,15 +463,16 @@ This plugin ships an auto-triggered skill (no slash command) and two PreToolUse 
 ```
 skills/openspec-superpowers-workflow/
 ├── SKILL.md                    # 61 lines — trigger map + SKIP clause + phase table + 6 rules (always loaded)
-├── PHASE-IDENTIFICATION.md     # 95 lines — phase decision tree + SKIP procedure (loaded when phase is unclear)
-├── phases.md                   # 330 lines — full playbook, tag semantics, gotchas (loaded on demand)
-├── SUPERPOWERS-HANDOFF.md      # 140 lines — Phase 2/3/4 sync-back templates, sidecar-file anti-patterns
-├── OUTPUT-CONTRACTS.md         # 218 lines — per-phase output contracts, requirement-writing examples
-├── RECONCILIATION-CRITERIA.md  # 116 lines — Phase 6 pre-archive gate checklist
+├── PHASE-IDENTIFICATION.md     # 97 lines — phase decision tree + SKIP procedure (loaded when phase is unclear)
+├── phases.md                   # 446 lines — full playbook, tag semantics, gotchas (loaded on demand)
+├── SUPERPOWERS-HANDOFF.md      # 142 lines — Phase 2/3/4 sync-back templates, sidecar-file anti-patterns
+├── OUTPUT-CONTRACTS.md         # 219 lines — per-phase output contracts, requirement-writing examples
+├── RECONCILIATION-CRITERIA.md  # 128 lines — Phase 6 pre-archive gate checklist
 ├── DESIGN-RED-FLAGS.md         # eight design red flags (Phase 2 self-check before design.md is overwritten)
 └── validators/
     ├── validate-openspec-workflow.cjs  # lenient change-folder pre-check
-    └── reconcile-check.cjs             # Phase 6 pre-archive check (snapshot / check / verify)
+    ├── reconcile-check.cjs             # Phase 6 pre-archive check (snapshot / check / verify)
+    └── gate-check.cjs                  # P1/P2 gate: stop for the user (exit 10) or proceed (exit 0)
 ```
 
 When the skill activates, Claude first reads `SKILL.md`, identifies which phase applies, then loads only the reference that phase needs (`PHASE-IDENTIFICATION.md` when the phase is unclear, the relevant section of `phases.md`, `SUPERPOWERS-HANDOFF.md` for Phase 2/3/4 handoffs, `RECONCILIATION-CRITERIA.md` before archiving). Context budget stays controlled even with ~900 lines of playbook.

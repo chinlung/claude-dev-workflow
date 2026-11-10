@@ -16,7 +16,7 @@
 
 | Phase | 主導工具 | 動作 | 產出 |
 |-------|---------|------|------|
-| 1. Spec Definition | OpenSpec | `openspec new change` + 填入 proposal / specs | `proposal.md`、`specs/<capability>/spec.md`（使用者審核） |
+| 1. Spec Definition | OpenSpec | `openspec new change` + 填入 proposal / specs | `proposal.md`（含 `## Decisions`）、`specs/<capability>/spec.md`（`gate-check.cjs p1` 決定要不要等核准，見下方 Gates） |
 | 2. Design Refinement | Superpowers `brainstorming` | 先列假設、全 phase 至多 2 題提問，對照設計紅旗後精煉設計 | **覆寫** `design.md` |
 | 3. Task Planning | Superpowers `writing-plans` | 切出 2-5 分鐘粒度任務 | **覆寫** `tasks.md` |
 | 4. Implementation | Superpowers `executing-plans`（task 獨立時 `subagent-driven-development`）+ TDD | RED → GREEN → REFACTOR | 程式碼 |
@@ -37,15 +37,16 @@
 ```
 skills/openspec-superpowers-workflow/
 ├── SKILL.md                    # 61 行：trigger 條件、SKIP 條款、phase map、六條硬規則（常駐載入）
-├── PHASE-IDENTIFICATION.md     # 95 行：Phase 判定決策樹、SKIP 判定程序（Phase 不明時載入）
-├── phases.md                   # 330 行：完整六階段 playbook、tag 分類細節、路徑慣例、anti-pattern（需要時才載入）
-├── SUPERPOWERS-HANDOFF.md      # 140 行：Phase 2/3/4 sync-back 範本、sidecar 檔 anti-pattern
-├── OUTPUT-CONTRACTS.md         # 218 行：各 Phase 產出契約、requirement 寫法正反例、deferred 項慣例
-├── RECONCILIATION-CRITERIA.md  # 116 行：Phase 6 歸檔前核查清單
+├── PHASE-IDENTIFICATION.md     # 97 行：Phase 判定決策樹、SKIP 判定程序（Phase 不明時載入）
+├── phases.md                   # 446 行：完整六階段 playbook、tag 分類細節、路徑慣例、anti-pattern（需要時才載入）
+├── SUPERPOWERS-HANDOFF.md      # 142 行：Phase 2/3/4 sync-back 範本、sidecar 檔 anti-pattern
+├── OUTPUT-CONTRACTS.md         # 219 行：各 Phase 產出契約、requirement 寫法正反例、deferred 項慣例
+├── RECONCILIATION-CRITERIA.md  # 128 行：Phase 6 歸檔前核查清單
 ├── DESIGN-RED-FLAGS.md         # 八條設計紅旗（Phase 2 覆寫 design.md 前自檢）
 └── validators/
     ├── validate-openspec-workflow.cjs  # change folder 寬鬆 pre-check（見下方 Validator）
-    └── reconcile-check.cjs             # Phase 6 歸檔前核查（snapshot／check／verify，見下方 Archive gate）
+    ├── reconcile-check.cjs             # Phase 6 歸檔前核查（snapshot／check／verify，見下方 Archive gate）
+    └── gate-check.cjs                  # p1／p2／p3／p6b 確認點：停下等使用者（exit 10）或繼續（exit 0），見下方 Gates
 ```
 
 觸發時 Claude 先讀 `SKILL.md`，確認當前 Phase 後只載入該 Phase 需要的 reference（Phase 不明讀 `PHASE-IDENTIFICATION.md`、playbook 讀 `phases.md` 對應段落、Phase 2/3/4 交接讀 `SUPERPOWERS-HANDOFF.md`、Phase 6 歸檔前讀 `RECONCILIATION-CRITERIA.md`），避免一次吃下近 900 行拖慢 context。
@@ -81,6 +82,29 @@ SKIP 的唯一依據是上述契約面判定，沒有其他豁免類別（例如
 ```
 
 進入 skill 後它會先讀取當前專案狀態（`which openspec`、`ls openspec/`、`ls .claude/commands/opsx/`），依結果引導你走正確的 Phase。
+
+## Gates：什麼時候停下來等你（3.0）
+
+2.x 在 P1（proposal／spec）、P2（design）、P3（tasks）、P6b（改寫後的 spec）一律停下等核准。歷史資料顯示，P1–P3 的 87 次確認只有 1 次真的退回；確認點上抓到的問題，都是使用者要求「加跑審查」之後才浮現的（分析見 `docs/openspec-hitl-gate-analysis-2026-11-10.md`）。3.0 改成由事實決定要不要停：
+
+| 確認點 | 3.0（預設 `risk-based`） |
+|---|---|
+| P1 | `gate-check.cjs p1`：結構事實（`BREAKING`、修改／移除／改名既有 requirement 的 delta）、`[needs user]` 標記（任何項目寫法、任何段落）、命中 `high_risk_paths` 時，先派 opus 獨立審查再停下；否則公告採用的預設後繼續 |
+| P2 | `gate-check.cjs p2`：design.md 任何位置有 `[needs user]`，或讀不到 design.md，才停 |
+| P3、P6b | `gate-check.cjs p3`／`p6b` 只在 `gates: supervised` 或設定讀不懂時停；p3 先核對 tasks.md 每個 `### Task N` 恰好一個勾選框，不合格 exit 1 由 agent 修好再跑；P6b 的改寫摘要寫進回覆與歸檔 PR，reconcile-check 仍是歸檔閘門 |
+| P5 | 宣告收斂仍由你決定；條件成立時 agent 會主動建議收斂 |
+
+完整的停下規則只寫在 `skills/openspec-superpowers-workflow/phases.md` 的「Gates」節。
+
+**設定**（都是選用，只讀 front matter）：
+- `.claude/openspec-workflow.md`（進版控，描述專案）：`high_risk_paths:` 底下列 `- <glob>`，縮排與否都可，中間可以有空白行和 `#` 註解（`**` 跨目錄，`*` 不跨；不含 `/` 的 glob 比對根目錄檔名，如 `Dockerfile`）。行內寫法 `high_risk_paths: [a, b]`、拼錯的 key、重複的 `gates:` 都算設定讀不懂（停下，不會靜默當成空清單）。
+- `.claude/openspec-workflow.local.md`（gitignored，個人偏好）：`gates: supervised` 回到 2.x 的每個確認點都停。這個檔案設定的 key 會覆蓋前者。
+
+**界線**：
+- 設定檔讀不懂、`gates` 值認不得，一律視同停下。方向刻意和兩支 hook 的 fail-open 相反：這裡出錯的代價是跳過人類決策。沒有 shell 的 session 照同一份規則手動判定。
+- `[needs user]`／`[default]` 是 agent 自己寫的標記，gate-check 分辨不出誠實與否，只是提醒。真正擋得住漏判的只有結構事實（BREAKING、delta 標題）。
+
+**測試**：`bash plugins/openspec-superpowers-workflow/tests/gate-check.test.sh`（已接 CI；每個停下的理由至少兩個觸發輸入，七個突變各自轉紅）。
 
 ## Skip-gate Hook
 

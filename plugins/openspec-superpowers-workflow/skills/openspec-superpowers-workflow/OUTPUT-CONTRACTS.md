@@ -25,7 +25,7 @@
 
 | 檔案 | 內容要求 | 可驗證條件 |
 |------|---------|-----------|
-| `proposal.md` | 功能目的、能力列表、使用者故事 | 非空；使用者已審核通過 |
+| `proposal.md` | 功能目的、能力列表、使用者故事；`## Decisions` 段列出每個關於「要做什麼」的決定，標 `[needs user]` 或 `[default]`，沒有就寫 `- none` | 非空；`gate-check.cjs p1` 回 0，或使用者已核准（回 10／1 時） |
 | `specs/<capability>/spec.md` | `### Requirement:` 區塊每個第一段含 SHALL 或 MUST | `openspec validate --strict` 通過 |
 | `design.md` | Stub（說明將由 Phase 2 覆寫） | 存在即可；Phase 1 不要求完整設計 |
 | `tasks.md` | Stub（說明將由 Phase 3 覆寫） | 存在即可；Phase 1 不要求完整任務 |
@@ -69,7 +69,7 @@ All exports must be validated before download.
 
 | 檔案 | 內容要求 | 可驗證條件 |
 |------|---------|-----------|
-| `design.md` | 完整設計文件（OVERWRITE stub）；包含架構、API、資料模型、錯誤處理 | 內容非 stub；使用者已審核 |
+| `design.md` | 完整設計文件（OVERWRITE stub）；包含架構、API、資料模型、錯誤處理；`## Open Questions` 的每一項標 `[needs user]` 或 `[default]` | 內容非 stub；`gate-check.cjs p2` 回 0，或使用者已核准（回 10／1 時） |
 
 ### 覆蓋定義
 
@@ -85,7 +85,7 @@ All exports must be validated before download.
 
 | 檔案 | 內容要求 | 可驗證條件 |
 |------|---------|-----------|
-| `tasks.md` | 完整任務清單（OVERWRITE stub）；每個任務含精確檔案路徑、驗證步驟；每個 `### Task N` 標題下恰有一個勾選框，步驟用編號清單 | 內容非 stub；每個設計決策有對應任務；使用者已審核；框數等於 Task 數 |
+| `tasks.md` | 完整任務清單（OVERWRITE stub）；每個任務含精確檔案路徑、驗證步驟；每個 `### Task N` 標題下恰有一個勾選框，步驟用編號清單 | 內容非 stub；每個設計決策有對應任務；`validate-openspec-workflow.cjs` 與 `gate-check.cjs p3` 通過（停下時另需使用者已核准）；框數等於 Task 數 |
 
 ### 覆蓋定義
 

@@ -35,7 +35,7 @@ If the project is not initialized, run `openspec init .` (note: use `.` for the 
 
 | Phase | Lead | Output |
 |---|---|---|
-| 1. Spec definition | OpenSpec | `proposal.md`, `specs/` (user approves) |
+| 1. Spec definition | OpenSpec | `proposal.md` (with `## Decisions`), `specs/`; `gate-check.cjs p1` decides whether the user approves first |
 | 2. Design refinement | Superpowers `brainstorming` | OVERWRITES `design.md` |
 | 3. Task planning | Superpowers `writing-plans` | OVERWRITES `tasks.md` |
 | 4. Implementation | Superpowers `executing-plans` (or `subagent-driven-development` when the tasks are independent) + TDD | code |
@@ -54,7 +54,7 @@ If the project is not initialized, run `openspec init .` (note: use `.` for the 
 ## How to use this skill
 
 1. Identify which phase the user is in — read `PHASE-IDENTIFICATION.md` when this is a new OpenSpec workflow, the request may span multiple phases, an `openspec/changes/<name>/` folder exists but status is unclear, or the phase is ambiguous.
-2. Read `phases.md` for the detailed playbook of that phase — includes exact actions, sync-back rules, review-notes.md format, and anti-patterns.
+2. Read `phases.md` for the detailed playbook of that phase — includes exact actions, sync-back rules, review-notes.md format, and anti-patterns. Its "Gates" section is the one place that says when to stop for the user: `gate-check.cjs` decides at the end of Phases 1 and 2, at Phase 3 → 4 and at Step 6b.
 3. For Phase 2/3/4 handoffs where Superpowers produces design/tasks/code, read `SUPERPOWERS-HANDOFF.md` before syncing back to OpenSpec. Before overwriting `design.md` in Phase 2, also read `DESIGN-RED-FLAGS.md` and check the draft against it; Phase 2 asks at most two questions in total (see `phases.md`).
 4. Follow it exactly. If switching phases mid-conversation, re-read the relevant section.
 

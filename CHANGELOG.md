@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.16.0] - 2026-11-10
+
+### Changed
+
+- **openspec-superpowers-workflow 2.2.1 → 3.0.0 (breaking default)** — the workflow stops for you only when a fact says so. A new `gate-check.cjs` decides at the end of Phases 1 and 2: a `BREAKING` marker, a spec delta that modifies, removes or renames a requirement, a `[needs user]` decision, a `high_risk_paths` match or unreadable settings mean an independent opus review and then a stop; otherwise the agent lists its defaults and carries on. Phase 3 and the Phase 6 spec rewrite no longer wait. `gates: supervised` restores the 2.x stops. See that plugin's CHANGELOG [3.0.0] and `docs/openspec-workflow-3-gates-design-2026-11-10.md`.
+
 ## [1.15.4] - 2026-11-10
 
 ### Fixed

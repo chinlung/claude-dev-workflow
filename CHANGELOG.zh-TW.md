@@ -4,6 +4,16 @@
 
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
+## [1.16.0] - 2026-11-10
+
+### Changed
+
+- **openspec-superpowers-workflow 2.2.1 → 3.0.0（預設行為改變）**：workflow 只在事實需要你時才停下。新的 `gate-check.cjs` 在 Phase 1、2 結尾判定：
+  - 有 `BREAKING` 標記、spec delta 修改／移除／改名既有 requirement、`[needs user]` 決策、命中 `high_risk_paths`，或設定讀不懂 → 先派 opus 獨立審查，再停下；
+  - 否則 agent 列出採用的預設後繼續。
+
+  Phase 3 與 Phase 6 的 spec 改寫不再等待；`gates: supervised` 可回到 2.x 的停法。詳見該插件 CHANGELOG [3.0.0] 與 `docs/openspec-workflow-3-gates-design-2026-11-10.md`。
+
 ## [1.15.4] - 2026-11-10
 
 ### Fixed
