@@ -76,7 +76,7 @@ node ${CLAUDE_PLUGIN_ROOT}/skills/openspec-superpowers-workflow/validators/gate-
 ```
 
 - **exit 0 (`proceed`)**: list the defaults you took (every `[default]` item) and why, then carry on to the next phase in the same turn. The user can interrupt at any time, and the defaults stay in the artifact for them to overrule later.
-- **exit 10 (`stop`) or 1 (error)**: dispatch an independent reviewer (subagent, `model: "opus"`; this is a judgement, never a cheaper model), fold its result into the artifact, then present the reviewer's findings together with every `- <reason>` line gate-check printed, and **wait for the user's approval**. Do not decide on your own that a stop can be skipped.
+- **exit 10 (`stop`) or 1 (error), or you cannot run gate-check at all** (no shell): dispatch an independent reviewer (subagent, `model: "opus"`; this is a judgement, never a cheaper model), fold its result into the artifact, then present the reviewer's findings together with every `- <reason>` line gate-check printed, and **wait for the user's approval**. Do not decide on your own that a stop can be skipped.
 
 What stops P1: `gates: supervised`, unreadable settings, no `## Decisions` section in proposal.md, a `[needs user]` item under it, a `BREAKING` marker, a spec delta with `MODIFIED`, `REMOVED` or `RENAMED Requirements`, or an `## Impact` path matching `high_risk_paths`. What stops P2: the same settings rules, or a `[needs user]` item under `## Open Questions` in design.md.
 
@@ -190,7 +190,7 @@ After brainstorming completes, OVERWRITE `openspec/changes/<feature-name>/design
 
 A checkbox on every step makes progress count several times too large and "tick it when done" a chore nobody does. That is how tasks.md ended up as a plan that nothing updated.
 
-**No user gate in Phase 3** (except under `gates: supervised`, where the user reviews the task breakdown first). Once `tasks.md` is written, run the bundled validator; when it passes, go on to Phase 4 in the same turn and name the execution method you chose (rule in Phase 4 step 1):
+**No user gate in Phase 3** (except under `gates: supervised`, where the user reviews the task breakdown first). Once `tasks.md` is written, run the bundled validator (without a shell, check its format rules yourself: one checkbox under each `### Task N`, numbered steps); when it passes, go on to Phase 4 in the same turn and name the execution method you chose (rule in Phase 4 step 1):
 ```bash
 node ${CLAUDE_PLUGIN_ROOT}/skills/openspec-superpowers-workflow/validators/validate-openspec-workflow.cjs openspec/changes/<feature-name>
 ```
