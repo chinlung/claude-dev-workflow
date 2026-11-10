@@ -37,17 +37,30 @@ proj="${proj%/}"
 
 # Change names the command archives, one per line. A shell-word tokenizer, so quoted paths are read
 # as the shell reads them and words inside quotes (a commit message that mentions
-# `openspec archive`) never count; heredoc bodies are dropped. Only command position counts: the
+# `openspec archive`) never count; heredoc bodies are dropped. A here-string (<<<), a << inside a
+# quoted string that closes on the same line, and a << whose delimiter line never comes (an
+# arithmetic shift) are not heredocs, so the lines after them stay commands; a quoted string that
+# spans lines is not tracked here. Only command position counts: the
 # first word of a segment after any VAR=value prefixes, segments split on ; & | ( ) and newlines.
 IFS= read -r -d '' parser <<'PERL' || true
 use strict; use warnings;
 my $c = $ENV{AG_CMD} // '';
-my @lines = split /\n/, $c, -1; my @keep; my $delim;
+my @lines = split /\n/, $c, -1; my @keep; my $delim; my @body;
 for my $l (@lines) {
-  if (defined $delim) { my $t = $l; $t =~ s/^\t+//; undef $delim if $t eq $delim; next; }
+  if (defined $delim) {
+    push @body, $l; my $t = $l; $t =~ s/^\t+//;
+    if ($t eq $delim) { undef $delim; @body = (); }
+    next;
+  }
   push @keep, $l;
-  $delim = $1 if $l =~ /<<-?\s*['"]?([A-Za-z_]\w*)['"]?/;
+  my $s = $l; $s =~ s/<<<//g;                                                     # not-a-heredoc: here-string
+  # A quoted string becomes "" (not nothing, which would join the < on either side of it into <<);
+  # a quoted heredoc delimiter is kept as it is.
+  $s =~ s/(<<-?\s*)?(?:'[^']*'|"(?:\\.|[^"\\])*")/defined $1 ? $& : '""'/ge;   # not-a-heredoc: quoted
+  # the whole delimiter word, not its leading \w+: <<EOF-TEXT closes on EOF-TEXT, not on EOF
+  $delim = $1 // $2 // $3 if $s =~ /<<-?\s*(?:'([^']+)'|"([^"]+)"|\\?([A-Za-z_][^\s;&|()<>'"\\`]*))/;
 }
+push @keep, @body;   # a heredoc that never closes is not one ($((1<<n)) looks like it): its lines are commands
 $c = join "\n", @keep;
 my @segs = ([]); my $tok; my $i = 0; my $n = length $c;
 sub endtok { push @{$segs[-1]}, $tok if defined $tok; undef $tok; }

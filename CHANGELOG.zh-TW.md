@@ -4,6 +4,17 @@
 
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
+## [1.15.1] - 2026-11-10
+
+### Changed
+
+- **openspec-superpowers-workflow 2.0.0 → 2.1.0** — skip-gate 另外要求聲明檔比 `openspec/changes/archive/` 新，所以其他 session 的歸檔、或略過閘門的歸檔之後都要重寫聲明。archive-gate 不再把 here-string 或引號內的 `<<` 當成 heredoc（原本下一行的歸檔會未經核查就放行），並認得 `<<\EOF`；等不到收尾行的 `<<`（算術位移）不再吞掉其後的命令。新增一組測試讓 skip-gate 讀 archive-gate 留下的標記。詳見該插件 CHANGELOG [2.1.0]。
+- **CI：** `validate.yml` 明寫 `permissions: contents: read`，不再依賴 repo 預設值。
+
+### Fixed
+
+- **pr-closeout 1.0.0 → 1.0.1** — merge gate 不再把引號內的 `<<` 當成 heredoc，原本可能讓下一行的 `gh pr merge` 沒被看見。詳見該插件 CHANGELOG [1.0.1]。
+
 ## [1.15.0] - 2026-11-09
 
 ### Added

@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.15.1] - 2026-11-10
+
+### Changed
+
+- **openspec-superpowers-workflow 2.0.0 → 2.1.0** — skip-gate also requires the declaration to be newer than `openspec/changes/archive/`, so an archive by another session or one that bypassed the gate asks for a fresh declaration. archive-gate no longer reads a here-string or a quoted `<<` as a heredoc (an archive on the next line went through unchecked) and recognises `<<\EOF`; a `<<` whose delimiter never comes (an arithmetic shift) no longer swallows the rest of the command. A new test runs skip-gate against the marker archive-gate leaves. See that plugin's CHANGELOG [2.1.0].
+- **CI:** `validate.yml` declares `permissions: contents: read` instead of relying on the repository default.
+
+### Fixed
+
+- **pr-closeout 1.0.0 → 1.0.1** — the merge gate no longer reads a quoted `<<` as a heredoc, which could hide a `gh pr merge` on a following line. See that plugin's CHANGELOG [1.0.1].
+
 ## [1.15.0] - 2026-11-09
 
 ### Added

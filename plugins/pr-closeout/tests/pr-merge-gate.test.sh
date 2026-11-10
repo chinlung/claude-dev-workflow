@@ -60,6 +60,14 @@ FAKE_RC=0 gate allow "merge after another command" "$(bash_in 'git -C /a fetch o
 called "ready o/r 3" "compound: args"
 FAKE_RC=0 gate allow "merge after a here-string" "$(bash_in $'cat <<< x\ngh pr merge 3 --repo o/r\nx')"
 called "ready o/r 3" "here-string: args"
+# << inside a quoted string is not a heredoc either: the line that equals its "delimiter" closes nothing
+FAKE_RC=0 gate allow "merge after << in double quotes" "$(bash_in $'echo "<<true"\ngh pr merge 3 --repo o/r\ntrue')"
+called "ready o/r 3" "dq <<: args"
+FAKE_RC=0 gate allow "merge after << in single quotes" "$(bash_in $'echo \'a<<true\'\ngh pr merge 4 --repo o/r\ntrue')"
+called "ready o/r 4" "sq <<: args"
+# dropping a quoted word must not join the two < around it into <<
+FAKE_RC=0 gate allow "merge after two redirects around a quoted word" "$(bash_in $'cat <"README.md"<LICENSE\ngh pr merge 6 --repo o/r\nLICENSE')"
+called "ready o/r 6" "redirect join: args"
 
 # ── decisions ────────────────────────────────────────────────────────────────────────────────────
 FAKE_RC=3 gate deny "ready says unresolved threads" "$(bash_in 'gh pr merge 3 --repo o/r --squash')"
@@ -143,9 +151,11 @@ gate allow "git merge" "$(bash_in 'git merge --ff-only origin/main')"
 called "" "git merge: ready not called"
 gate allow "merge inside a heredoc body" "$(bash_in $'cat > n.md <<EOF\ngh pr merge 3 --repo o/r\nEOF')"
 called "" "heredoc: ready not called"
+gate allow "merge inside a heredoc whose delimiter has punctuation" "$(bash_in $'cat > n.md <<EOF-TEXT\ngh pr merge 3 --repo o/r\nEOF-TEXT')"
+called "" "punctuated delimiter: ready not called"
 gate allow "nothing about merge" "$(bash_in 'ls -la')"
 
-MIN_PASS=91
+MIN_PASS=99
 if [ "$pass" -lt "$MIN_PASS" ] && [ "${STOP_ON_FAIL:-0}" != 1 ]; then failed "only $pass checks passed, expected at least $MIN_PASS"; fi
 echo "pr-merge-gate: $pass passed, $fail failed"
 
@@ -183,7 +193,9 @@ if [ "${NO_MUTANTS:-0}" != 1 ]; then
   mutant shell-c       "[bash -c: args]"              's/if \(\$s->\[\$m\] =~ \/\^-\[A-Za-z\]\*c\[A-Za-z\]\*\$\/\) \{ push \@queue, \$s->\[\$m \+ 1\] if defined \$s->\[\$m \+ 1\]; last; \}//'
   mutant eval          "[eval: args]"                 's/elsif \(\$w eq '"'"'eval'"'"'\)/elsif (0)/'
   mutant budget        "[two merges, budget spent]"   's/if \[ "\$left" -lt 1000 \]; then/if false; then/'
-  MUT_WANT_N=20
+  mutant quoted-lt     "[dq <<: args]"                's/^.*# not-a-heredoc: quoted$//'
+  mutant quoted-join   "[redirect join: args]"        "s/ : '\"\"'\\/ge;/ : ''\\/ge;/"
+  MUT_WANT_N=22
   if [ "$mut_n" != "$MUT_WANT_N" ]; then echo "FAIL: $mut_n of $MUT_WANT_N mutants ran"; mut_bad=1; fi
   [ "$mut_bad" = 0 ] || fail=$((fail + 1))
 fi

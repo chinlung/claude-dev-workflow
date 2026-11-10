@@ -7,7 +7,12 @@
 #   契約面：API=否 資料=否 schema=否 migration=否 相容=否 權限=否 並行=否 跨模組=否 ｜ 理由：<一句>
 # A surface marked 是 denies and asks for the workflow (Phase 1). After the archive gate allowed an
 # archive in this session (${TMPDIR}/claude-openspec-archived-<session>), the declaration must be
-# newer than that marker: a declaration written before the archive no longer counts.
+# newer than that marker: a declaration written before the archive no longer counts. The marker
+# only exists for an archive this session's gate allowed, so the declaration must also be newer
+# than openspec/changes/archive/ itself, whose mtime moves whenever a change is moved into it: by
+# another session, or by an archive that bypassed the gate. Anything else that touches that
+# directory's mtime (a checkout that adds or removes an archived change) asks for a fresh
+# declaration too.
 # Not gated: openspec/ and .claude/ (workflow and declaration writes), paths outside the project,
 # and documentation (.md .mdx .txt .rst .adoc, docs/, doc/).
 # Every edit in one parallel batch is denied while the file is missing, so v1's batch window and
@@ -62,12 +67,12 @@ deny() {
   exit 0
 }
 
-if [ -f "$marker" ]; then
-  if [ ! -f "$decl" ] || [ ! "$decl" -nt "$marker" ]; then
-    deny "⛔ openspec：本 session 已歸檔 change，這次是歸檔之後的程式碼編輯。它若碰到任何契約面，spec 就會漏掉這次修訂：請開 follow-up change（Phase 1）。確認八面都不命中時，在歸檔之後重新寫聲明檔（歸檔前寫的不算）：${decl}，內容一行：${template}"
-  fi
+if [ -f "$marker" ] && { [ ! -f "$decl" ] || [ ! "$decl" -nt "$marker" ]; }; then
+  deny "⛔ openspec：本 session 已歸檔 change，這次是歸檔之後的程式碼編輯。它若碰到任何契約面，spec 就會漏掉這次修訂：請開 follow-up change（Phase 1）。確認八面都不命中時，在歸檔之後重新寫聲明檔（歸檔前寫的不算）：${decl}，內容一行：${template}"
 elif [ ! -f "$decl" ]; then
   deny "⛔ openspec 專案偵測到程式碼編輯，但 openspec/changes/ 沒有 active change。先判斷這次變更是否碰到八個契約面（public API／data contract／schema／migration／向後相容／安全權限邊界／並行一致性／跨模組行為），把結論寫進聲明檔再重試：${decl}，內容一行，值只能是「是」或「否」：${template}。任何一面是「是」，或行為變更落在 openspec/specs/ 已涵蓋的能力域，就啟動 workflow（Phase 1），不要寫聲明。同一批並行編輯會一起被擋，寫好聲明後全部重試。"
+elif [ -d "$changes_dir/archive" ] && [ ! "$decl" -nt "$changes_dir/archive" ]; then
+  deny "⛔ openspec：聲明檔寫下之後 openspec/changes/archive/ 有變動（有 change 被歸檔，可能來自其他 session 或略過閘門的歸檔）。歸檔之後的程式碼編輯若碰到任何契約面，spec 就會漏掉這次修訂：請開 follow-up change（Phase 1）。確認八面都不命中時，重新寫聲明檔（歸檔前寫的不算）：${decl}，內容一行：${template}"
 fi
 
 # `|| line=""`: grep finding nothing exits 1, which would fire the ERR trap and allow

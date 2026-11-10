@@ -2,6 +2,13 @@
 
 All notable changes to the `pr-closeout` plugin will be documented in this file.
 
+## [1.0.1] - 2026-11-10
+
+### Fixed
+
+- **Merge gate: a `<<` inside a quoted string is not a heredoc.** `echo "<<true"` followed by `gh pr merge …` and a later line that read `true` made the hook drop the merge line as a heredoc body, so `ready` was never asked. Quoted strings that close on the same line are now ignored before the heredoc match (a quoted or backslash heredoc delimiter is kept). A quoted string that spans lines is still not tracked. Two mutants (the line removed, and the string dropped without leaving `""` in its place, which would join the `<` on either side into `<<`) must die on their cases.
+- **Merge gate: the heredoc delimiter is read as a whole word.** `<<EOF-TEXT` closes on `EOF-TEXT`; only the leading `\w+` used to be taken, so the heredoc never closed and its text was read as commands, which denied a merge that was only mentioned in it.
+
 ## [1.0.0] - 2026-11-09
 
 ### Added

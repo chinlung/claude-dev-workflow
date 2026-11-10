@@ -76,7 +76,11 @@ while (@queue && $rounds++ < 50) {
     }
     push @keep, $l;
     my $s = $l; $s =~ s/<<<//g;
-    if ($s =~ /<<-?\s*(['"\\]?)([A-Za-z_]\w*)/) { $delim = $2; $quoted = $1 ne ''; }
+    # A quoted string becomes "" (not nothing, which would join the < on either side of it into <<);
+    # a quoted heredoc delimiter is kept as it is.
+    $s =~ s/(<<-?\s*)?(?:'[^']*'|"(?:\\.|[^"\\])*")/defined $1 ? $& : '""'/ge;   # not-a-heredoc: quoted
+    # the whole delimiter word, not its leading \w+: <<EOF-TEXT closes on EOF-TEXT, not on EOF
+    if ($s =~ /<<-?\s*(?:'([^']+)'|"([^"]+)"|(\\?)([A-Za-z_][^\s;&|()<>'"\\`]*))/) { $delim = $1 // $2 // $4; $quoted = defined $1 || defined $2 || ($3 // '') ne ''; }
   }
   push @keep, @body;   # a heredoc that never closes is not one: its lines are commands (fail closed)
   $c = join "\n", @keep;
