@@ -1,5 +1,7 @@
 # openspec-superpowers-workflow 3.0 確認點實作計畫
 
+> **狀態（2026-11-11 回填）：** 已完成，Task 1–4 隨 PR #52 合併（main `cd0ccbb`）；勾選框於收尾後回填。與計畫的偏差：Task 5（jev skill 落點）由使用者拿掉；Task 3 只做兩個 eval case，「P1 無觸發會繼續」因 eval 環境沒有 shell 量不到；gate-check 另加 `p3`／`p6b` 模式與 tasks.md 格式檢查（`validate-openspec-workflow.cjs` 不讀 tasks.md），沒有 shell 時改為照規則手動判定；審查時一再找到「該停卻放行」的輸入形式，比對一律改從寬（設計稿 §11）。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 把每個 phase 都等使用者確認，改成由 `gate-check.cjs` 依事實決定要不要停：P1、P2 有觸發條件才停，P3、P6b 不停，P5 加上收斂建議。
@@ -36,9 +38,9 @@
 
 ### 前置（不是 task，執行前做一次）
 
-- [ ] 開分支：`git switch -c feat/openspec-workflow-3-gates`
-- [ ] 建立帳本：`/scope-ledger:scope init "依 docs/openspec-workflow-3-gates-design-2026-11-10.md 實作 openspec-superpowers-workflow 3.0 確認點"`
-- [ ] 跑一次基準測試：`for t in plugins/openspec-superpowers-workflow/tests/*.test.sh; do bash "$t" > /dev/null 2>&1; echo "$t rc=$?"; done`。預期每個都是 `rc=0`；若有不是 0 的，先記下，它不屬於本計畫。
+- [x] 開分支：`git switch -c feat/openspec-workflow-3-gates`
+- [x] 建立帳本：`/scope-ledger:scope init "依 docs/openspec-workflow-3-gates-design-2026-11-10.md 實作 openspec-superpowers-workflow 3.0 確認點"`
+- [x] 跑一次基準測試：`for t in plugins/openspec-superpowers-workflow/tests/*.test.sh; do bash "$t" > /dev/null 2>&1; echo "$t rc=$?"; done`。預期每個都是 `rc=0`；若有不是 0 的，先記下，它不屬於本計畫。
 
 ### Task 1: `gate-check.cjs` 與測試套件
 
@@ -70,7 +72,7 @@
 - **`high-risk-path`**：從 `## Impact` 段抽出含 `/` 的 token（去掉反引號和開頭的 `./`），和每個 glob 比對。glob 轉 regex：`**` → `.*`、`*` → `[^/]*`、`?` → `[^/]`，其餘字元跳脫，整串錨定。
 - **設定檔 frontmatter**：只解析 `gates: <值>` 和 `high_risk_paths:` 底下的 `  - <glob>` 行。`gates` 出現 `risk-based`、`supervised` 以外的值 → `error` 非 null。
 
-- [ ] **Step 1: 寫失敗的測試** `tests/gate-check.test.sh`
+- [x] **Step 1: 寫失敗的測試** `tests/gate-check.test.sh`
   - 結構照抄 `reconcile-check.test.sh`：helper `eq`、`has`、`make_change`、`mktemp -d` 加 `trap`、`MIN` 下限在案例清單之外計算。
   - `make_change <root> <name>` 建一個 P1 會「繼續」的 change：proposal 只有 ADDED delta，有 `## Decisions` 段且只有 `[default]` 項。
   - 案例：**每個 reason id 至少兩個不同的觸發輸入**，另加 Review Focus 的 5 個案例：
@@ -99,16 +101,16 @@
 
   - `MIN` 設為實際斷言數。
 
-- [ ] **Step 2: 跑測試確認失敗**
+- [x] **Step 2: 跑測試確認失敗**
   Run: `bash plugins/openspec-superpowers-workflow/tests/gate-check.test.sh > "$TMPDIR/gc.log"; echo rc=$?`（判定只看 `$?`，log 只看摘要）
   Expected: `rc=1`，失敗原因是找不到 `gate-check.cjs`。
 
-- [ ] **Step 3: 實作 `gate-check.cjs`**，依上面的 Interfaces 和判定規則。檔頭註解寫明：exit code 契約、偏向問人的理由、設計文件路徑、測試路徑。
+- [x] **Step 3: 實作 `gate-check.cjs`**，依上面的 Interfaces 和判定規則。檔頭註解寫明：exit code 契約、偏向問人的理由、設計文件路徑、測試路徑。
 
-- [ ] **Step 4: 跑測試確認通過**
+- [x] **Step 4: 跑測試確認通過**
   Run: 同 Step 2。Expected: `rc=0`，摘要 `gate-check: N passed, 0 failed`，且 N ≥ MIN。
 
-- [ ] **Step 5: 突變測試**（確認測試真的守住執行路徑，不是只測資料）
+- [x] **Step 5: 突變測試**（確認測試真的守住執行路徑，不是只測資料）
   逐一對 `gate-check.cjs` 做下列突變，每次跑套件，**每個突變都要 `rc≠0`**，跑完立刻還原（`git checkout -- <file>` 或 `git stash`）：
   1. 讓 `needs-user` 的判斷永遠為 false；
   2. 讓 `breaking` 的判斷永遠為 false；
@@ -120,10 +122,10 @@
 
   把七個 rc 記在 commit 訊息裡。
 
-- [ ] **Step 6: 跑全部套件**
+- [x] **Step 6: 跑全部套件**
   Run: 前置裡的 for 迴圈。Expected: 全部 `rc=0`（CI 會自動列舉新的 `gate-check.test.sh`，見 `.github/workflows/validate.yml:42-46`）。
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 ```bash
 git add plugins/openspec-superpowers-workflow/skills/openspec-superpowers-workflow/validators/gate-check.cjs plugins/openspec-superpowers-workflow/tests/gate-check.test.sh
 git commit -m "openspec-superpowers-workflow: gate-check.cjs decides whether P1/P2 stop for the user"
@@ -165,18 +167,18 @@ git commit -m "openspec-superpowers-workflow: gate-check.cjs decides whether P1/
 - **`supervised`**：在 Phase 1 前面加一段說明兩種模式和兩個設定檔的位置；`supervised` 時 gate-check 一律回 10，所以文件不需要另外寫一條路徑。
 - **OUTPUT-CONTRACTS**：`使用者已審核` 改成 `gate-check 通過，或使用者已核准`；tasks.md 那列改成 `validator 通過`。
 
-- [ ] **Step 1: 寫失敗的測試**：在 `skill-docs.test.sh` 加三條斷言：
+- [x] **Step 1: 寫失敗的測試**：在 `skill-docs.test.sh` 加三條斷言：
   - `phases.md` 用到的每個 `validators/*.cjs` 檔名都存在（抽取規則：`` `?validators/([a-z-]+\.cjs) ``）；
   - `phases.md` 含 `gate-check.cjs p1` 與 `gate-check.cjs p2`；
   - `phases.md` 不再含 `Do NOT proceed to Phase 2 until user explicitly approves`。
 
   `MIN` 調成新的斷言數。
-- [ ] **Step 2: 跑測試確認失敗**
+- [x] **Step 2: 跑測試確認失敗**
   Run: `bash plugins/openspec-superpowers-workflow/tests/skill-docs.test.sh > "$TMPDIR/sd.log"; echo rc=$?`
   Expected: `rc=1`（後兩條失敗）。
-- [ ] **Step 3: 依上面的決定修改五份文件**。改完 grep 一次舊措辭：`command grep -rn -E 'User reviews task breakdown|User approves Phase [23]|Present the rewritten spec files' plugins/openspec-superpowers-workflow/skills`，預期沒有任何命中。
-- [ ] **Step 4: 跑測試確認通過**：同 Step 2，Expected `rc=0`；再跑 `cli-claims.test.sh`，確認對 CLI 的描述沒有被改壞，Expected `rc=0`。
-- [ ] **Step 5: Commit**
+- [x] **Step 3: 依上面的決定修改五份文件**。改完 grep 一次舊措辭：`command grep -rn -E 'User reviews task breakdown|User approves Phase [23]|Present the rewritten spec files' plugins/openspec-superpowers-workflow/skills`，預期沒有任何命中。
+- [x] **Step 4: 跑測試確認通過**：同 Step 2，Expected `rc=0`；再跑 `cli-claims.test.sh`，確認對 CLI 的描述沒有被改壞，Expected `rc=0`。
+- [x] **Step 5: Commit**
 ```bash
 git add plugins/openspec-superpowers-workflow/skills/openspec-superpowers-workflow/{phases,SKILL,OUTPUT-CONTRACTS,PHASE-IDENTIFICATION}.md plugins/openspec-superpowers-workflow/tests/skill-docs.test.sh
 git commit -m "openspec-superpowers-workflow: phases stop on gate-check, P3 and P6b no longer wait"
@@ -193,8 +195,8 @@ git commit -m "openspec-superpowers-workflow: phases stop on gate-check, P3 and 
 **Interfaces:**
 - Consumes: Task 2 的 skill 行為。
 
-- [ ] **Step 1: 先讀** `~/.claude/refs/plugin-eval.md`，並以 `evals-design/03-add-report-archive/` 為範本（prompt 的 frontmatter、「空 checkout」前言、grader 寫法）。
-- [ ] **Step 2: 寫三個 case**：
+- [x] **Step 1: 先讀** `~/.claude/refs/plugin-eval.md`，並以 `evals-design/03-add-report-archive/` 為範本（prompt 的 frontmatter、「空 checkout」前言、grader 寫法）。
+- [x] **Step 2: 寫三個 case**：
 
 | case | prompt 給的內容 | graders |
 |---|---|---|
@@ -202,10 +204,10 @@ git commit -m "openspec-superpowers-workflow: phases stop on gate-check, P3 and 
 | 06 | ADDED-only，`## Decisions` 只有 `[default]` 項，要 agent「完成 Phase 1」 | `file_exists design.md: true`（weight 2）；llm：回覆列出採用的預設，沒有要求核准 |
 | 07 | 已核准的 design.md，要 agent「拆任務」 | `file_exists tasks.md: true`；llm：回覆沒有要求使用者審 tasks.md，並表示接著進 Phase 4 |
 
-- [ ] **Step 3: 跑** `claude plugin eval plugins/openspec-superpowers-workflow/evals-design --ablation with-without --judge-model sonnet --allow-tools Write Edit`，結果落檔，判定讀 exit code。
+- [x] **Step 3: 跑** `claude plugin eval plugins/openspec-superpowers-workflow/evals-design --ablation with-without --judge-model sonnet --allow-tools Write Edit`，結果落檔，判定讀 exit code。
   Expected：05、06、07 的 with 分數高於 without；01–04 的 with 分數不低於 2026-11-09 的結果（`evals-design/results/2026-11-09T02-53-41-306Z/aggregate-result.json`）。若 Δ = 0、全部 0 分或 `$0.00`，先懷疑 eval 本身壞了。
-- [ ] **Step 4: 跑** `evals-phase6/` 和 `evals/`，同樣的參數。Expected：01–08 不退步（`evals/` 的基準見記憶「openspec workflow eval suite」：1.5.0 版 8 題 with 全 1.00）。
-- [ ] **Step 5:** 不 commit。把 Δ 寫進 Task 4 的 CHANGELOG 條目。
+- [x] **Step 4: 跑** `evals-phase6/` 和 `evals/`，同樣的參數。Expected：01–08 不退步（`evals/` 的基準見記憶「openspec workflow eval suite」：1.5.0 版 8 題 with 全 1.00）。
+- [x] **Step 5:** 不 commit。把 Δ 寫進 Task 4 的 CHANGELOG 條目。
 
 ### Task 4: 版本、CHANGELOG、README
 
@@ -219,13 +221,13 @@ git commit -m "openspec-superpowers-workflow: phases stop on gate-check, P3 and 
 **Interfaces:**
 - Consumes: Task 1 的 reason id、Task 3 的 Δ。
 
-- [ ] **Step 1:** `command grep -rn -F '2.2.1' --include='*.json' --include='*.md' . | command grep -v node_modules` 列出所有舊版本字串，逐一判斷是否要改（CHANGELOG 的歷史條目不改）。
-- [ ] **Step 2:** 修改上列檔案。
-- [ ] **Step 3: 驗證**
+- [x] **Step 1:** `command grep -rn -F '2.2.1' --include='*.json' --include='*.md' . | command grep -v node_modules` 列出所有舊版本字串，逐一判斷是否要改（CHANGELOG 的歷史條目不改）。
+- [x] **Step 2:** 修改上列檔案。
+- [x] **Step 3: 驗證**
   - Run: `jq -r '.version' plugins/openspec-superpowers-workflow/.claude-plugin/plugin.json; jq -r '.version, (.plugins[] | select(.name=="openspec-superpowers-workflow") | .version)' .claude-plugin/marketplace.json`
     Expected: `3.0.0`、`1.16.0`、`3.0.0`。
   - Run: `node scripts/validate-fixtures.cjs; echo rc=$?`，Expected `rc=0`。再跑全部套件，Expected 全部 `rc=0`。
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 ```bash
 git add plugins/openspec-superpowers-workflow/.claude-plugin/plugin.json .claude-plugin/marketplace.json plugins/openspec-superpowers-workflow/CHANGELOG.md plugins/openspec-superpowers-workflow/README.md docs/openspec-hitl-gate-analysis-2026-11-10.md docs/openspec-workflow-3-gates-design-2026-11-10.md docs/openspec-workflow-3-gates-plan-2026-11-10.md
 git commit -m "openspec-superpowers-workflow 3.0.0: gates stop on facts (marketplace 1.16.0)"
@@ -233,10 +235,10 @@ git commit -m "openspec-superpowers-workflow 3.0.0: gates stop on facts (marketp
 
 ### 收尾（不是 task）
 
-- [ ] 對整個分支 diff 做 `/simplify`，重跑全部套件。
-- [ ] commit 前自審：`/review-branch` 加 `codex_review`（scope: working-tree）。finding 先進 scope-ledger 帳本再處理。
-- [ ] push 前跑 `/security-review`；開 PR（不附 session 連結）；跟到 CI 綠燈。
-- [ ] 合併後：依記憶「計畫收尾時回填勾選」，在本計畫全部勾選並加狀態行。
+- [x] 對整個分支 diff 做 `/simplify`，重跑全部套件。
+- [x] commit 前自審：`/review-branch` 加 `codex_review`（scope: working-tree）。finding 先進 scope-ledger 帳本再處理。
+- [x] push 前跑 `/security-review`；開 PR（不附 session 連結）；跟到 CI 綠燈。
+- [x] 合併後：依記憶「計畫收尾時回填勾選」，在本計畫全部勾選並加狀態行。
 
 ---
 
