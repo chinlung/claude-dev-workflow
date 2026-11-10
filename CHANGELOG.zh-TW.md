@@ -4,6 +4,12 @@
 
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
+## [1.15.3] - 2026-11-10
+
+### Changed
+
+- **openspec-superpowers-workflow 2.1.0 → 2.2.0** — R6 只認行尾的 ` — skip: <理由>`；任務本文只是提到 `skip:` 不再算已交代。核查規則版本升到 3，先前的 pass 結果要重跑 `check`。詳見該插件 CHANGELOG [2.2.0]。
+
 ## [1.15.2] - 2026-11-10
 
 ### Changed

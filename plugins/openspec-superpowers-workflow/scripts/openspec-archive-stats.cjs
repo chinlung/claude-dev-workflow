@@ -19,7 +19,7 @@ const DEFINITION =
   'task = a line OpenSpec 1.16 counts as a task (bullet -, *, +, 1. or 1), then a [ ]-style box, at any indentation; ' +
   'done only when the box holds x or X); ' +
   'incomplete = at least one unfinished task; incompletePct = incomplete / archived; ' +
-  'incompleteNoReason = at least one unfinished task without "skip:" and a reason (a letter or digit); ' +
+  'incompleteNoReason = at least one unfinished task without the " — skip: <reason>" suffix (the reason needs a letter or digit); ' +
   'withSkipReason = at least one unfinished task with such a reason (a change can count in both); ' +
   'noTasks = no tasks.md, or no task line in it';
 

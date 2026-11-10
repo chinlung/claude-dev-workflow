@@ -21,8 +21,9 @@ const { parseTaskLines } = require('./task-line.cjs');
 
 const ARTIFACTS = { proposal: 'proposal.md', design: 'design.md', tasks: 'tasks.md', reviewNotes: 'review-notes.md' };
 // Bump when a check gets stricter: a pass verdict is pinned to the rules that produced it, so verify rejects one
-// recorded under older rules even when no artifact changed (2 = R6 fails on an unfinished task without a skip reason).
-const RULES = 2;
+// recorded under older rules even when no artifact changed (2 = R6 fails on an unfinished task without a skip reason;
+// 3 = a skip reason is only the ` — skip: <reason>` suffix, not a "skip:" anywhere on the line).
+const RULES = 3;
 const USAGE = 'Usage: reconcile-check.cjs snapshot|check|verify <openspec/changes/<name>> [--json]';
 
 function resolveChange(arg) {
@@ -144,13 +145,14 @@ function checkR5(ctx) {
 }
 
 // A task is whatever OpenSpec counts as one (task-line.cjs, same pattern as the CLI). An unfinished one needs
-// "skip:" and a reason with at least one letter or digit; "skip:" alone or followed by punctuation is not one.
+// the ` — skip: <reason>` suffix, the reason with at least one letter or digit; "skip:" alone, followed by
+// punctuation, or merely mentioned in the task text is not one.
 function checkR6(ctx) {
   const boxes = parseTaskLines(ctx.read(ARTIFACTS.tasks));
   if (boxes.length === 0) return result('warn', ['tasks.md has no checkbox task']);
   const open = boxes.filter((t) => !t.done && !t.skipped);
   if (open.length === 0) return result('pass');
-  return result('fail', [`${open.length} unchecked task(s) without "skip: <reason>" (the reason needs a letter or digit)`, ...open.map(({ line, no }) => `line ${no}: ${line.trim()}`)]);
+  return result('fail', [`${open.length} unchecked task(s) without " — skip: <reason>" at the end of the line (the reason needs a letter or digit)`, ...open.map(({ line, no }) => `line ${no}: ${line.trim()}`)]);
 }
 
 const PATCH_LANGUAGE = [/修訂[：:]/, /原本(是|為)/, /\bRound \d+\b/i, /review-notes/, /\bpreviously\b/i];

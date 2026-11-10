@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.15.3] - 2026-11-10
+
+### Changed
+
+- **openspec-superpowers-workflow 2.1.0 → 2.2.0** — R6 accepts a skip reason only as the ` — skip: <reason>` suffix; a `skip:` the task text merely mentions no longer excuses an unchecked task. The rules version goes to 3, so earlier pass verdicts need `check` again. See that plugin's CHANGELOG [2.2.0].
+
 ## [1.15.2] - 2026-11-10
 
 ### Changed

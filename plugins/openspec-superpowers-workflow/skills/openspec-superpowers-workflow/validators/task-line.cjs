@@ -7,10 +7,12 @@
 // tests/cli-claims.test.sh checks this module against the real CLI on every bullet and marker form.
 const TASK_LINE = /^\s*(?:[-*+]|\d{1,9}[.)])\s*\[(?:\s*([^\]\s]?)\s*\](?![([])|\s+\])\s*(.*)/;
 
-// A skip reason is "skip:" (half- or full-width colon) with at least one letter or digit somewhere after it, so
-// `skip: （範圍外）`, `skip: "not required"` and `skip: \`docs/x.md\`` all count; "skip:" alone or followed only by
-// punctuation does not.
-const SKIP_REASON = /skip[:：].*[\p{L}\p{N}]/u;
+// A skip reason is the suffix the workflow teaches, ` — skip: <reason>`: whitespace, a dash (—, –, - or --),
+// whitespace, "skip:" (half- or full-width colon), then at least one letter or digit somewhere after it. So
+// `— skip: （範圍外）`, `— skip: "not required"` and `- skip: \`docs/x.md\`` all count; "skip:" alone or followed only
+// by punctuation does not, and neither does a "skip:" the task text merely mentions (`add a skip: flag`,
+// `noskip:`, `the --skip: option`): without the dash and the spaces around it, it is not the suffix.
+const SKIP_REASON = /\s(?:—|–|-{1,2})\s+skip[:：].*[\p{L}\p{N}]/u;
 
 // → [{ line, no (1-based), done, skipped }] for every task line of the text, in order; `skipped` is an
 // unfinished task excused with a skip reason, so "open work" is `!done && !skipped` for every consumer.
