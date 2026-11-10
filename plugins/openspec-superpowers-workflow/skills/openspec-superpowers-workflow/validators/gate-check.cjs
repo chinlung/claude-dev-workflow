@@ -10,7 +10,7 @@
 // (one checkbox per "### Task N") and exits 1 when it is broken.
 // stdout: first line `stop` or `proceed`, then one `- <reason-id>: <detail>` line per reason.
 //
-// It reads files only (no network). Doubt resolves toward asking: an unreadable settings file or an unknown
+// No network; the only write is the P1 record (see recordPath). Doubt resolves toward asking: an unreadable settings file or an unknown
 // `gates` value means supervised (stop). That is the opposite of the hooks' fail-open on purpose: an error
 // here would otherwise skip a human decision, where a hook error only lets one edit through.
 // Structural facts (BREAKING, MODIFIED/REMOVED/RENAMED deltas) are what holds an agent that misjudges;
@@ -31,8 +31,46 @@ function read(file) {
 }
 
 // HTML comments and fenced code blocks hold templates and examples, not decisions.
+// Fenced code blocks and HTML comments hold templates and examples, not decisions. One pass over the lines with
+// block state, so neither can pair across the other (a ``` line inside a comment, ``` inside a ~~~ fence):
+// - a fence opens on a line starting (after up to 3 spaces) with 3+ backticks or tildes; a backtick fence's
+//   opening line has no other backtick (CommonMark), so ```x``` is a code span; it closes on a line of the same
+//   character, at least as long, and nothing else;
+// - outside fences, `<!--` opens a comment unless it sits inside an inline code span, and `-->` closes it.
 function stripExamples(text) {
-  return text.replace(/<!--[\s\S]*?-->/g, '').replace(/^(```|~~~)[^\n]*\n[\s\S]*?^\1[^\n]*$/gm, '');
+  const out = [];
+  let fence = null;
+  let inComment = false;
+  for (const line of text.split('\n')) {
+    if (fence) {
+      const close = line.match(/^ {0,3}(`{3,}|~{3,})[ \t]*$/);
+      if (close && close[1][0] === fence[0] && close[1].length >= fence.length) fence = null;
+      continue;
+    }
+    if (!inComment) {
+      const open = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
+      if (open && !(open[1][0] === '`' && open[2].includes('`'))) { fence = open[1]; continue; }
+    }
+    const masked = line.replace(/`[^`\n]*`/g, (m) => ' '.repeat(m.length));
+    let kept = '';
+    let i = 0;
+    while (i <= line.length) {
+      if (inComment) {
+        const j = line.indexOf('-->', i);
+        if (j < 0) { i = line.length + 1; break; }
+        inComment = false;
+        i = j + 3;
+      } else {
+        const j = masked.indexOf('<!--', i);
+        if (j < 0) { kept += line.slice(i); break; }
+        kept += line.slice(i, j);
+        inComment = true;
+        i = j + 4;
+      }
+    }
+    out.push(kept);
+  }
+  return out.join('\n');
 }
 
 // The body of the first `## <title>` section (up to the next `## `), or null when there is none.
@@ -99,7 +137,8 @@ function readSettings(projectRoot) {
       if (GATES.includes(fm.gates)) settings.gates = fm.gates;
       else settings.error = `.claude/${name}: gates is "${fm.gates}", expected ${GATES.join(' or ')}`;
     }
-    if (fm.highRiskPaths) settings.highRiskPaths = fm.highRiskPaths;
+    // Union: a personal file can add high-risk paths but never drop the project's.
+    if (fm.highRiskPaths) settings.highRiskPaths = [...new Set([...settings.highRiskPaths, ...fm.highRiskPaths])];
   }
   return settings;
 }
@@ -138,26 +177,51 @@ function modeReasons(settings) {
   return [];
 }
 
-function checkP1(changeDir, settings) {
-  const reasons = modeReasons(settings);
+// The structural facts of a change: what holds an agent that misjudges, and what P2 compares against P1.
+function structure(changeDir, settings) {
   const proposal = stripExamples(read(path.join(changeDir, 'proposal.md')) || '');
-  const decisions = section(proposal, 'Decisions');
-  if (decisions === null) reasons.push({ id: 'no-decisions-section', detail: 'proposal.md has no ## Decisions section' });
-  if (NEEDS_USER.test(proposal)) reasons.push({ id: 'needs-user', detail: 'proposal.md has a [needs user] item' });
-  if (/\bBREAKING\b/.test(proposal)) reasons.push({ id: 'breaking', detail: 'proposal.md marks a BREAKING change' });
-  const kinds = new Set();
-  for (const spec of findSpecFiles(changeDir)) {
-    for (const m of stripExamples(read(spec) || '').matchAll(/^##\s+(MODIFIED|REMOVED|RENAMED)\s+Requirements/gim)) kinds.add(m[1].toUpperCase());
+  const breaking = /\bBREAKING\b/.test(proposal);
+  const kindSet = new Set();
+  const unreadable = [];
+  const specs = findSpecFiles(changeDir);
+  for (const spec of specs) {
+    const text = read(spec);
+    if (text === null) { unreadable.push(path.relative(changeDir, spec)); continue; }
+    for (const m of stripExamples(text).matchAll(/^##\s+(MODIFIED|REMOVED|RENAMED)\s+Requirements/gim)) kindSet.add(m[1].toUpperCase());
   }
-  if (kinds.size) reasons.push({ id: 'delta-modified', detail: `spec deltas change existing requirements: ${[...kinds].sort().join(', ')}` });
-  const hits = new Set();
+  const kinds = [...kindSet].sort();
+  const hitSet = new Set();
   const paths = impactPaths(proposal);
   for (const glob of settings.highRiskPaths) {
     const re = globToRegExp(glob);
-    for (const p of paths) if (re.test(p)) hits.add(`${p.replace(/\/$/, '')} (${glob})`);
+    for (const p of paths) if (re.test(p)) hitSet.add(`${p.replace(/\/$/, '')} (${glob})`);
   }
-  if (hits.size) reasons.push({ id: 'high-risk-path', detail: `## Impact names high-risk paths: ${[...hits].join(', ')}` });
-  return { stop: reasons.length > 0, reasons };
+  const hits = [...hitSet];
+  const facts = [...(breaking ? ['BREAKING'] : []), ...kinds.map((k) => `${k} delta`), ...hits.map((h) => `high-risk ${h}`)];
+  return { proposal, breaking, kinds, hits, facts, specCount: specs.length, unreadable };
+}
+
+function checkP1(changeDir, settings) {
+  const reasons = modeReasons(settings);
+  const s = structure(changeDir, settings);
+  if (section(s.proposal, 'Decisions') === null) reasons.push({ id: 'no-decisions-section', detail: 'proposal.md has no ## Decisions section' });
+  if (NEEDS_USER.test(s.proposal)) reasons.push({ id: 'needs-user', detail: 'proposal.md has a [needs user] item' });
+  if (s.breaking) reasons.push({ id: 'breaking', detail: 'proposal.md marks a BREAKING change' });
+  // OpenSpec lets a pure refactor or tooling change opt out of specs with `skip_specs: true` in .openspec.yaml.
+  const skipSpecs = /^skip_specs:\s*true\s*$/m.test(read(path.join(changeDir, '.openspec.yaml')) || '');
+  if (s.specCount === 0 && !skipSpecs) reasons.push({ id: 'no-specs', detail: 'no specs/**/spec.md and .openspec.yaml does not set skip_specs: true' });
+  if (s.unreadable.length) reasons.push({ id: 'spec-unreadable', detail: `cannot read ${s.unreadable.join(', ')}` });
+  if (s.kinds.length) reasons.push({ id: 'delta-modified', detail: `spec deltas change existing requirements: ${s.kinds.join(', ')}` });
+  if (s.hits.length) reasons.push({ id: 'high-risk-path', detail: `## Impact names high-risk paths: ${s.hits.join(', ')}` });
+  return { stop: reasons.length > 0, reasons, facts: s.facts };
+}
+
+// What P1 saw, so P2 can tell a structural fact added after P1 (a new delta, a BREAKING marker) from one the
+// user was already shown. Written by every `p1` run; kept beside reconcile-check's state.
+// <root>/openspec/changes/<name> → <root>
+const projectRoot = (changeDir) => path.dirname(path.dirname(path.dirname(changeDir)));
+function recordPath(changeDir) {
+  return path.join(projectRoot(changeDir), '.claude', `openspec-gate.${path.basename(changeDir)}.local.json`);
 }
 
 function checkP2(changeDir, settings) {
@@ -168,6 +232,14 @@ function checkP2(changeDir, settings) {
     return { stop: true, reasons };
   }
   if (NEEDS_USER.test(stripExamples(raw))) reasons.push({ id: 'design-needs-user', detail: 'design.md has a [needs user] item' });
+  let seen = null;
+  try { seen = JSON.parse(fs.readFileSync(recordPath(changeDir), 'utf8')).facts; } catch { /* no record */ }
+  if (!Array.isArray(seen)) {
+    reasons.push({ id: 'no-p1-record', detail: 'no readable record of the P1 check; run gate-check p1 first' });
+  } else {
+    const added = structure(changeDir, settings).facts.filter((f) => !seen.includes(f));
+    if (added.length) reasons.push({ id: 'structure-changed-since-p1', detail: `new since P1: ${added.join(', ')}` });
+  }
   return { stop: reasons.length > 0, reasons };
 }
 
@@ -221,8 +293,19 @@ function main(argv) {
       return 1;
     }
   }
-  const settings = readSettings(path.dirname(path.dirname(changes)));
+  const settings = readSettings(projectRoot(changeDir));
   const result = check(changeDir, settings);
+  if (gate === 'p1') {
+    try {
+      const record = recordPath(changeDir);
+      fs.mkdirSync(path.dirname(record), { recursive: true });
+      fs.writeFileSync(record, `${JSON.stringify({ facts: result.facts }, null, 2)}\n`);
+    } catch (e) {
+      // A stale record that stays readable would let P2 wave through a fact this run no longer saw.
+      console.error(`gate-check: cannot write the P1 record (${e.message}); fix it and run p1 again`);
+      return 1;
+    }
+  }
   console.log(result.stop ? 'stop' : 'proceed');
   for (const r of result.reasons) console.log(`- ${r.id}: ${r.detail}`);
   return result.stop ? 10 : 0;

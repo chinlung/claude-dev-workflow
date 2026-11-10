@@ -79,8 +79,10 @@ settings() {
 # run <p1|p2|p3|p6b> <change 目錄>：結果在 $RC、$WORK/out.txt
 run() { node "$GATE" "$1" "$2" > "$WORK/out.txt" 2>&1; RC=$?; }
 first() { head -1 "$WORK/out.txt"; }
+MODIFIED_SPEC=$'## MODIFIED Requirements\n\n### Requirement: Old\nThe system SHALL change.\n'
 # fresh：新專案＋會「繼續」的 change，設定 $P、$D（不在子 shell 裡，變數帶得出來）
-fresh() { P=$(new_project); D=$(make_change "$P" foo); }
+# 並先跑一次 p1（正常順序：P1 一定先於 P2），留下 p2 比對用的記錄
+fresh() { P=$(new_project); D=$(make_change "$P" foo); node "$GATE" p1 "$D" > /dev/null 2>&1; }
 # stops <名稱> <reason-id>：exit 10，且 stdout 有該理由行（兩條斷言）
 stops() { eq "$1: exit 10" 10 "$RC"; has "$1: reason" "$WORK/out.txt" "- $2:"; }
 
@@ -230,6 +232,53 @@ fresh; settings "$P" committed $'---\nhigh_risk_paths:\n  - src/auth/**\n---\n'
 perl -pi -e 's/^- `src\/export\/invoice.ts`$/- `src\/auth\/x.ts`/' "$D/proposal.md"; run p1 "$D"
 eq "a matched path is listed once in the reason" 1 "$(command grep -o 'src/auth/x.ts' "$WORK/out.txt" | wc -l | tr -d ' ')"
 
+# ---- 剝除註解與 fence 不可吞掉後面的內容 ----
+fresh; perl -pi -e 's/^- Add an invoice export\.$/- uses the `<!--` marker\n- **BREAKING** drop the CSV export\n- flow A --> B/' "$D/proposal.md"; run p1 "$D"
+stops "inline <!-- in code does not open a comment" breaking
+fresh; printf '```inline``` is a code span, not a fence.\n\n## MODIFIED Requirements\n\n### Requirement: Old\nThe system SHALL change.\n\n```\ncode\n```\n' > "$D/specs/api/spec.md"; run p1 "$D"
+stops "inline triple backticks do not open a fence" delta-modified
+
+fresh; printf '<!--\n```\n-->\n- **BREAKING** drop it\n\n```\ncode\n```\n' >> "$D/proposal.md"; run p1 "$D"
+stops "a fence line inside a comment does not swallow later text" breaking
+fresh; printf '~~~\n```\n~~~\n- **BREAKING** drop it\n\n```\ncode\n```\n' >> "$D/proposal.md"; run p1 "$D"
+stops "backticks inside a tilde fence do not swallow later text" breaking
+fresh; printf '```\n<!--\n```\n- **BREAKING** drop it\n<!-- x -->\n' >> "$D/proposal.md"; run p1 "$D"
+stops "a comment opener inside a fence does not swallow later text" breaking
+
+# ---- specs/ 不存在或讀不到 → 停（skip_specs: true 的 change 除外） ----
+fresh; rm -r "$D/specs"; run p1 "$D"
+stops "no specs/ directory" no-specs
+fresh; rm -r "$D/specs"; printf 'schema: spec-driven\nskip_specs: true\n' > "$D/.openspec.yaml"; run p1 "$D"
+eq "no specs/ with skip_specs: true proceeds" 0 "$RC"
+fresh; rm -r "$D/specs"; printf 'schema: spec-driven\nskip_specs: false\n' > "$D/.openspec.yaml"; run p1 "$D"
+stops "no specs/ with skip_specs: false" no-specs
+fresh; chmod 000 "$D/specs/api/spec.md"; run p1 "$D"; chmod 644 "$D/specs/api/spec.md"
+stops "unreadable spec.md" spec-unreadable
+
+# ---- 個人檔的 high_risk_paths 與專案的取聯集，不能清掉專案的 ----
+fresh; settings "$P" committed $'---\nhigh_risk_paths:\n  - src/export/**\n---\n'; settings "$P" local $'---\nhigh_risk_paths:\n---\n'; run p1 "$D"
+stops "an empty local list keeps the committed list" high-risk-path
+fresh; settings "$P" committed $'---\nhigh_risk_paths:\n  - src/auth/**\n---\n'; settings "$P" local $'---\nhigh_risk_paths:\n  - src/export/**\n---\n'; run p1 "$D"
+stops "a local list adds to the committed list" high-risk-path
+
+# ---- p1 記錄結構事實，p2 只在出現 p1 沒看過的新事實時停 ----
+fresh; test -f "$P/.claude/openspec-gate.foo.local.json"; eq "p1 writes its record" 0 "$?"
+fresh; printf '%s' "$MODIFIED_SPEC" > "$D/specs/api/spec.md"; run p2 "$D"
+stops "a delta added after P1 stops P2" structure-changed-since-p1; has "structure change names the delta" "$WORK/out.txt" "MODIFIED"
+fresh; perl -pi -e 's/^- Add an invoice export\.$/- **BREAKING** drop it/' "$D/proposal.md"; run p2 "$D"
+stops "a BREAKING marker added after P1 stops P2" structure-changed-since-p1
+fresh; settings "$P" committed $'---\nhigh_risk_paths:\n  - src/export/**\n---\n'; run p2 "$D"
+stops "a high-risk hit that P1 did not see stops P2" structure-changed-since-p1
+fresh; printf '%s' "$MODIFIED_SPEC" > "$D/specs/api/spec.md"; run p1 "$D"; run p2 "$D"
+eq "a delta P1 already saw does not stop P2 again" 0 "$RC"
+fresh; rm "$P/.claude/openspec-gate.foo.local.json"; run p2 "$D"
+stops "p2 without a p1 record" no-p1-record
+fresh; printf 'not json' > "$P/.claude/openspec-gate.foo.local.json"; run p2 "$D"
+stops "p2 with an unreadable p1 record" no-p1-record
+# 記錄寫不進去 → exit 1（不可讓 P2 信任過期記錄）
+fresh; chmod 444 "$P/.claude/openspec-gate.foo.local.json"; run p1 "$D"; chmod 644 "$P/.claude/openspec-gate.foo.local.json"
+eq "p1 that cannot write its record: exit 1" 1 "$RC"; has "p1 record write failure: message" "$WORK/out.txt" "cannot write the P1 record"
+
 # ---- 錯誤路徑 ----
 fresh; mkdir -p "$WORK/elsewhere/foo"; cp "$D/proposal.md" "$WORK/elsewhere/foo/"; run p1 "$WORK/elsewhere/foo"
 eq "bad-change-dir (not under openspec/changes): exit 1" 1 "$RC"; has "bad-change-dir: message" "$WORK/out.txt" "not under openspec/changes"
@@ -280,7 +329,7 @@ out=$(node -e 'const m = require(process.argv[1]); process.stdout.write([typeof 
 eq "require exports the three functions without running main" "function,function,function" "$out"
 
 # ---- summary ----
-MIN=149
+MIN=185
 if [ "$((PASS + FAIL))" -lt "$MIN" ]; then
   echo "FAIL: ran $((PASS + FAIL)) assertions, expected at least $MIN"; FAIL=$((FAIL+1))
 fi
