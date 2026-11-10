@@ -180,6 +180,9 @@ contains "archive between lines that equal two shift operands → deny" "$out" "
 # 註解不是命令文字：裡面的落單引號不得延續到後面的行
 out=$(run_gate "$(input_json s11 "$P" $'# don\'t archive yet\ncat > n.md <<EOF\nit\'s\nopenspec archive foo --yes\nEOF')" "$T" "$P")
 empty "a lone quote in a comment before a heredoc → allow" "$out"
+# 重掃未收尾的 heredoc 時，引號與巢狀狀態要延續：opener 在 "$( 裡，重掃後的 ) 要回到外層的 "
+out=$(run_gate "$(input_json s11 "$P" $'x="$(echo ${u:-<<NEVER}\n) <<true #"\nopenspec archive foo --yes\ntrue')" "$T" "$P")
+contains "archive after an unclosed heredoc inside a quoted substitution → deny" "$out" "$DENY"
 # 行尾反斜線續行：命令行還沒結束，本體從續行之後才開始；偶數個反斜線不是續行
 out=$(run_gate "$(input_json s11 "$P" $'cat <<EOF \\\n&& openspec archive foo --yes\nbody\nEOF')" "$T" "$P")
 contains "archive on the continuation line of a heredoc opener → deny" "$out" "$DENY"
@@ -242,7 +245,7 @@ if [ "$n" = 2 ]; then PASS=$((PASS+1)); echo "PASS: hooks.json registers two arc
 else FAIL=$((FAIL+1)); echo "FAIL: hooks.json archive-gate handlers with if — got [$n]"; fi
 
 # ---- summary ----
-MIN=63
+MIN=64
 if [ "$((PASS + FAIL))" -lt "$MIN" ]; then
   echo "FAIL: ran $((PASS + FAIL)) assertions, expected at least $MIN"; FAIL=$((FAIL+1))
 fi

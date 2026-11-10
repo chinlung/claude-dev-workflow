@@ -66,8 +66,9 @@ my @queue = ($ENV{PMG_CMD} // ''); my $rounds = 0;
 while (@queue && $rounds++ < 50) {
   my $c = shift @queue;
   # Heredoc bodies, found in one pass over the characters that carries an open quote from line to
-  # line: a << opens a heredoc only outside quotes (a $( … ) starts over, unquoted, inside the quote around it) and
-  # outside $(( … )) and (( … )), where it is a shift; never in a # comment or a here-string (<<<). The delimiter
+  # line: a << opens a heredoc only outside quotes (a $( … ) starts over, unquoted, inside the quote
+  # around it) and outside $(( … )) and (( … )), where it is a shift; never in a # comment or a
+  # here-string (<<<). The delimiter
   # is the whole word (<<EOF-TEXT closes on EOF-TEXT), quoted or \-escaped too. Bodies start on the
   # line after the command line ends (after the string closes or the trailing-backslash
   # continuation runs out, when that line left one open), one per << on that line in order, each
@@ -75,8 +76,9 @@ while (@queue && $rounds++ < 50) {
   # A heredoc whose delimiter line never comes is not one ($((1<<n)) looks like it): its lines are
   # put back and scanned again (fail closed), the later heredocs of its line first.
   my @todo = split /\n/, $c, -1; my @keep; my @hd;   # @hd: [delimiter, quoted] whose bodies come next
+  my ($q, $ar, @st) = ('', 0);   # open quote, $(( )) depth, quote outside each open (: kept when a body is rescanned
   while (@todo) {
-    my ($q, $ar, @st, @pend, @body) = ('', 0);   # open quote, $(( )) depth, quote outside each open (
+    my (@pend, @body);
     while (@todo) {
       my $l = shift @todo;
       if (@hd) {

@@ -123,6 +123,10 @@ FAKE_RC=0 gate allow "gh api without merge" "$(bash_in 'gh api repos/o/r/pulls/3
 called "" "api no merge: ready not called"
 FAKE_RC=0 gate allow "a heredoc that never closes" "$(bash_in $'cat <<EOF\ngh pr merge 3 --repo o/r')"
 called "ready o/r 3" "open heredoc: args"
+# rescanning an unclosed heredoc keeps the quote and nesting state: opened inside "$(, the ) after it
+# returns to the outer "
+FAKE_RC=0 gate allow "merge after an unclosed heredoc inside a quoted substitution" "$(bash_in $'x="$(echo ${u:-<<NEVER}\n) <<true #"\ngh pr merge 8 --repo o/r\ntrue')"
+called "ready o/r 8" "rescan keeps state: args"
 
 # command substitution runs inside double quotes and unquoted heredocs: what it runs counts
 FAKE_RC=0 gate allow "substitution in double quotes" "$(bash_in 'echo "merged: $(gh pr merge 3 --repo o/r --squash)"')"
@@ -192,7 +196,7 @@ gate allow "the second of two heredocs on one line" "$(bash_in $'cat <<A <<B\nx\
 called "" "two heredocs: ready not called"
 gate allow "nothing about merge" "$(bash_in 'ls -la')"
 
-MIN_PASS=127
+MIN_PASS=129
 if [ "$pass" -lt "$MIN_PASS" ] && [ "${STOP_ON_FAIL:-0}" != 1 ]; then failed "only $pass checks passed, expected at least $MIN_PASS"; fi
 echo "pr-merge-gate: $pass passed, $fail failed"
 
@@ -229,6 +233,7 @@ if [ "${NO_MUTANTS:-0}" != 1 ]; then
   mutant no-subst      "[dq substitution heredoc: args]" 's/^.*# not-a-heredoc: substitution$//'
   mutant no-arith      "[two shifts: args]"           's/^.*# not-a-heredoc: arithmetic$//'
   mutant no-comment    "[comment quote"               's/^.*# not-a-heredoc: comment$//'
+  mutant reset-state   "[rescan keeps state: args]"   's/^    my \(\@pend, \@body\);$/    my (\@pend, \@body); (\$q, \$ar, \@st) = ("", 0);/'
   mutant api-unread    "[graphql mergePullRequest]"   's/print "- - -\\n" if !\$found/print "" if !\$found/'
   mutant prefilter-case "[graphql auto-merge]"        's/\*\[Mm\]\[Ee\]\[Rr\]\[Gg\]\[Ee\]\*/*merge*/'
   mutant dq-subs       "[dq substitution: args]"      's/^      push \@queue, subs_of\(\$dq\);$//'
@@ -240,7 +245,7 @@ if [ "${NO_MUTANTS:-0}" != 1 ]; then
   mutant eval          "[eval: args]"                 's/elsif \(\$w eq '"'"'eval'"'"'\)/elsif (0)/'
   mutant budget        "[two merges, budget spent]"   's/if \[ "\$left" -lt 1000 \]; then/if false; then/'
   mutant quoted-lt     "[dq <<: args]"                's/^.*# not-a-heredoc: quoted$//'
-  MUT_WANT_N=30
+  MUT_WANT_N=31
   if [ "$mut_n" != "$MUT_WANT_N" ]; then echo "FAIL: $mut_n of $MUT_WANT_N mutants ran"; mut_bad=1; fi
   [ "$mut_bad" = 0 ] || fail=$((fail + 1))
 fi
