@@ -60,6 +60,30 @@ FAKE_RC=0 gate allow "merge after another command" "$(bash_in 'git -C /a fetch o
 called "ready o/r 3" "compound: args"
 FAKE_RC=0 gate allow "merge after a here-string" "$(bash_in $'cat <<< x\ngh pr merge 3 --repo o/r\nx')"
 called "ready o/r 3" "here-string: args"
+# << inside a quoted string is not a heredoc either: the line that equals its "delimiter" closes nothing
+FAKE_RC=0 gate allow "merge after << in double quotes" "$(bash_in $'echo "<<true"\ngh pr merge 3 --repo o/r\ntrue')"
+called "ready o/r 3" "dq <<: args"
+FAKE_RC=0 gate allow "merge after << in single quotes" "$(bash_in $'echo \'a<<true\'\ngh pr merge 4 --repo o/r\ntrue')"
+called "ready o/r 4" "sq <<: args"
+# dropping a quoted word must not join the two < around it into <<
+FAKE_RC=0 gate allow "merge after two redirects around a quoted word" "$(bash_in $'cat <"README.md"<LICENSE\ngh pr merge 6 --repo o/r\nLICENSE')"
+called "ready o/r 6" "redirect join: args"
+# quote state carries across lines: a multi-line string that closes where a heredoc opens must not
+# pair its closing quote with the delimiter's opening one
+FAKE_RC=0 gate allow "merge after a heredoc opened where a multi-line string closes" "$(bash_in $'gh pr comment 5 --body \'line one\nline two\' && cat <<\'EOF\'\nit\'s fine\nEOF\ngh pr merge 5 --repo o/r')"
+called "ready o/r 5" "multi-line close: args"
+FAKE_RC=0 gate allow "merge after << inside a multi-line string" "$(bash_in $'echo \'a\n<<EOF b\'\ngh pr merge 7 --repo o/r\nEOF')"
+called "ready o/r 7" "multi-line <<: args"
+# a trailing backslash continues the command line: the body starts after the continuation
+FAKE_RC=0 gate allow "merge on the continuation line of a heredoc opener" "$(bash_in $'cat <<EOF \\\n&& gh pr merge 8 --repo o/r\nbody\nEOF')"
+called "ready o/r 8" "continuation: args"
+# "$( … )" is a command of its own: its heredoc counts although the " around it is open, and a lone "
+# in the body must not pair with that one
+FAKE_RC=0 gate allow "merge after a commit-message heredoc whose body has a lone quote" "$(bash_in $'git commit -m "$(cat <<\'EOF\'\nsay "hi\nEOF\n)"\ngh pr merge 8 --repo o/r')"
+called "ready o/r 8" "dq substitution heredoc: args"
+# inside $(( … )) a << is a shift, never a heredoc, however many there are
+FAKE_RC=0 gate allow "merge between lines that equal two shift operands" "$(bash_in $'true=1; echo $((1<<true<<true))\ntrue\ngh pr merge 8 --repo o/r\ntrue')"
+called "ready o/r 8" "two shifts: args"
 
 # ── decisions ────────────────────────────────────────────────────────────────────────────────────
 FAKE_RC=3 gate deny "ready says unresolved threads" "$(bash_in 'gh pr merge 3 --repo o/r --squash')"
@@ -99,6 +123,10 @@ FAKE_RC=0 gate allow "gh api without merge" "$(bash_in 'gh api repos/o/r/pulls/3
 called "" "api no merge: ready not called"
 FAKE_RC=0 gate allow "a heredoc that never closes" "$(bash_in $'cat <<EOF\ngh pr merge 3 --repo o/r')"
 called "ready o/r 3" "open heredoc: args"
+# rescanning an unclosed heredoc keeps the quote and nesting state: opened inside "$(, the ) after it
+# returns to the outer "
+FAKE_RC=0 gate allow "merge after an unclosed heredoc inside a quoted substitution" "$(bash_in $'x="$(echo ${u:-<<NEVER}\n) <<true #"\ngh pr merge 8 --repo o/r\ntrue')"
+called "ready o/r 8" "rescan keeps state: args"
 
 # command substitution runs inside double quotes and unquoted heredocs: what it runs counts
 FAKE_RC=0 gate allow "substitution in double quotes" "$(bash_in 'echo "merged: $(gh pr merge 3 --repo o/r --squash)"')"
@@ -143,9 +171,32 @@ gate allow "git merge" "$(bash_in 'git merge --ff-only origin/main')"
 called "" "git merge: ready not called"
 gate allow "merge inside a heredoc body" "$(bash_in $'cat > n.md <<EOF\ngh pr merge 3 --repo o/r\nEOF')"
 called "" "heredoc: ready not called"
+gate allow "merge inside a heredoc whose delimiter has punctuation" "$(bash_in $'cat > n.md <<EOF-TEXT\ngh pr merge 3 --repo o/r\nEOF-TEXT')"
+called "" "punctuated delimiter: ready not called"
+# the string's EOF line is not the delimiter: the body starts after b' closes the string
+gate allow "heredoc opened while a string is open" "$(bash_in $'cat <<EOF \'a\nEOF\nb\'\ngh pr merge 3 --repo o/r\nEOF')"
+called "" "pending heredoc: ready not called"
+gate allow "an escaped quote before a quoted delimiter" "$(bash_in $'grep -c \\\' f <<\'EOF\'\ngh pr merge 3 --repo o/r\nEOF')"
+called "" "escaped quote: ready not called"
+gate allow "a real heredoc after a shift outside \$(( ))" "$(bash_in $'let x=1<<n\ncat > n.md <<EOF\ngh pr merge 3 --repo o/r\nEOF')"
+called "" "rescan after open heredoc: ready not called"
+# DELIM) is not a closing line: taking it would drop the commands after it on that line, or the ones
+# between an arithmetic shift and a case branch
+FAKE_RC=0 gate allow "merge after EOF) on the same line" "$(bash_in $'x=$(cat <<EOF\ntext\nEOF); gh pr merge 9 --repo o/r')"
+called "ready o/r 9" "EOF) same line: args"
+FAKE_RC=0 gate allow "merge between an arithmetic shift and a case branch" "$(bash_in $'n=1; echo $((1<<n))\ngh pr merge 9 --repo o/r\ncase n in\nn) :;;\nesac')"
+called "ready o/r 9" "case branch: args"
+gate allow "a lone quote in a comment before a heredoc" "$(bash_in $'# don\'t merge yet\ncat > n.md <<EOF\nit\'s\ngh pr merge 3 --repo o/r\nEOF')"
+called "" "comment quote: ready not called"
+gate allow "an escaped backslash at the end of the opener line" "$(bash_in $'cat <<EOF \\\\\ngh pr merge 3 --repo o/r\nEOF')"
+called "" "even backslashes: ready not called"
+gate allow "a real heredoc on the same line as a shift outside \$(( ))" "$(bash_in $'let x=1<<n && cat > n.md <<EOF\ngh pr merge 3 --repo o/r\nEOF')"
+called "" "same-line shift: ready not called"
+gate allow "the second of two heredocs on one line" "$(bash_in $'cat <<A <<B\nx\nA\ngh pr merge 3 --repo o/r\nB')"
+called "" "two heredocs: ready not called"
 gate allow "nothing about merge" "$(bash_in 'ls -la')"
 
-MIN_PASS=91
+MIN_PASS=129
 if [ "$pass" -lt "$MIN_PASS" ] && [ "${STOP_ON_FAIL:-0}" != 1 ]; then failed "only $pass checks passed, expected at least $MIN_PASS"; fi
 echo "pr-merge-gate: $pass passed, $fail failed"
 
@@ -164,7 +215,7 @@ mutant() {   # <label> <substring of the case that must kill it> <perl substitut
 }
 if [ "${NO_MUTANTS:-0}" != 1 ]; then
   mutant bypass        "[bypass]"                     's/^  case \$cmd in \*PR_CLOSEOUT_OK=1\*\) allow ;; esac$/  :/'
-  mutant here-string   "[here-string: args]"          's/my \$s = \$l; \$s =~ s\/<<<\/\/g;/my \$s = \$l;/'
+  mutant here-string   "[here-string: args]"          's/^.*# not-a-heredoc: here-string$//'
   mutant rc-check      "[ready says unresolved threads]" 's/\[ "\$rc" = 0 \] && continue/continue/'
   mutant need-target   "[no --repo]"                  's/if \[ "\$repo" = - \] \|\| \[ "\$num" = - \]; then/if false; then/'
   mutant expect-head   "[head: args]"                 's/\[ "\$sha" = - \] \|\| args\+=/true || args+=/'
@@ -172,18 +223,29 @@ if [ "${NO_MUTANTS:-0}" != 1 ]; then
   mutant mcp           "[MCP: args]"                  's/elif \[\[ \$tool == mcp__\*merge_pull_request \]\]/elif false/'
   mutant wrappers      "[command gh: args]"           's/shift \@t while \@t && !\(\(\$t\[0\] =~ m\{\(\[\^\/\]\+\)\$\}\)\[0\] eq '"'"'gh'"'"'\);/shift \@t while \@t && \$t[0] =~ \/^[A-Za-z_]\\w*=\/;/'
   mutant backticks     "[backticks: args]"            's/\[;&\|\(\)`\\n\]/[;&|()\\n]/'
-  mutant open-heredoc  "[open heredoc: args]"         's/^  push \@keep, \@body;.*$//'
+  mutant open-heredoc  "[open heredoc: args]"         's/^    if \(\@hd\) \{ shift \@hd; \@todo = \@body; \}.*$//'
+  mutant no-rescan     "[rescan after open heredoc"   's/^    if \(\@hd\) \{ shift \@hd; \@todo = \@body; \}.*$/    if (\@hd) { push \@keep, \@body; \@hd = (); }/'
+  mutant no-carry      "[multi-line close: args]"     's/^      push \@keep, \$l; my \$cont = 0;$/      push \@keep, \$l; my \$cont = 0; \$q = "";/'
+  mutant no-pending    "[pending heredoc"             's/if \(\@pend && \$q eq '"''"' && !\$cont\)/if (\@pend \&\& !\$cont)/'
+  mutant no-cont       "[continuation: args]"         's/\$cont = 1 if \$i == length\(\$l\) - 1; //'
+  mutant no-escape     "[escaped quote"               's/(\$cont = 1 if \$i == length\(\$l\) - 1;) \$i\+\+;/$1/'
+  mutant first-only    "[same-line shift"             's/^        push \@pend, \[/        \@pend or push \@pend, [/'
+  mutant no-subst      "[dq substitution heredoc: args]" 's/^.*# not-a-heredoc: substitution$//'
+  mutant no-arith      "[two shifts: args]"           's/^.*# not-a-heredoc: arithmetic$//'
+  mutant no-comment    "[comment quote"               's/^.*# not-a-heredoc: comment$//'
+  mutant reset-state   "[rescan keeps state: args]"   's/^    my \(\@pend, \@body\);$/    my (\@pend, \@body); (\$q, \$ar, \@st) = ("", 0);/'
   mutant api-unread    "[graphql mergePullRequest]"   's/print "- - -\\n" if !\$found/print "" if !\$found/'
   mutant prefilter-case "[graphql auto-merge]"        's/\*\[Mm\]\[Ee\]\[Rr\]\[Gg\]\[Ee\]\*/*merge*/'
   mutant dq-subs       "[dq substitution: args]"      's/^      push \@queue, subs_of\(\$dq\);$//'
-  mutant heredoc-subs  "[heredoc substitution: args]" 's/push \@queue, map \{ subs_of\(\$_\) \} \@body unless \$quoted; //'
-  mutant quoted-hd     "[quoted heredoc: ready not called]" 's/ unless \$quoted;/;/'
+  mutant heredoc-subs  "[heredoc substitution: args]" 's/push \@queue, map \{ subs_of\(\$_\) \} \@body unless \$hd\[0\]\[1\]; //'
+  mutant quoted-hd     "[quoted heredoc: ready not called]" 's/ unless \$hd\[0\]\[1\];/;/'
   mutant takes-value   "[--subject takes a value]"   's/if \(\$takes\{\$x\}\) \{ \$k\+\+; next; \}//'
   mutant two-numbers   "[two PR numbers]"             's/\$num = '"'"'-'"'"' if \$two;//'
   mutant shell-c       "[bash -c: args]"              's/if \(\$s->\[\$m\] =~ \/\^-\[A-Za-z\]\*c\[A-Za-z\]\*\$\/\) \{ push \@queue, \$s->\[\$m \+ 1\] if defined \$s->\[\$m \+ 1\]; last; \}//'
   mutant eval          "[eval: args]"                 's/elsif \(\$w eq '"'"'eval'"'"'\)/elsif (0)/'
   mutant budget        "[two merges, budget spent]"   's/if \[ "\$left" -lt 1000 \]; then/if false; then/'
-  MUT_WANT_N=20
+  mutant quoted-lt     "[dq <<: args]"                's/^.*# not-a-heredoc: quoted$//'
+  MUT_WANT_N=31
   if [ "$mut_n" != "$MUT_WANT_N" ]; then echo "FAIL: $mut_n of $MUT_WANT_N mutants ran"; mut_bad=1; fi
   [ "$mut_bad" = 0 ] || fail=$((fail + 1))
 fi

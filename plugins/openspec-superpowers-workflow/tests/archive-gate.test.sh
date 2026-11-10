@@ -123,7 +123,100 @@ out=$(run_gate "$(input_json s8 "$P" 'git status')" "$T" "$P"); empty "unrelated
 out=$(run_gate "$(input_json s8 "$P" "git commit -m 'docs: openspec archive foo --yes'")" "$T" "$P")
 empty "archive words inside a quoted commit message → allow" "$out"
 
+# heredoc 剝除只認真正的 heredoc：here-string 與引號內的 << 不是 heredoc，其後的行仍是命令。
+# 每個案例都帶一行「收尾」：沒有它，未收尾的本體一律放回當命令，這些案例不論剝除對錯都會 deny
+out=$(run_gate "$(input_json s11 "$P" $'cat <<< hello\nopenspec archive foo --yes\nhello')" "$T" "$P")
+contains "archive after a here-string → deny" "$out" "$DENY"
+out=$(run_gate "$(input_json s11 "$P" $'cat <<<EOF\nopenspec archive foo --yes\nEOF')" "$T" "$P")
+contains "archive after a here-string without a space → deny" "$out" "$DENY"
+out=$(run_gate "$(input_json s11 "$P" $'echo "<<EOF"\nopenspec archive foo --yes\nEOF')" "$T" "$P")
+contains "archive after << inside double quotes → deny" "$out" "$DENY"
+out=$(run_gate "$(input_json s11 "$P" $'echo \'x <<EOF\'\nmv openspec/changes/foo openspec/changes/archive/2026-11-09-foo\nEOF')" "$T" "$P")
+contains "mv after << inside single quotes → deny" "$out" "$DENY"
+# 引號字串拿掉後不得把兩個 < 拼成 <<：cat <"a.md"<EOF 是兩個輸入重導向，不是 heredoc
+out=$(run_gate "$(input_json s11 "$P" $'cat <"a.md"<EOF\nopenspec archive foo --yes\nEOF')" "$T" "$P")
+contains "archive after two redirects around a quoted word → deny" "$out" "$DENY"
+# 沒有收尾行的「heredoc」不是 heredoc（算術位移 $((1<<n)) 就長這樣）：其後的行仍是命令
+out=$(run_gate "$(input_json s11 "$P" $'echo $((1<<n))\nopenspec archive foo --yes')" "$T" "$P")
+contains "archive after an arithmetic shift → deny" "$out" "$DENY"
+out=$(run_gate "$(input_json s11 "$P" $'cat <<EOF\nopenspec archive foo --yes')" "$T" "$P")
+contains "archive in a heredoc that never closes → deny" "$out" "$DENY"
+# 真正的 heredoc 本體不是命令：delimiter 不加引號、加引號、加反斜線，以及 commit 訊息的 $(cat <<'EOF' 寫法
+out=$(run_gate "$(input_json s11 "$P" $'cat > n.md <<EOF\nopenspec archive foo --yes\nEOF')" "$T" "$P")
+empty "archive words in a heredoc body → allow" "$out"
+out=$(run_gate "$(input_json s11 "$P" $'cat > n.md <<\'EOF\'\nopenspec archive foo --yes\nEOF')" "$T" "$P")
+empty "archive words in a quoted-delimiter heredoc body → allow" "$out"
+out=$(run_gate "$(input_json s11 "$P" $'cat > n.md <<\\EOF\nopenspec archive foo --yes\nEOF')" "$T" "$P")
+empty "archive words in a backslash-delimiter heredoc body → allow" "$out"
+out=$(run_gate "$(input_json s11 "$P" $'cat > n.md <<EOF-TEXT\nopenspec archive foo --yes\nEOF-TEXT')" "$T" "$P")
+empty "archive words in a heredoc whose delimiter has punctuation → allow" "$out"
+out=$(run_gate "$(input_json s11 "$P" $'cat > n.md <<\'END.OF_TEXT\'\nopenspec archive foo --yes\nEND.OF_TEXT')" "$T" "$P")
+empty "archive words in a heredoc with a quoted dotted delimiter → allow" "$out"
+out=$(run_gate "$(input_json s11 "$P" $'git commit -m "$(cat <<\'EOF\'\nopenspec archive foo --yes\nEOF\n)"')" "$T" "$P")
+empty "archive words in a commit-message heredoc → allow" "$out"
+# 引號狀態跨行延續：跨行字串在某一行收尾、同一行接著開 heredoc，收尾引號不得與 delimiter 的開頭引號配成一對
+out=$(run_gate "$(input_json s11 "$P" $'echo \'line one\nline two\' && cat <<\'EOF\'\nit\'s fine\nEOF\nopenspec archive foo --yes')" "$T" "$P")
+contains "archive after a heredoc opened where a multi-line string closes → deny" "$out" "$DENY"
+out=$(run_gate "$(input_json s11 "$P" $'echo \'a\n<<EOF b\'\nopenspec archive foo --yes\nEOF')" "$T" "$P")
+contains "archive after << inside a multi-line string → deny" "$out" "$DENY"
+out=$(run_gate "$(input_json s11 "$P" $'cat <<EOF \'a\nEOF\nb\'\nopenspec archive foo --yes\nEOF')" "$T" "$P")
+empty "heredoc opened while a string is open: body starts after the string closes → allow" "$out"
+out=$(run_gate "$(input_json s11 "$P" $'grep -c \\\' f <<\'EOF\'\nopenspec archive foo --yes\nEOF')" "$T" "$P")
+empty "an escaped quote before a quoted delimiter → allow" "$out"
+# 放回的行再找一次 heredoc
+out=$(run_gate "$(input_json s11 "$P" $'let x=1<<n\ncat > n.md <<EOF\nopenspec archive foo --yes\nEOF')" "$T" "$P")
+empty "a real heredoc after a shift outside \$(( )) → allow" "$out"
+# DELIM) 不是收尾行：接受它會把同一行後面的命令、或算術位移之後 case 分支前的命令一起丟掉
+out=$(run_gate "$(input_json s11 "$P" $'x=$(cat <<EOF\ntext\nEOF); openspec archive foo --yes')" "$T" "$P")
+contains "archive after EOF) on the same line → deny" "$out" "$DENY"
+out=$(run_gate "$(input_json s11 "$P" $'n=1; echo $((1<<n))\nopenspec archive foo --yes\ncase n in\nn) :;;\nesac')" "$T" "$P")
+contains "archive between an arithmetic shift and a case branch → deny" "$out" "$DENY"
+# "$( … )" 是獨立的命令：外層的 " 還開著，裡面的 heredoc 照樣算；本體落單的 " 不得與外層配對
+out=$(run_gate "$(input_json s11 "$P" $'git commit -m "$(cat <<\'EOF\'\nsay "hi\nEOF\n)"\nopenspec archive foo --yes')" "$T" "$P")
+contains "archive after a commit-message heredoc whose body has a lone quote → deny" "$out" "$DENY"
+# $(( … )) 裡的 << 是位移，幾個都不是 heredoc
+out=$(run_gate "$(input_json s11 "$P" $'true=1; echo $((1<<true<<true))\ntrue\nopenspec archive foo --yes\ntrue')" "$T" "$P")
+contains "archive between lines that equal two shift operands → deny" "$out" "$DENY"
+# 註解不是命令文字：裡面的落單引號不得延續到後面的行
+out=$(run_gate "$(input_json s11 "$P" $'# don\'t archive yet\ncat > n.md <<EOF\nit\'s\nopenspec archive foo --yes\nEOF')" "$T" "$P")
+empty "a lone quote in a comment before a heredoc → allow" "$out"
+# 重掃未收尾的 heredoc 時，引號與巢狀狀態要延續：opener 在 "$( 裡，重掃後的 ) 要回到外層的 "
+out=$(run_gate "$(input_json s11 "$P" $'x="$(echo ${u:-<<NEVER}\n) <<true #"\nopenspec archive foo --yes\ntrue')" "$T" "$P")
+contains "archive after an unclosed heredoc inside a quoted substitution → deny" "$out" "$DENY"
+# 行尾反斜線續行：命令行還沒結束，本體從續行之後才開始；偶數個反斜線不是續行
+out=$(run_gate "$(input_json s11 "$P" $'cat <<EOF \\\n&& openspec archive foo --yes\nbody\nEOF')" "$T" "$P")
+contains "archive on the continuation line of a heredoc opener → deny" "$out" "$DENY"
+out=$(run_gate "$(input_json s11 "$P" $'echo a\\\\ <<EOF\nopenspec archive foo --yes\nEOF')" "$T" "$P")
+empty "an escaped backslash before the heredoc is not a continuation → allow" "$out"
+out=$(run_gate "$(input_json s11 "$P" $'cat <<EOF \\\\\nopenspec archive foo --yes\nEOF')" "$T" "$P")
+empty "an escaped backslash at the end of the opener line is not a continuation → allow" "$out"
+# 同一行多個 <<：每個 delimiter 依序各有本體；等不到收尾的那個（算術位移）略過，後面的照常
+out=$(run_gate "$(input_json s11 "$P" $'let x=1<<n && cat > n.md <<EOF\nopenspec archive foo --yes\nEOF')" "$T" "$P")
+empty "a real heredoc on the same line as a shift outside \$(( )) → allow" "$out"
+out=$(run_gate "$(input_json s11 "$P" $'cat <<A <<B\nx\nA\nopenspec archive foo --yes\nB')" "$T" "$P")
+empty "the second of two heredocs on one line → allow" "$out"
+
+# 跨 hook 契約：archive-gate 放行時留下的標記，就是 skip-gate 讀的那一個（名稱只改一邊，這裡會紅）。
+# 聲明比 archive/ 目錄新、比標記舊，所以 deny 只可能來自標記；同一份聲明換個沒有標記的 session 則放行。
+SKIP_GATE="$SCRIPT_DIR/../hooks/skip-gate.sh"
+edit_json() { jq -cn --arg s "$1" --arg c "$2" --arg f "$3" '{session_id:$s,cwd:$c,tool_name:"Edit",tool_input:{file_path:$f}}'; }
+run_skip() { printf '%s' "$1" | TMPDIR="$2" CLAUDE_PROJECT_DIR="$3" "$BASH_BIN" "$SKIP_GATE" 2>/dev/null || true; }
+P=$WORK/p20; T=$WORK/t20; mkdir -p "$T" "$P/.claude" "$P/src"; verified "$P" foo
+for s in s20 s20x; do
+  printf '契約面：API=否 資料=否 schema=否 migration=否 相容=否 權限=否 並行=否 跨模組=否 ｜ 理由：x\n' > "$P/.claude/openspec-skip.$s.local.md"
+  touch -t 202001020000 "$P/.claude/openspec-skip.$s.local.md"
+done
+out=$(run_gate "$(input_json s20 "$P" 'openspec archive foo --yes')" "$T" "$P")
+empty "contract: verified archive → allow" "$out"
+mkdir -p "$P/openspec/changes/archive"; mv "$P/openspec/changes/foo" "$P/openspec/changes/archive/2026-11-09-foo"
+touch -t 202001010000 "$P/openspec/changes/archive"
+out=$(run_skip "$(edit_json s20 "$P" "$P/src/a.js")" "$T" "$P")
+contains "contract: skip-gate reads the marker archive-gate left" "$out" "本 session 已歸檔"
+out=$(run_skip "$(edit_json s20x "$P" "$P/src/a.js")" "$T" "$P")
+empty "contract: a session without the marker is not held to it" "$out"
+
 # fail-open
+P=$WORK/p1; T=$WORK/t1
 out=$(run_gate "$(input_json s9 "$P" 'openspec archive nope --yes')" "$T" "$P"); empty "change dir missing → allow" "$out"
 out=$(run_gate "$(input_json s9 "$P" 'openspec archive')" "$T" "$P"); empty "no change name → allow" "$out"
 out=$(run_gate '{not json' "$T" "$P"); empty "malformed input → allow" "$out"
@@ -152,7 +245,7 @@ if [ "$n" = 2 ]; then PASS=$((PASS+1)); echo "PASS: hooks.json registers two arc
 else FAIL=$((FAIL+1)); echo "FAIL: hooks.json archive-gate handlers with if — got [$n]"; fi
 
 # ---- summary ----
-MIN=32
+MIN=64
 if [ "$((PASS + FAIL))" -lt "$MIN" ]; then
   echo "FAIL: ran $((PASS + FAIL)) assertions, expected at least $MIN"; FAIL=$((FAIL+1))
 fi

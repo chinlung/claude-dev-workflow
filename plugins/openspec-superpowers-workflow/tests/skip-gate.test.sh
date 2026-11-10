@@ -203,8 +203,34 @@ check "16b 歸檔前的聲明 → 歸檔後版本的訊息" "$out" "已歸檔"
 out=$(run_gate "$(input_json s16b "$p" "$p/src/b.php")" "$t" "$p")
 check "16b 同 session 另一個檔 → 續 deny" "$out" "$DENY"
 
+# 17) 沒有本 session 的標記時，聲明仍必須比 openspec/changes/archive/ 新：
+#     略過閘門的歸檔（OPENSPEC_ARCHIVE_OK=1）與其他 session 的歸檔都不留標記，但都會動到這個目錄
+p=$WORK/p17; make_proj "$p" archive-only; t=$WORK/t17; mkdir -p "$t"
+write_decl "$p" s17 "$ALL_NO"; touch -t 202001010000 "$(decl "$p" s17)"
+out=$(run_gate "$(input_json s17 "$p" "$p/src/a.php")" "$t" "$p")
+check "17 聲明比 archive/ 舊 → deny" "$out" "$DENY"
+check "17 archive/ 版本的訊息" "$out" "archive/ 有變動"
+out=$(run_gate "$(input_json s17 "$p" "$p/src/b.php")" "$t" "$p")
+check "17 同 session 另一個檔 → 續 deny" "$out" "$DENY"
+touch -t 201901010000 "$p/openspec/changes/archive"
+out=$(run_gate "$(input_json s17 "$p" "$p/src/a.php")" "$t" "$p")
+check_empty "17 聲明比 archive/ 新 → allow" "$out"
+# 17b) 聲明格式仍照常檢查：比 archive/ 新但標為「是」→ deny
+write_decl "$p" s17b '契約面：API=是 資料=否 schema=否 migration=否 相容=否 權限=否 並行=否 跨模組=否 ｜ 理由：x'
+out=$(run_gate "$(input_json s17b "$p" "$p/src/a.php")" "$t" "$p")
+check "17b 比 archive/ 新但 API=是 → deny" "$out" "標為「是」：API"
+
+# 17c) 本 session 的舊標記不得遮住 archive/ 的比較：標記 < 聲明 < archive/（歸檔後重寫過聲明，之後別的 session 又歸檔）
+write_decl "$p" s17c "$ALL_NO"; touch -t 202001010000 "$(decl "$p" s17c)"
+touch -t 201901010000 "$t/claude-openspec-archived-s17c"; touch -t 202101010000 "$p/openspec/changes/archive"
+out=$(run_gate "$(input_json s17c "$p" "$p/src/a.php")" "$t" "$p")
+check "17c 標記較舊、archive/ 較新 → deny" "$out" "archive/ 有變動"
+touch -t 201901010000 "$p/openspec/changes/archive"
+out=$(run_gate "$(input_json s17c "$p" "$p/src/a.php")" "$t" "$p")
+check_empty "17c 標記與 archive/ 都比聲明舊 → allow" "$out"
+
 # ---- summary ----
-MIN=44
+MIN=51
 if [ "$((PASS + FAIL))" -lt "$MIN" ]; then
   echo "FAIL: ran $((PASS + FAIL)) assertions, expected at least $MIN"; FAIL=$((FAIL+1))
 fi

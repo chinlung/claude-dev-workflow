@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-11-10
+
+Three deferred review findings on the two gates, each reproduced against the hook before it was fixed.
+
+### Changed
+
+- **skip-gate: the declaration must also be newer than `openspec/changes/archive/`.** The archive marker is only written when this session's archive-gate allows an archive, so an archive that bypassed the gate (`OPENSPEC_ARCHIVE_OK=1`) or one made by another session left an older declaration valid. The directory's mtime moves whenever a change is moved into it, so the gate now compares against it as well and asks for a fresh declaration, with its own deny message. Anything else that moves that mtime (a checkout that adds or removes an archived change) asks for one too.
+
+### Fixed
+
+- **archive-gate: a here-string or a quoted `<<` is not a heredoc.** The heredoc pre-pass matched `<<WORD` anywhere on a line, so `cat <<< hello` or `echo "<<EOF"` followed by `openspec archive <name>` on the next line dropped that line as a heredoc body and the archive went through unchecked. The pre-pass now walks the characters and carries an open quote from one line to the next, so a `<<` opens a heredoc only outside quotes, including inside a string that spans lines. A heredoc opened on a line that is not finished yet (its string is still open, or it ends in a continuation backslash) starts its body after that line ends, as bash does, and each `<<` on a line has its own body. A `$( … )` starts over inside the quote around it, so the heredoc of `git commit -m "$(cat <<'EOF' …)"` counts and a lone quote in its body pairs with nothing outside; inside `$(( … ))` and `(( … ))` a `<<` is a shift, and a `#` comment is skipped, so a lone quote in one opens nothing.
+- **archive-gate: a `<<` whose delimiter line never comes is not a heredoc.** Every line after it was dropped to the end of the command, so an arithmetic shift such as `echo $((1<<n))` followed by `openspec archive <name>` went through unchecked. Lines held as a heredoc body are now put back when the delimiter never appears, and scanned again for heredocs, so a real heredoc after the shift, on a later line or the same one, still hides its body. The closing line must equal the delimiter: `EOF)` inside `$( … )` is not taken as one, so that heredoc reads as never closed and its body as commands.
+- **archive-gate: a heredoc with a backslash delimiter (`<<\EOF`) is recognised, and the delimiter is read as a whole word.** `<<EOF-TEXT` closes on `EOF-TEXT`; only the leading `\w+` used to be taken. A body that was read as commands had text in it that looked like an archive denied.
+
+### Tests
+
+- `archive-gate.test.sh` covers the shapes above and real heredoc bodies (plain, quoted and backslash delimiters, the `$(cat <<'EOF'` commit-message form, a heredoc opened where a multi-line string closes or before a continuation line, an escaped quote before a quoted delimiter, two heredocs on one line), and gains a case that lets archive-gate allow an archive and then runs skip-gate against the marker it left: the marker name was a literal in both hooks and in both suites, with nothing that ran one hook after the other.
+- `skip-gate.test.sh` covers the archive-directory comparison in both directions.
+
 ## [2.0.0] - 2026-11-09
 
 Two months of real sessions (10 sessions that loaded the skill, 9 archives, 133 archived changes on disk) showed that the rules which only existed as prose were not followed: no archiving session read the reconciliation checklist, four archived before review had converged, 38% of archived changes still had unchecked tasks, the skip gate's twelve denials never produced the eight-surface check, and users asked three times to skip the Phase 2 questions. 2.0.0 gives those rules a machine check where one is possible and rewrites the playbook where the evidence said it was wrong. Design and plan: `docs/openspec-workflow-2-design-2026-11-09.md`, `docs/openspec-workflow-2-part2-design-2026-11-09.md` and the two plan files beside them.
