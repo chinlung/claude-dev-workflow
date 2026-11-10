@@ -230,7 +230,16 @@ out=$(run_gate "$(input_json s17c "$p" "$p/src/a.php")" "$t" "$p")
 check_empty "17c 標記與 archive/ 都比聲明舊 → allow" "$out"
 
 # ---- summary ----
-MIN=51
+# 17d) archive/ 的 mtime 在未來（時鐘偏差、保留 mtime 的複製）：聲明再怎麼重寫都不會比它新，這條比較無從判斷，略過
+p=$WORK/p17d; make_proj "$p" archive-only; t=$WORK/t17d; mkdir -p "$t"
+write_decl "$p" s17d "$ALL_NO"; touch -t 203501010000 "$p/openspec/changes/archive"
+out=$(run_gate "$(input_json s17d "$p" "$p/src/a.php")" "$t" "$p")
+check_empty "17d archive/ 的 mtime 在未來 → allow" "$out"
+write_decl "$p" s17e '契約面：API=是 資料=否 schema=否 migration=否 相容=否 權限=否 並行=否 跨模組=否 ｜ 理由：x'
+out=$(run_gate "$(input_json s17e "$p" "$p/src/a.php")" "$t" "$p")
+check "17e 未來的 archive/ 不豁免聲明內容：API=是 → deny" "$out" "標為「是」：API"
+
+MIN=53
 if [ "$((PASS + FAIL))" -lt "$MIN" ]; then
   echo "FAIL: ran $((PASS + FAIL)) assertions, expected at least $MIN"; FAIL=$((FAIL+1))
 fi

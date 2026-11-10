@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.15.4] - 2026-11-10
+
+### Fixed
+
+- **openspec-superpowers-workflow 2.2.0 → 2.2.1** — archive-gate reads `$'…'` as a quote (an archive after `$'it\'s'` went unchecked), checks an archive behind `then`, `do`, `!`, `{`, `env`, `command` and inside `bash -c` or `eval`, and skip-gate no longer denies every edit while `archive/` carries an mtime in the future. See that plugin's CHANGELOG [2.2.1].
+- **pr-closeout 1.0.2 → 1.0.3** — the merge gate reads `$'…'` as a quote; a `gh pr merge` after `$'it\'s'` was merged without `ready`. See that plugin's CHANGELOG [1.0.3].
+
 ## [1.15.3] - 2026-11-10
 
 ### Changed

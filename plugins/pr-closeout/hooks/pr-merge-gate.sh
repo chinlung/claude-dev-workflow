@@ -68,7 +68,7 @@ while (@queue && $rounds++ < 50) {
   # Heredoc bodies, found in one pass over the characters that carries an open quote from line to
   # line: a << opens a heredoc only outside quotes (a $( … ) starts over, unquoted, inside the quote
   # around it) and outside $(( … )) and (( … )), where it is a shift; never in a # comment or a
-  # here-string (<<<). The delimiter
+  # here-string (<<<). $'…' is a quote whose \' does not close it. The delimiter
   # is the whole word (<<EOF-TEXT closes on EOF-TEXT), quoted or \-escaped too. Bodies start on the
   # line after the command line ends (after the string closes or the trailing-backslash
   # continuation runs out, when that line left one open), one per << on that line in order, each
@@ -91,12 +91,14 @@ while (@queue && $rounds++ < 50) {
         my $ch = substr($l, $i, 1);
         if ($ar) { $ar++ if $ch eq '('; $ar-- if $ch eq ')'; next; }             # not-a-heredoc: arithmetic
         if ($q eq "'") { $q = '' if $ch eq "'"; next; }
+        if ($q eq 'A') { if ($ch eq "\\") { $i++; next; } $q = '' if $ch eq "'"; next; }   # $'…': \' does not close it
         if ($ch eq "\\") { $cont = 1 if $i == length($l) - 1; $i++; next; }        # not-a-heredoc: continuation
         last if $q eq '' && $ch eq '#' && ($i == 0 || substr($l, $i - 1, 1) =~ /[\s;&|()]/);   # not-a-heredoc: comment
         my $sub = $ch eq '$' && substr($l, $i + 1, 1) eq '(';
         if ($sub ? substr($l, $i + 2, 1) eq '(' : $q eq '' && substr($l, $i, 2) eq '((') { $ar = 2; $i += $sub ? 2 : 1; next; }
         if ($sub) { push @st, $q; $q = ''; $i++; next; }                           # not-a-heredoc: substitution
         if ($q eq '"') { $q = '' if $ch eq '"'; next; }
+        if ($ch eq '$' && substr($l, $i + 1, 1) eq "'") { $q = 'A'; $i++; next; }               # not-a-heredoc: ansi-c
         if ($ch eq "'" || $ch eq '"') { $q = $ch; next; }                          # not-a-heredoc: quoted
         if ($ch eq '(') { push @st, ''; next; }
         if ($ch eq ')') { $q = pop @st if @st; next; }
@@ -114,6 +116,9 @@ while (@queue && $rounds++ < 50) {
   my $endtok = sub { push @{$segs[-1]}, $tok if defined $tok; undef $tok; };
   while ($i < $n) {
     my $ch = substr($c, $i, 1);
+    # $'…': \' \" and \\ are decoded; any other escape (\n, \062, \x41) keeps its backslash, so a word built
+    # with one is never read as other text — a PR number or a change name written that way is not one
+    if ($ch eq '$' && substr($c, $i + 1, 1) eq "'") { my $j = $i + 2; $tok //= ''; while ($j < $n && substr($c, $j, 1) ne "'") { if (substr($c, $j, 1) eq "\\") { my $e = substr($c, $j + 1, 1); $tok .= "\\" unless $e =~ /[\\'"]/; $j++; } $tok .= substr($c, $j, 1); $j++; } $i = $j + 1; next; }   # ansi-c: tokenizer
     if ($ch eq "'") { my $j = index($c, "'", $i + 1); $j = $n if $j < 0; $tok .= substr($c, $i + 1, $j - $i - 1); $i = $j + 1; next; }
     if ($ch eq '"') {
       my $j = $i + 1; my $dq = ''; $tok //= '';

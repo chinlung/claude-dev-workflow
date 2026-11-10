@@ -83,6 +83,11 @@ FAKE_RC=0 gate allow "merge after a heredoc opened where a multi-line string clo
 called "ready o/r 5" "multi-line close: args"
 FAKE_RC=0 gate allow "merge after << inside a multi-line string" "$(bash_in $'echo \'a\n<<EOF b\'\ngh pr merge 7 --repo o/r\nEOF')"
 called "ready o/r 7" "multi-line <<: args"
+# $'…' is a quote in which \' does not close: without it every quote after that one pairs wrongly
+FAKE_RC=0 gate allow "merge after an ANSI-C string with an escaped quote" "$(bash_in $'echo $\'it\\\'s\'\ngh pr merge 3 --repo o/r')"
+called "ready o/r 3" "ansi-c: args"
+FAKE_RC=0 gate allow "merge after a heredoc opened behind an ANSI-C string" "$(bash_in $'echo $\'it\\\'s\' && cat <<EOF\nsay "hi\nEOF\ngh pr merge 4 --repo o/r')"
+called "ready o/r 4" "ansi-c heredoc: args"
 # a trailing backslash continues the command line: the body starts after the continuation
 FAKE_RC=0 gate allow "merge on the continuation line of a heredoc opener" "$(bash_in $'cat <<EOF \\\n&& gh pr merge 8 --repo o/r\nbody\nEOF')"
 called "ready o/r 8" "continuation: args"
@@ -204,8 +209,12 @@ called "" "same-line shift: ready not called"
 gate allow "the second of two heredocs on one line" "$(bash_in $'cat <<A <<B\nx\nA\ngh pr merge 3 --repo o/r\nB')"
 called "" "two heredocs: ready not called"
 gate allow "nothing about merge" "$(bash_in 'ls -la')"
+# an escape this hook does not decode (\062 is the digit 2) must not be read as other text: the number
+# cannot be told, so the merge is denied, never checked against the wrong PR
+gate deny "PR number written with an ANSI-C escape" "$(bash_in $'gh pr merge $\'1\\062\' --repo o/r')"
+called "" "ansi-c escape in the number: ready not called"
 
-MIN_PASS=136
+MIN_PASS=142
 if [ "$pass" -lt "$MIN_PASS" ] && [ "${STOP_ON_FAIL:-0}" != 1 ]; then failed "only $pass checks passed, expected at least $MIN_PASS"; fi
 echo "pr-merge-gate: $pass passed, $fail failed"
 
@@ -243,6 +252,9 @@ if [ "${NO_MUTANTS:-0}" != 1 ]; then
   mutant no-subst      "[dq substitution heredoc: args]" 's/^.*# not-a-heredoc: substitution$//'
   mutant no-arith      "[two shifts: args]"           's/^.*# not-a-heredoc: arithmetic$//'
   mutant no-comment    "[comment quote"               's/^.*# not-a-heredoc: comment$//'
+  mutant ansi-tok      "[ansi-c: args]"               's/^.*# ansi-c: tokenizer$//'
+  mutant ansi-scan     "[ansi-c heredoc: args]"       's/^.*# not-a-heredoc: ansi-c$//'
+  mutant ansi-strip    "[PR number written with an ANSI-C escape]" 's/\$tok \.= "\\\\" unless \$e =~ \/\[\\\\\x27"\]\/; //'
   mutant reset-state   "[rescan keeps state: args]"   's/^    my \(\@pend, \@body\);$/    my (\@pend, \@body); (\$q, \$ar, \@st) = ("", 0);/'
   mutant api-unread    "[graphql mergePullRequest]"   's/print "- - -\\n" if !\$found/print "" if !\$found/'
   mutant prefilter-case "[graphql auto-merge]"        's/\*\[Mm\]\[Ee\]\[Rr\]\[Gg\]\[Ee\]\*/*merge*/'
@@ -255,7 +267,7 @@ if [ "${NO_MUTANTS:-0}" != 1 ]; then
   mutant eval          "[eval: args]"                 's/elsif \(\$w eq '"'"'eval'"'"'\)/elsif (0)/'
   mutant budget        "[two merges, budget spent]"   's/if \[ "\$left" -lt 1000 \]; then/if false; then/'
   mutant quoted-lt     "[dq <<: args]"                's/^.*# not-a-heredoc: quoted$//'
-  MUT_WANT_N=32
+  MUT_WANT_N=35
   if [ "$mut_n" != "$MUT_WANT_N" ]; then echo "FAIL: $mut_n of $MUT_WANT_N mutants ran"; mut_bad=1; fi
   [ "$mut_bad" = 0 ] || fail=$((fail + 1))
 fi

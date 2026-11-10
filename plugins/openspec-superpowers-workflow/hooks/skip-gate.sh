@@ -62,6 +62,10 @@ marker="${TMPDIR:-/tmp}/claude-openspec-archived-${session_id}"
 keys=(API 資料 schema migration 相容 權限 並行 跨模組)
 template='契約面：'; for key in "${keys[@]}"; do template+="${key}=否 "; done; template+='｜ 理由：<一句話>'
 
+# The archive/ directory's mtime lies in the future (clock skew, a copy that kept mtimes): no declaration
+# written now can be newer, so that comparison cannot be made. Without perl the question is not asked.
+archive_in_future() { command -v perl >/dev/null 2>&1 && perl -e 'exit(((stat $ARGV[0])[9] // 0) > time ? 0 : 1)' "$changes_dir/archive" 2>/dev/null; }
+
 deny() {
   jq -cn --arg r "$1" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
   exit 0
@@ -71,7 +75,7 @@ if [ -f "$marker" ] && { [ ! -f "$decl" ] || [ ! "$decl" -nt "$marker" ]; }; the
   deny "⛔ openspec：本 session 已歸檔 change，這次是歸檔之後的程式碼編輯。它若碰到任何契約面，spec 就會漏掉這次修訂：請開 follow-up change（Phase 1）。確認八面都不命中時，在歸檔之後重新寫聲明檔（歸檔前寫的不算）：${decl}，內容一行：${template}"
 elif [ ! -f "$decl" ]; then
   deny "⛔ openspec 專案偵測到程式碼編輯，但 openspec/changes/ 沒有 active change。先判斷這次變更是否碰到八個契約面（public API／data contract／schema／migration／向後相容／安全權限邊界／並行一致性／跨模組行為），把結論寫進聲明檔再重試：${decl}，內容一行，值只能是「是」或「否」：${template}。任何一面是「是」，或行為變更落在 openspec/specs/ 已涵蓋的能力域，就啟動 workflow（Phase 1），不要寫聲明。同一批並行編輯會一起被擋，寫好聲明後全部重試。"
-elif [ -d "$changes_dir/archive" ] && [ ! "$decl" -nt "$changes_dir/archive" ]; then
+elif [ -d "$changes_dir/archive" ] && [ ! "$decl" -nt "$changes_dir/archive" ] && ! archive_in_future; then
   deny "⛔ openspec：聲明檔寫下之後 openspec/changes/archive/ 有變動（有 change 被歸檔，可能來自其他 session 或略過閘門的歸檔）。歸檔之後的程式碼編輯若碰到任何契約面，spec 就會漏掉這次修訂：請開 follow-up change（Phase 1）。確認八面都不命中時，重新寫聲明檔（歸檔前寫的不算）：${decl}，內容一行：${template}"
 fi
 

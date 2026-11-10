@@ -38,14 +38,21 @@ proj="${proj%/}"
 # Change names the command archives, one per line. A shell-word tokenizer, so quoted paths are read
 # as the shell reads them and words inside quotes (a commit message that mentions
 # `openspec archive`) never count; heredoc bodies are dropped. Only command position counts: the
-# first word of a segment after any VAR=value prefixes, segments split on ; & | ( ) and newlines.
+# first word of a segment after any VAR=value prefixes, shell keywords (then, do, !, {, …) and
+# wrappers (env, command, exec, time, nohup); segments split on ; & | ( ) ` and newlines. A command
+# string handed to `bash -c`, `sh -lc` or `eval` is parsed the same way. Not seen: a script fed to a
+# shell on stdin (`bash <<EOF`, `… | bash`), an alias, a variable holding the command.
 IFS= read -r -d '' parser <<'PERL' || true
 use strict; use warnings;
-my $c = $ENV{AG_CMD} // '';
+my @queue = ($ENV{AG_CMD} // ''); my $rounds = 0; my %seen;
+# A command string handed to a shell runs too (`bash -c '…'`, `sh -lc '…'`, `eval …`): it is queued and
+# parsed like the command itself. 50 rounds bound a string that keeps quoting itself.
+while (@queue && $rounds++ < 50) {
+my $c = shift @queue;
 # Heredoc bodies, found in one pass over the characters that carries an open quote from line to
 # line: a << opens a heredoc only outside quotes (a $( … ) starts over, unquoted, inside the quote
 # around it) and outside $(( … )) and (( … )), where it is a shift; never in a # comment or a
-# here-string (<<<). The delimiter
+# here-string (<<<). $'…' is a quote whose \' does not close it. The delimiter
 # is the whole word (<<EOF-TEXT closes on EOF-TEXT), quoted or \-escaped too. Bodies start on the
 # line after the command line ends (after the string closes or the trailing-backslash continuation
 # runs out, when that line left one open), one per << on that line in order, each ending at a line
@@ -67,12 +74,14 @@ while (@todo) {
       my $ch = substr($l, $i, 1);
       if ($ar) { $ar++ if $ch eq '('; $ar-- if $ch eq ')'; next; }             # not-a-heredoc: arithmetic
       if ($q eq "'") { $q = '' if $ch eq "'"; next; }
+      if ($q eq 'A') { if ($ch eq "\\") { $i++; next; } $q = '' if $ch eq "'"; next; }   # $'…': \' does not close it
       if ($ch eq "\\") { $cont = 1 if $i == length($l) - 1; $i++; next; }          # not-a-heredoc: continuation
       last if $q eq '' && $ch eq '#' && ($i == 0 || substr($l, $i - 1, 1) =~ /[\s;&|()]/);   # not-a-heredoc: comment
       my $sub = $ch eq '$' && substr($l, $i + 1, 1) eq '(';
       if ($sub ? substr($l, $i + 2, 1) eq '(' : $q eq '' && substr($l, $i, 2) eq '((') { $ar = 2; $i += $sub ? 2 : 1; next; }
       if ($sub) { push @st, $q; $q = ''; $i++; next; }                           # not-a-heredoc: substitution
       if ($q eq '"') { $q = '' if $ch eq '"'; next; }
+      if ($ch eq '$' && substr($l, $i + 1, 1) eq "'") { $q = 'A'; $i++; next; }               # not-a-heredoc: ansi-c
       if ($ch eq "'" || $ch eq '"') { $q = $ch; next; }                            # not-a-heredoc: quoted
       if ($ch eq '(') { push @st, ''; next; }
       if ($ch eq ')') { $q = pop @st if @st; next; }
@@ -86,9 +95,12 @@ while (@todo) {
 }
 $c = join "\n", @keep;
 my @segs = ([]); my $tok; my $i = 0; my $n = length $c;
-sub endtok { push @{$segs[-1]}, $tok if defined $tok; undef $tok; }
+my $endtok = sub { push @{$segs[-1]}, $tok if defined $tok; undef $tok; };
 while ($i < $n) {
   my $ch = substr($c, $i, 1);
+  # $'…': \' \" and \\ are decoded; any other escape (\n, \062, \x41) keeps its backslash, so a word built
+  # with one is never read as other text — a PR number or a change name written that way is not one
+  if ($ch eq '$' && substr($c, $i + 1, 1) eq "'") { my $j = $i + 2; $tok //= ''; while ($j < $n && substr($c, $j, 1) ne "'") { if (substr($c, $j, 1) eq "\\") { my $e = substr($c, $j + 1, 1); $tok .= "\\" unless $e =~ /[\\'"]/; $j++; } $tok .= substr($c, $j, 1); $j++; } $i = $j + 1; next; }   # ansi-c: tokenizer
   if ($ch eq "'") { my $j = index($c, "'", $i + 1); $j = $n if $j < 0; $tok .= substr($c, $i + 1, $j - $i - 1); $i = $j + 1; next; }
   if ($ch eq '"') {
     my $j = $i + 1; $tok //= '';
@@ -96,15 +108,23 @@ while ($i < $n) {
     $i = $j + 1; next;
   }
   if ($ch eq "\\") { $tok .= substr($c, $i + 1, 1); $i += 2; next; }
-  if ($ch =~ /[;&|()\n]/) { endtok(); push @segs, []; $i++; next; }
-  if ($ch =~ /\s/) { endtok(); $i++; next; }
+  if ($ch =~ /[;&|()`\n]/) { $endtok->(); push @segs, []; $i++; next; }   # a backtick opens a command too
+  if ($ch =~ /\s/) { $endtok->(); $i++; next; }
   $tok .= $ch; $i++;
 }
-endtok();
-my %seen;
+$endtok->();
 for my $s (@segs) {
-  my @t = @$s; shift @t while @t && $t[0] =~ /^[A-Za-z_]\w*=/;
+  # Command position: after VAR=value prefixes, and after the shell keywords and wrappers a command
+  # can sit behind (`if …; then openspec archive x`, `! …`, `env X=1 …`, `command …`).
+  my @t = @$s; shift @t while @t && $t[0] =~ /^(?:[A-Za-z_]\w*=.*|if|then|elif|else|while|until|do|time|exec|command|env|nohup|!|\{)$/s;   # command-position: prefixes
   next unless @t;
+  # A command string handed to a shell runs too, when the shell or eval is itself the command.
+  my $w = ($t[0] =~ m{([^/]+)$})[0] // '';
+  if ($w =~ /^(?:ba|z|da|k)?sh$/) {                                                # shell-string: queue
+    for (my $m = 1; $m < @t; $m++) { if ($t[$m] =~ /^-[A-Za-z]*c[A-Za-z]*$/) { push @queue, $t[$m + 1] if defined $t[$m + 1]; last; } }
+    next;
+  }
+  if ($w eq 'eval') { push @queue, join ' ', @t[1 .. $#t]; next; }
   if ($t[0] eq 'openspec' && @t > 1 && $t[1] eq 'archive') {
     my ($name) = grep { !/^-/ } @t[2 .. $#t];
     print "$name\n" if defined $name && !$seen{$name}++;
@@ -117,6 +137,7 @@ for my $s (@segs) {
       print "$2\n" unless $seen{$2}++;
     }
   }
+}
 }
 PERL
 
