@@ -4,6 +4,12 @@
 
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
+## [1.15.2] - 2026-11-10
+
+### Changed
+
+- **pr-closeout 1.0.1 → 1.0.2** — merge gate 擋下不是字面 40 碼 sha 的 `--match-head-commit`（變數到 hook 手上時還沒展開），`ready` 會中斷卡住的 `reconcile-check verify`，README 寫明閘門攔不到什麼。詳見該插件 CHANGELOG [1.0.2]。
+
 ## [1.15.1] - 2026-11-10
 
 ### Changed

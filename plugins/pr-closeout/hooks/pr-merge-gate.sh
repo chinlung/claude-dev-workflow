@@ -14,8 +14,8 @@
 # Bypass for one command: PR_CLOSEOUT_OK=1 in it (the MCP tool has no bypass; use gh).
 #
 # A gate, so it fails closed: no jq, no node or no ready script denies a merge (and says how to
-# bypass). Commands that are not a merge are allowed at once — the first test is a builtin `case`
-# on the raw input, so ordinary Bash calls cost no subprocess.
+# bypass). Commands that are not a merge are allowed at once — after one `cat` to read the input,
+# the first test is a builtin `case` on it, so ordinary Bash calls start no jq, perl or node.
 # Design: docs/pr-closeout-skill-design-2026-11-09.md (D7). Tests: tests/pr-merge-gate.test.sh
 set -uo pipefail
 allow() { exit 0; }
@@ -194,6 +194,12 @@ while read -r repo num sha; do
   fi
   if [ "$repo" = - ] || [ "$num" = - ]; then
     deny "看得出是 merge，但讀不出是哪個 repo 的哪個 PR。請明寫：gh pr merge <號碼> --repo <owner/repo>。"
+  fi
+  # The sha goes to ready as the head the PR must have. Anything but a literal full sha (a variable
+  # or a substitution arrives here unexpanded, a branch name or a short sha is not a head oid) would
+  # only come back as head-mismatch, with nothing saying why.
+  if [ "$sha" != - ] && [[ ! $sha =~ ^[0-9a-f]{40}$ ]]; then
+    deny "$repo#$num 的 --match-head-commit（MCP 的 sha）不是字面的 40 碼 commit sha：「$sha」。hook 看到的是命令文字，變數與 \$( ) 不會展開；請先取得 sha，直接寫進命令。"
   fi
   args=(ready "$repo" "$num")
   [ "$sha" = - ] || args+=(--expect-head "$sha")

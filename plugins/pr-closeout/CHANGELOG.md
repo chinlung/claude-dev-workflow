@@ -2,6 +2,23 @@
 
 All notable changes to the `pr-closeout` plugin will be documented in this file.
 
+## [1.0.2] - 2026-11-10
+
+### Changed
+
+- **Merge gate: `--match-head-commit` must be a literal 40-hex sha.** The hook reads the command text, where `"$SHA"` or `$(git rev-parse HEAD)` is not expanded, and passed that text to `ready` as the expected head. `ready` answered `head-mismatch` with nothing to say why. Such a value, a short sha or a branch name is now denied with a message that says so; the MCP tool's `sha` is held to the same rule.
+- **`ready`: `reconcile-check verify` shares the run's deadline.** A checker that hung held `ready` until the hook's own timeout. It is cut off and the change is listed with `verify: "unavailable"`.
+
+### Docs
+
+- The README says what the merge gate does not find (it reads the command with a scanner of its own, and guards against a mistake, not against a command built to pass it), that a clone where git rewrites bytes or does not track the mode can report an unchanged file as `unreviewed`, and that `verify` reads the working tree of `--repo-dir`, not the PR's head.
+- "No subprocess" for a command that is not a merge was one `cat` short of true; the hook comment and both READMEs now say no jq, perl or node starts.
+
+### Tests
+
+- `pr-closeout.test.sh`: a symlink recorded as `link:<hash>` and a regular file swapped for a symlink with the same bytes (the `link:` branch of the record key had no case), and a `verify` that hangs. 160 checks, 38 mutants.
+- `pr-merge-gate.test.sh`: 136 checks, 32 mutants.
+
 ## [1.0.1] - 2026-11-10
 
 ### Fixed

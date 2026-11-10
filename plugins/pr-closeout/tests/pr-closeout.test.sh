@@ -231,6 +231,14 @@ chmod +x "$R4/a.sh"; git -C "$R4" add a.sh; $G -C "$R4" commit -q -m mode
 cov_case 6 "executable bit added after the review"
 record4 feat/x "a.sh=$h+x" "b.md=$(blob4 b.md)"
 cov_case 0 "executable recorded as +x"
+# a symlink is recorded as link:<hash>: git stores it as a blob of its target text, and only the
+# mode tells it from a regular file with those bytes
+mkrepo4; ln -s b.md "$R4/l.sh"; git -C "$R4" add l.sh; $G -C "$R4" commit -q -m link
+record4 feat/x "a.sh=$(blob4 a.sh)" "b.md=$(blob4 b.md)" "l.sh=link:$(blob4 l.sh)"
+cov_case 0 "symlink recorded as link:"
+record4 feat/x "a.sh=$(blob4 a.sh)" "b.md=$(blob4 b.md)" "l.sh=$(blob4 l.sh)"
+cov_case 6 "a file reviewed, a symlink with the same bytes merged"
+jqeq "symlink for a file: named" '.coverage.unreviewed' '["l.sh"]'
 mkrepo4; record4 feat/x "a.sh=$(blob4 a.sh)" "b.md=$(blob4 b.md)"
 echo doc2 > "$R4/b.md"; $G -C "$R4" commit -q -am docs
 cov_case 0 "only a document changed after the review"
@@ -268,6 +276,10 @@ jqeq "unarchived: named, sorted" '[.openspec.unarchivedChanges[].name]' '["bar",
 jqeq "unarchived: verify read" '.openspec.unarchivedChanges[0].verify' '"stale:tasks"'
 cov_case 0 "verify script not found"
 jqeq "not found: unavailable" '.openspec.unarchivedChanges[0].verify' '"unavailable"'
+# verify shares the run's deadline: a checker that hangs is cut off and reported as unavailable
+printf '%s\n' "Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 6000); process.stdout.write('stale:tasks\n'); process.exitCode = 3;" > "$tmp/slow-reconcile.cjs"
+RECONCILE_CHECK="$tmp/slow-reconcile.cjs" PR_CLOSEOUT_DEADLINE_MS=3000 cov_case 0 "verify script hangs"
+jqeq "verify hangs: unavailable" '.openspec.unarchivedChanges[0].verify' '"unavailable"'
 mkrepo4; mkdir -p "$R4/openspec/changes/archive/2026-11-09-foo"; echo t > "$R4/openspec/changes/archive/2026-11-09-foo/tasks.md"
 git -C "$R4" add openspec; $G -C "$R4" commit -q -m archived
 cov_case 0 "only an archived change"
@@ -357,7 +369,7 @@ record4 feat/x "a.sh=$(blob4 a.sh)" "b.md=$(blob4 b.md)" "z.sh=deleted"
 cov_case 0 "a deletion the review saw"
 
 # ── summary and mutants ──────────────────────────────────────────────────────────────────────────
-MIN_PASS=155
+MIN_PASS=160
 if [ "$pass" -lt "$MIN_PASS" ] && [ "${STOP_ON_FAIL:-0}" != 1 ]; then failed "only $pass checks passed, expected at least $MIN_PASS"; fi
 echo "pr-closeout: $pass passed, $fail failed"
 
@@ -410,8 +422,10 @@ if [ "${NO_MUTANTS:-0}" != 1 ]; then
   mutant settled       "[skipped as unchanged since an earlier round]" "s/\(f\.status === 'reviewed' \|\| \(f\.status === 'skipped' && Number\.isInteger\(f\.unchangedSince\)\)\)/f.status === 'reviewed'/"
   mutant not-doc       "[a skill file is not a document]" "s/DOC_PATH\.test\(file\) && !NOT_DOC_PATH\.test\(file\)/DOC_PATH.test(file)/"
   mutant deadline      "[deadline]"                        "s/, timeout: left, killSignal: 'SIGKILL'//"
+  mutant link-norm     "[symlink recorded as link:]"       "s/if \(mode === '120000'\) return/if (false) return/"
+  mutant verify-time   "[verify hangs: unavailable]"       "s/, timeout: verifyLeft\(\), killSignal: 'SIGKILL'//"
   mutant deletions     "[a deletion the review never saw]" "s/const changed = git\(repoDir, \['diff', '--name-only', '-z', /const changed = git(repoDir, ['diff', '--name-only', '-z', '--diff-filter=d', /"
-  MUT_WANT_N=36
+  MUT_WANT_N=38
   if [ "$mut_n" != "$MUT_WANT_N" ]; then echo "FAIL: $mut_n of $MUT_WANT_N mutants ran"; mut_bad=1; fi
   [ "$mut_bad" = 0 ] || fail=$((fail + 1))
 fi

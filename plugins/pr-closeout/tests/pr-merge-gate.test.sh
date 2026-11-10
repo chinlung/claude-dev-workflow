@@ -48,6 +48,13 @@ FAKE_RC=0 gate allow "gh pr merge, a PR URL" "$(bash_in 'gh pr merge https://git
 called "ready o/r 7" "URL: args"
 FAKE_RC=0 gate allow "match-head-commit is passed on" "$(bash_in "gh pr merge 3 -R o/r --squash --match-head-commit $SHA")"
 called "ready o/r 3 --expect-head $SHA" "head: args"
+# --match-head-commit must be a literal 40-hex sha: a variable or a substitution reaches the hook
+# unexpanded, and ready would compare the PR's head with that text
+gate deny "match-head-commit is a variable" "$(bash_in 'gh pr merge 3 -R o/r --squash --match-head-commit "$SHA"')"
+called "" "variable head: ready not called"
+reason_has "variable head" "--match-head-commit"
+gate deny "match-head-commit is a short sha" "$(bash_in 'gh pr merge 3 -R o/r --squash --match-head-commit=1111111')"
+called "" "short head: ready not called"
 FAKE_RC=0 gate allow "gh api merge" "$(bash_in 'gh api repos/o/r/pulls/3/merge -X PUT')"
 called "ready o/r 3" "gh api: args"
 FAKE_RC=0 gate allow "gh api merge, leading slash" "$(bash_in 'gh api -X PUT /repos/o/r/pulls/5/merge')"
@@ -56,6 +63,8 @@ FAKE_RC=0 gate allow "MCP merge" "$(mcp_in '{"owner":"o","repo":"r","pullNumber"
 called "ready o/r 3" "MCP: args"
 FAKE_RC=0 gate allow "MCP merge with sha" "$(mcp_in "{\"owner\":\"o\",\"repo\":\"r\",\"pullNumber\":8,\"sha\":\"$SHA\"}")"
 called "ready o/r 8 --expect-head $SHA" "MCP sha: args"
+gate deny "MCP sha is not a full sha" "$(mcp_in '{"owner":"o","repo":"r","pullNumber":8,"sha":"main"}')"
+called "" "MCP ref name: ready not called"
 FAKE_RC=0 gate allow "merge after another command" "$(bash_in 'git -C /a fetch origin && gh pr merge 3 --repo o/r --squash')"
 called "ready o/r 3" "compound: args"
 FAKE_RC=0 gate allow "merge after a here-string" "$(bash_in $'cat <<< x\ngh pr merge 3 --repo o/r\nx')"
@@ -196,7 +205,7 @@ gate allow "the second of two heredocs on one line" "$(bash_in $'cat <<A <<B\nx\
 called "" "two heredocs: ready not called"
 gate allow "nothing about merge" "$(bash_in 'ls -la')"
 
-MIN_PASS=129
+MIN_PASS=136
 if [ "$pass" -lt "$MIN_PASS" ] && [ "${STOP_ON_FAIL:-0}" != 1 ]; then failed "only $pass checks passed, expected at least $MIN_PASS"; fi
 echo "pr-merge-gate: $pass passed, $fail failed"
 
@@ -219,6 +228,7 @@ if [ "${NO_MUTANTS:-0}" != 1 ]; then
   mutant rc-check      "[ready says unresolved threads]" 's/\[ "\$rc" = 0 \] && continue/continue/'
   mutant need-target   "[no --repo]"                  's/if \[ "\$repo" = - \] \|\| \[ "\$num" = - \]; then/if false; then/'
   mutant expect-head   "[head: args]"                 's/\[ "\$sha" = - \] \|\| args\+=/true || args+=/'
+  mutant literal-head  "[match-head-commit is a variable]" 's/^  if \[ "\$sha" != - \] && \[\[ ! \$sha =~ .*$/  if false; then/'
   mutant api-parse     "[gh api merge]"               's/if \(\$x =~ m\{\^\/\?repos/if (0 && \$x =~ m{^\/?repos/'
   mutant mcp           "[MCP: args]"                  's/elif \[\[ \$tool == mcp__\*merge_pull_request \]\]/elif false/'
   mutant wrappers      "[command gh: args]"           's/shift \@t while \@t && !\(\(\$t\[0\] =~ m\{\(\[\^\/\]\+\)\$\}\)\[0\] eq '"'"'gh'"'"'\);/shift \@t while \@t && \$t[0] =~ \/^[A-Za-z_]\\w*=\/;/'
@@ -245,7 +255,7 @@ if [ "${NO_MUTANTS:-0}" != 1 ]; then
   mutant eval          "[eval: args]"                 's/elsif \(\$w eq '"'"'eval'"'"'\)/elsif (0)/'
   mutant budget        "[two merges, budget spent]"   's/if \[ "\$left" -lt 1000 \]; then/if false; then/'
   mutant quoted-lt     "[dq <<: args]"                's/^.*# not-a-heredoc: quoted$//'
-  MUT_WANT_N=31
+  MUT_WANT_N=32
   if [ "$mut_n" != "$MUT_WANT_N" ]; then echo "FAIL: $mut_n of $MUT_WANT_N mutants ran"; mut_bad=1; fi
   [ "$mut_bad" = 0 ] || fail=$((fail + 1))
 fi
