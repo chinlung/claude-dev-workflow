@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.1] - 2026-11-10
+
+### Fixed
+
+- **archive-gate: `$'…'` is a quote.** Inside it `\'` does not close the string. The hook read `$'it\'s'` as a string that ended at the backslash, every quote after it paired wrongly, and an `openspec archive <name>` on a later line was never seen. The code before 2.1.0 missed it the same way.
+- **archive-gate: an archive behind a shell keyword or a wrapper is checked.** Command position was the first word of a segment, so `if …; then openspec archive x; fi`, `for … do`, `{ …; }`, `! …`, `env X=1 …`, `command …`, `exec …`, `time …` and a command inside backticks went through unchecked. A command string handed to `bash -c`, `sh -lc` or `eval` is parsed the same way now, when the shell or `eval` is itself in command position. A script fed to a shell on stdin (`bash <<EOF`, `… | bash`) is still not seen.
+- **skip-gate: an `archive/` whose mtime is in the future no longer locks every edit.** No declaration written now can be newer than it, and skip-gate has no bypass word, so each code edit was denied until the clock caught up. That comparison is skipped while the directory's mtime is ahead of the clock (needs perl; without it the comparison is made as before).
+
+### Tests
+
+- `archive-gate.test.sh`: 84 checks (two `$'…'` shapes, twelve keyword, wrapper and shell-string shapes, six that must not count). `skip-gate.test.sh`: 53 checks.
+
 ## [2.2.0] - 2026-11-10
 
 ### Changed

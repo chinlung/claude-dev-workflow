@@ -196,6 +196,23 @@ empty "a real heredoc on the same line as a shift outside \$(( )) → allow" "$o
 out=$(run_gate "$(input_json s11 "$P" $'cat <<A <<B\nx\nA\nopenspec archive foo --yes\nB')" "$T" "$P")
 empty "the second of two heredocs on one line → allow" "$out"
 
+# $'…' 是引號：裡面的 \' 不收尾。少了它，\' 之後的引號配對整個錯位，後面的歸檔就看不到
+out=$(run_gate "$(input_json s11 "$P" $'echo $\'it\\\'s\'\nopenspec archive foo --yes')" "$T" "$P")
+contains "archive after an ANSI-C string with an escaped quote → deny" "$out" "$DENY"
+out=$(run_gate "$(input_json s11 "$P" $'echo $\'it\\\'s\' && cat <<EOF\nsay "hi\nEOF\nopenspec archive foo --yes')" "$T" "$P")
+contains "archive after a heredoc opened behind an ANSI-C string → deny" "$out" "$DENY"
+# 命令位置：shell 關鍵字與包裝後面的歸檔照樣算；交給 bash -c／eval 的命令字串也看
+for c in 'if true; then openspec archive foo --yes; fi' 'for x in 1; do openspec archive foo --yes; done' 'true || { openspec archive foo --yes; }' '! openspec archive foo --yes' \
+         'env X=1 openspec archive foo --yes' 'command openspec archive foo --yes' 'time openspec archive foo --yes' 'echo `openspec archive foo --yes`' \
+         "bash -c 'openspec archive foo --yes'" "sh -lc 'cd x && openspec archive foo --yes'" "eval 'openspec archive foo --yes'" 'if openspec archive foo --yes; then :; fi'; do
+  out=$(run_gate "$(input_json s11 "$P" "$c")" "$T" "$P")
+  contains "archive behind [$c] → deny" "$out" "$DENY"
+done
+for c in 'echo then openspec archive foo --yes' 'command -v openspec' "echo bash -c 'openspec archive foo --yes'" "echo eval 'openspec archive foo --yes'" "bash -c 'echo openspec archive foo'" 'grep -r "then openspec archive foo" docs'; do
+  out=$(run_gate "$(input_json s11 "$P" "$c")" "$T" "$P")
+  empty "not an archive: [$c] → allow" "$out"
+done
+
 # 跨 hook 契約：archive-gate 放行時留下的標記，就是 skip-gate 讀的那一個（名稱只改一邊，這裡會紅）。
 # 聲明比 archive/ 目錄新、比標記舊，所以 deny 只可能來自標記；同一份聲明換個沒有標記的 session 則放行。
 SKIP_GATE="$SCRIPT_DIR/../hooks/skip-gate.sh"
@@ -245,7 +262,7 @@ if [ "$n" = 2 ]; then PASS=$((PASS+1)); echo "PASS: hooks.json registers two arc
 else FAIL=$((FAIL+1)); echo "FAIL: hooks.json archive-gate handlers with if — got [$n]"; fi
 
 # ---- summary ----
-MIN=64
+MIN=84
 if [ "$((PASS + FAIL))" -lt "$MIN" ]; then
   echo "FAIL: ran $((PASS + FAIL)) assertions, expected at least $MIN"; FAIL=$((FAIL+1))
 fi

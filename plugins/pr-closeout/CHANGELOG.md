@@ -2,6 +2,16 @@
 
 All notable changes to the `pr-closeout` plugin will be documented in this file.
 
+## [1.0.3] - 2026-11-10
+
+### Fixed
+
+- **Merge gate: `$'…'` is a quote.** Inside it `\'` does not close the string. The hook read `$'it\'s'` as a string that ended at the backslash, every quote after it paired wrongly, and a `gh pr merge` on a later line reached GitHub without `ready` being asked. 1.0.0 missed it the same way. Both the heredoc pass and the tokenizer read it now. Only `\'`, `\"` and `\\` are decoded: a word written with any other escape (`$'1\062'` is `12` to bash) keeps its backslash, so it is never taken for another PR number and the merge is denied as unreadable. Three mutants must die on their cases.
+
+### Tests
+
+- `pr-merge-gate.test.sh`: 142 checks, 35 mutants.
+
 ## [1.0.2] - 2026-11-10
 
 ### Changed

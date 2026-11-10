@@ -92,7 +92,7 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/pr-closeout.mjs landed <owner/repo> <pr> \
 
 - **攔什麼。** 命令位置上的 `gh pr merge`（號碼或 URL、`--repo`／`-R`、`--match-head-commit`）與 `gh api …/pulls/<n>/merge`，包括包在 wrapper 後面或用完整路徑呼叫的 `gh`，雙引號或未加引號的 heredoc 裡仍會執行的 `$( )`、反引號，以及交給 `bash -c`、`sh -c`、`eval` 的命令字串。
 - **怎麼判。** 對那個 PR 跑 `ready`，exit 0 才放行；擋下時會附上 `ready` 查到的內容。
-- **攔不到什麼。** hook 用自己的小型掃描器讀命令文字，不是 bash。它防的是代理誤打的 merge，不是刻意繞過它的命令：藏在變數或 alias 後面、寫在腳本檔裡、放在 `$'…'` 裡，或雙引號內的 `$( )` 本身又帶引號時，可能看不到。真的不能發生的合併要靠分支保護。
+- **攔不到什麼。** hook 用自己的小型掃描器讀命令文字，不是 bash。它防的是代理誤打的 merge，不是刻意繞過它的命令：藏在變數或 alias 後面、寫在腳本檔裡、經 stdin 餵給 shell（`bash <<EOF`、`… | bash`），或雙引號內的 `$( )` 本身又帶引號時，可能看不到。真的不能發生的合併要靠分支保護。
 - **何時擋下。** 讀不出是哪個 PR 的 merge 一律擋下，包括 GraphQL 的 `mergePullRequest`。缺 jq、node 或腳本時也擋下。`--match-head-commit`（或 MCP 工具的 `sha`）不是字面的 40 碼 sha 時也擋下：hook 讀的是命令文字，變數與 `$( )` 不會展開。
 - **時間。** 同一條命令裡所有 `ready` 共用 25 秒的預算（`PR_MERGE_GATE_BUDGET`），在 hook 的 30 秒時限之內；剩餘時間不夠時直接擋下，不交給逾時的 hook 決定。
 - **略過。** 在命令前加 `PR_CLOSEOUT_OK=1` 可以略過一次。MCP 工具沒有略過的方式，要略過請改用 `gh`。
