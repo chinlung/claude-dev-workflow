@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-11-10
+
+### Changed
+
+- **R6: a skip reason is the ` — skip: <reason>` suffix only.** The check accepted a `skip:` anywhere on an unchecked task's line, so a task that merely mentioned one (`add a skip: flag`, `noskip:`, `the --skip: option`) counted as excused. It now wants whitespace, a dash (`—`, `–`, `-` or `--`), whitespace and then `skip:` with a reason, which is the form every document of this workflow has taught. `openspec-archive-stats` reads the same parser and counts the same way.
+- **Rules version 2 → 3.** A pass verdict recorded under the old rule answers `stale:rules`; run `check` again. A change whose unchecked tasks carry `skip:` in another form fails R6 until the suffix is written out, or the archive is run with `OPENSPEC_ARCHIVE_OK=1`.
+
+### Tests
+
+- `reconcile-check.test.sh`: five lines that mention `skip:` without the suffix, four dash forms that carry it, and a verdict from rules 2. `archive-stats.test.sh`: one more line counted as having no reason.
+
 ## [2.1.0] - 2026-11-10
 
 Three deferred review findings on the two gates, each reproduced against the hook before it was fixed.

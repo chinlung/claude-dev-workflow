@@ -185,7 +185,7 @@ A checkbox on every step makes progress count several times too large and "tick 
 - Never suppress reviewer findings or pre-rate severity. A defect the plan itself mandates is reported for you to decide on, not waved through.
 - Do NOT modify any spec files during implementation.
 - **tasks.md is the execution record.** When a task passes its completion contract (executing-plans `task-done`, or the SDD review), change that task's `- [ ]` to `- [x]` in the same turn as its commit. Do not rewrite the task description.
-- A task you decide not to do stays unchecked and gets ` — skip: <reason>` at the end of its line. The reason needs a letter or digit; a bare `skip:` does not count.
+- A task you decide not to do stays unchecked and gets ` — skip: <reason>` at the end of its line. The reason needs a letter or digit; a bare `skip:` does not count, and neither does a `skip:` without the dash and the spaces around it (the check reads only that suffix, so a task that mentions a `skip:` flag is not excused by it).
 - **Phase 4 exit check:** `openspec instructions apply --change <feature-name> --json` reports `progress.remaining` of 0, or every remaining line carries a skip reason. If Phase 5 later shows a task was not really finished, record it as a `[CODE] N` entry; it is settled in the step before the Phase 6 snapshot.
 
 ---

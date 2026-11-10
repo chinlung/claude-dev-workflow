@@ -102,8 +102,16 @@ status "R5: changed since snapshot fail" R5 fail
 P=$WORK/p10; D=$(make_change "$P" foo); printf -- '- [ ] 1.2 later\n' >> "$D/tasks.md"; check "$D"
 status "R6: unchecked task without skip fail" R6 fail
 eq "R6: unchecked task without skip exit 1" 1 "$RC"
-P=$WORK/p11; D=$(make_change "$P" foo); printf -- '- [ ] 1.2 later skip: 不做，見 follow-ups\n' >> "$D/tasks.md"; check "$D"
-status "R6: unchecked task with skip in the line pass" R6 pass
+# 只認文件教的行尾格式「 — skip: 理由」：破折號（—、–、- 或 --）、空白、skip:。行中隨處出現的 skip: 不算，
+# 否則任務本文提到 skip（`a skip: flag`、`noskip:`、`--skip:`）就會被當成已交代
+for line in '1.2 later skip: 不做，見 follow-ups' '1.2 add a skip: flag to the CLI' '1.2 noskip: handle it' '1.2 document the --skip: option' '1.2 later —skip: glued to the dash'; do
+  P=$WORK/p11-$RANDOM; D=$(make_change "$P" foo); printf -- '- [ ] %s\n' "$line" >> "$D/tasks.md"; check "$D"
+  status "R6: [$line] is not a skip reason fail" R6 fail
+done
+for dash in '—' '–' '-' '--'; do
+  P=$WORK/p11-$RANDOM; D=$(make_change "$P" foo); printf -- '- [ ] 1.2 later %s skip: 範圍外\n' "$dash" >> "$D/tasks.md"; check "$D"
+  status "R6: dash [$dash] before skip pass" R6 pass
+done
 P=$WORK/p11b; D=$(make_change "$P" foo); printf -- '- [ ] 1.2 later — skip: 範圍外\n' >> "$D/tasks.md"; check "$D"
 status "R6: skip suffix with a reason pass" R6 pass
 # 空理由的三種寫法都不算理由：行尾、只有空白、只有標點
@@ -187,6 +195,9 @@ eq "verify: verdict without a rules version reason" "stale:rules" "$(head -1 "$W
 check "$D"; jq '.verdict.rules = 1' "$SF" > "$SF.tmp" && mv "$SF.tmp" "$SF"
 node "$CHECK" verify "$D" > "$WORK/v.out" 2>&1; eq "verify: verdict from an older rules version exit 3" 3 "$?"
 eq "verify: verdict from an older rules version reason" "stale:rules" "$(head -1 "$WORK/v.out")"
+# a pass recorded when any skip: on the line counted (rules 2) is not a pass under the suffix-only rule
+check "$D"; jq '.verdict.rules = 2' "$SF" > "$SF.tmp" && mv "$SF.tmp" "$SF"
+node "$CHECK" verify "$D" > "$WORK/v.out" 2>&1; eq "verify: verdict from rules 2 exit 3" 3 "$?"
 
 # verify：通過後 0；改 design.md 後 1 + stale:design；沒有狀態檔 1 + no-verdict
 P=$WORK/p14; D=$(make_change "$P" foo); check "$D"
@@ -207,7 +218,7 @@ out=$(node -e 'const m = require(process.argv[1]); process.stdout.write(typeof m
 eq "validator require exports findSpecFiles without running main" "function" "$out"
 
 # ---- summary ----
-MIN=75
+MIN=84
 if [ "$((PASS + FAIL))" -lt "$MIN" ]; then
   echo "FAIL: ran $((PASS + FAIL)) assertions, expected at least $MIN"; FAIL=$((FAIL+1))
 fi

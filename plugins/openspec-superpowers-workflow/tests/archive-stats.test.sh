@@ -91,10 +91,11 @@ mk_arch "$R6" reasons 2026-10-04-punct '- [ ] 1.1 a — skip: ...\n'
 mk_arch "$R6" reasons 2026-10-05-paren '- [ ] 1.1 a — skip: （範圍外）\n'
 mk_arch "$R6" reasons 2026-10-06-quoted '- [ ] 1.1 a — skip: "not required"\n'
 mk_arch "$R6" reasons 2026-10-07-fullwidth '- [ ] 1.1 a — skip：範圍外\n'
+mk_arch "$R6" reasons 2026-10-08-nodash '- [ ] 1.1 mention a skip: flag\n'
 stats --root "$R6"
-eq "skip with an empty, blank or punctuation-only reason counts as no reason" 3 "$(j .totals.incompleteNoReason)"
+eq "skip with an empty, blank or punctuation-only reason, or skip: without the dash before it, counts as no reason" 4 "$(j .totals.incompleteNoReason)"
 eq "skip with a reason (plain, parenthesised, quoted, full-width colon) counts as withSkipReason" 4 "$(j .totals.withSkipReason)"
-eq "all seven are incomplete" 7 "$(j .totals.incomplete)"
+eq "all eight are incomplete" 8 "$(j .totals.incomplete)"
 
 # OpenSpec 1.16 的 task 定義：其他清單符號與非 x 標記都是未完成的 task；連結 bullet 不是 task
 R7="$WORK/r7"
