@@ -464,7 +464,7 @@ This plugin ships an auto-triggered skill (no slash command) and two PreToolUse 
 skills/openspec-superpowers-workflow/
 ├── SKILL.md                    # 61 lines — trigger map + SKIP clause + phase table + 6 rules (always loaded)
 ├── PHASE-IDENTIFICATION.md     # 97 lines — phase decision tree + SKIP procedure (loaded when phase is unclear)
-├── phases.md                   # 446 lines — full playbook, tag semantics, gotchas (loaded on demand)
+├── phases.md                   # 447 lines — full playbook, tag semantics, gotchas (loaded on demand)
 ├── SUPERPOWERS-HANDOFF.md      # 142 lines — Phase 2/3/4 sync-back templates, sidecar-file anti-patterns
 ├── OUTPUT-CONTRACTS.md         # 219 lines — per-phase output contracts, requirement-writing examples
 ├── RECONCILIATION-CRITERIA.md  # 128 lines — Phase 6 pre-archive gate checklist
