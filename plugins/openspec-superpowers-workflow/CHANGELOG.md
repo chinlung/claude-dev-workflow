@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0] - 2026-11-10
+
+Analysis behind this release: `docs/openspec-hitl-gate-analysis-2026-11-10.md` (of 87 gate events at P1–P3, 1 was a reversal; the problems caught at gates surfaced only after the user asked for an extra review). Design: `docs/openspec-workflow-3-gates-design-2026-11-10.md`.
+
+### Changed (breaking default)
+
+- **Gates stop on facts, not on every phase.** At the end of Phase 1 the agent runs `gate-check.cjs p1`: a `BREAKING` marker, a spec delta with `MODIFIED`, `REMOVED` or `RENAMED Requirements`, a `[needs user]` item under the new `## Decisions` section, an `## Impact` path matching `high_risk_paths`, a missing `## Decisions` section or unreadable settings mean a stop; otherwise it lists its defaults and carries on in the same turn. Phase 2 stops the same way on a `[needs user]` item under `## Open Questions`.
+- **A stop starts with an independent review.** Before waiting, an opus subagent reads the proposal and specs (or the design) for decisions made without saying so, options common practice offers that the change does not list, and contradictions with existing specs.
+- **Phase 3 and Step 6b no longer wait.** tasks.md goes on to Phase 4 once the bundled validator passes; the Phase 6 rewrite is summarized in the reply and in the archive PR, and reconcile-check stays the gate.
+- **Phase 5 suggests convergence** when the last round of every layer found no new `Y`, no `[CODE]` finding is open and every layer ran since the last fix. Declaring `final` stays the user's.
+- **`gates: supervised`** in `.claude/openspec-workflow.local.md` restores a stop at every gate.
+
+### Added
+
+- `validators/gate-check.cjs` (exit 0 proceed, 10 stop, 1 error). Settings: `.claude/openspec-workflow.md` (committed, `high_risk_paths`) and `.claude/openspec-workflow.local.md` (personal, `gates`). Unreadable settings, an unknown `gates` value, or a session that cannot run gate-check at all count as a stop.
+- proposal.md gets a required `## Decisions` section (`[needs user]` / `[default]` items); Phase 6a rewrites it as the decisions taken.
+
+### Tests
+
+- `gate-check.test.sh`: 62 checks; seven mutations against a copy each turn it red. `skill-docs.test.sh`: 24 checks (validators named in phases.md exist, gate-check p1/p2 are run, the old Phase 1 hard stop is gone).
+- Eval (local, not committed): design suite 05 (Phase 1 trigger stops) with 1.00 / without 0.73; 06 (Phase 3 does not wait) with 1.00 / without 1.00, so it shows 3.0 does not stop there but cannot show uplift; 01, 02, 04 unchanged; 03 (skip the questions) fell to 0.56 on the first run, fixed by the delegation rule, back to 0.85 as before. Phase 6 suite: 01 and 03 at 1.00, 02 at 0.92 (0.83 before). Phase 5 suite: 8 of 8 cases at 1.00 with the plugin, as before. Sessions without a shell (all eval runs) stop at P1, so the P1 proceed path has unit coverage only.
+
 ## [2.2.1] - 2026-11-10
 
 ### Fixed
