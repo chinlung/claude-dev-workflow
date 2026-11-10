@@ -86,14 +86,14 @@ node ${CLAUDE_PLUGIN_ROOT}/skills/openspec-superpowers-workflow/validators/gate-
 
 What stops each gate:
 - **every gate**: `gates: supervised`, or settings that cannot be read (including an unknown `gates` value);
-- **P1**: no `## Decisions` section in proposal.md, a `[needs user]` item under it, a `BREAKING` marker, a spec delta with `MODIFIED`, `REMOVED` or `RENAMED Requirements`, or an `## Impact` path matching `high_risk_paths`;
-- **P2**: design.md missing or unreadable, or a `[needs user]` item under `## Open Questions` in it;
+- **P1**: no `## Decisions` section in proposal.md, a `[needs user]` marker anywhere in proposal.md, a `BREAKING` marker, a spec delta with `MODIFIED`, `REMOVED` or `RENAMED Requirements`, or an `## Impact` path matching `high_risk_paths`;
+- **P2**: design.md missing or unreadable, or a `[needs user]` marker anywhere in it;
 - **P3, P6b**: nothing else — only the two rules for every gate. P3 first checks the tasks.md format (every `### Task N` section holds exactly one checkbox, none outside them) and exits 1 when it is broken.
 
-Text inside HTML comments and code fences does not count.
+Text inside HTML comments and code fences does not count. Matching is deliberately generous (a `[needs user]` marker counts in any bullet or heading form; `BREAKING` in capitals counts even in a negation; delta headings and `Impact` paths are read the way OpenSpec and a human would write them): doubt resolves toward stopping.
 
 **Settings** (both optional; front matter only):
-- `.claude/openspec-workflow.md` (committed — it describes the project): `high_risk_paths:` followed by `- <glob>` lines, indented or not; blank lines and `#` comments are fine (`**` crosses directories, `*` does not; a glob without `/` matches a root-level file such as `Dockerfile`). An inline value (`high_risk_paths: [a, b]`) is not read: it counts as unreadable settings.
+- `.claude/openspec-workflow.md` (committed — it describes the project): `high_risk_paths:` followed by `- <glob>` lines, indented or not; blank lines and `#` comments are fine (`**` crosses directories, `*` does not; a glob without `/` matches a root-level file such as `Dockerfile`). An inline value (`high_risk_paths: [a, b]`), a key other than `gates` and `high_risk_paths` (a misspelling would otherwise be ignored silently) and a repeated `gates:` all count as unreadable settings.
 - `.claude/openspec-workflow.local.md` (gitignored — personal): `gates: supervised` stops at every gate (the 2.x behaviour); `gates: risk-based` is the default. A key set here wins over the committed file.
 
 **`[needs user]` vs `[default]`**: `[needs user]` is a decision that changes *what* gets built and needs a value or risk trade-off only the user can make; `[default]` is a choice you made and can defend. When in doubt, mark `[needs user]`: these markers are reminders you write yourself, and gate-check cannot tell whether they are honest. An item you or the reviewer marked `[needs user]` is never downgraded to `[default]` — with one exception: the user has delegated the call in their own words ("skip the questions", "跳過提問", "you decide"). Then mark it `[default]`, say in the reply that it was delegated, and let the gate rules above decide as usual.

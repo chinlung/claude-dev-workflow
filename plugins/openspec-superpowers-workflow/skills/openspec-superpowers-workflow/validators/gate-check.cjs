@@ -22,7 +22,9 @@ const { findSpecFiles } = require('./validate-openspec-workflow.cjs');
 const { parseTaskLines } = require('./task-line.cjs');
 
 const GATES = ['risk-based', 'supervised'];
-const NEEDS_USER = /^\s*[-*]\s*\[needs user\]/im;
+// The marker counts anywhere in the document (any bullet style, any heading): a stricter reading than the
+// docs promise would let a decision slip through silently.
+const NEEDS_USER = /\[needs user\]/i;
 
 function read(file) {
   try { return fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n'); } catch { return null; }
@@ -72,11 +74,14 @@ function parseFrontMatter(text) {
     }
     const kv = line.match(/^([A-Za-z_]+):\s*(.*)$/);
     if (!kv) return { error: `cannot read "${line.trim()}"` };
-    if (kv[1] === 'gates') { out.gates = unquote(kv[2]); list = null; }
+    if (kv[1] === 'gates') {
+      if (out.gates !== undefined) return { error: 'gates is set twice' };
+      out.gates = unquote(kv[2]); list = null;
+    }
     else if (kv[1] === 'high_risk_paths') {
       if (kv[2] !== '') return { error: 'high_risk_paths must be followed by "- <glob>" lines, not an inline value' };
       list = out.highRiskPaths = [];
-    } else list = kv[2] === '' ? [] : null;   // another key: its list items are read and ignored
+    } else return { error: `unknown key "${kv[1]}" (expected gates or high_risk_paths)` };
   }
   return out;
 }
@@ -103,7 +108,10 @@ function globToRegExp(glob) {
   let re = '';
   for (let i = 0; i < glob.length; i++) {
     const c = glob[i];
-    if (c === '*' && glob[i + 1] === '*') { re += '.*'; i++; }
+    if (c === '*' && glob[i + 1] === '*') {
+      if (glob[i + 2] === '/') { re += '(?:.*/)?'; i += 2; }   // `**/` also matches zero directories
+      else { re += '.*'; i++; }
+    }
     else if (c === '*') re += '[^/]*';
     else if (c === '?') re += '[^/]';
     else re += c.replace(/[.+^${}()|[\]\\]/g, '\\$&');
@@ -111,12 +119,17 @@ function globToRegExp(glob) {
   return new RegExp(`^${re}$`);
 }
 
-// Every word of the Impact section is a candidate path (a root-level `Dockerfile` has no slash), without
-// backticks, trailing punctuation or a leading ./ — the globs decide what counts.
+// Every word of the Impact section is a candidate path (a root-level `Dockerfile` has no slash). Brackets,
+// quotes, bold and table bars only wrap a path, so they split words (`[x](src/a.ts)` gives `x` and `src/a.ts`);
+// trailing punctuation and a leading ./ or / go; a directory is tried with and without its trailing slash.
 function impactPaths(proposal) {
   const body = section(proposal, 'Impact') || '';
-  return body.split(/\s+/).map((t) => t.replace(/`/g, '').replace(/[,;:.)]+$/, '').replace(/^\.\//, ''))
-    .filter(Boolean);
+  const out = [];
+  for (const w of body.split(/[\s()[\]<>"'`*|]+/)) {
+    const t = w.replace(/[,;:.]+$/, '').replace(/^\.?\//, '');
+    if (t) out.push(t, t.endsWith('/') ? t : `${t}/`);
+  }
+  return out;
 }
 
 function modeReasons(settings) {
@@ -130,11 +143,11 @@ function checkP1(changeDir, settings) {
   const proposal = stripExamples(read(path.join(changeDir, 'proposal.md')) || '');
   const decisions = section(proposal, 'Decisions');
   if (decisions === null) reasons.push({ id: 'no-decisions-section', detail: 'proposal.md has no ## Decisions section' });
-  else if (NEEDS_USER.test(decisions)) reasons.push({ id: 'needs-user', detail: '## Decisions lists a [needs user] item' });
+  if (NEEDS_USER.test(proposal)) reasons.push({ id: 'needs-user', detail: 'proposal.md has a [needs user] item' });
   if (/\bBREAKING\b/.test(proposal)) reasons.push({ id: 'breaking', detail: 'proposal.md marks a BREAKING change' });
   const kinds = new Set();
   for (const spec of findSpecFiles(changeDir)) {
-    for (const m of stripExamples(read(spec) || '').matchAll(/^##\s+(MODIFIED|REMOVED|RENAMED)\s+Requirements/gm)) kinds.add(m[1]);
+    for (const m of stripExamples(read(spec) || '').matchAll(/^##\s+(MODIFIED|REMOVED|RENAMED)\s+Requirements/gim)) kinds.add(m[1].toUpperCase());
   }
   if (kinds.size) reasons.push({ id: 'delta-modified', detail: `spec deltas change existing requirements: ${[...kinds].sort().join(', ')}` });
   const hits = [];
@@ -154,8 +167,7 @@ function checkP2(changeDir, settings) {
     reasons.push({ id: 'design-unreadable', detail: 'design.md is missing or cannot be read' });
     return { stop: true, reasons };
   }
-  const open = section(stripExamples(raw), 'Open Questions');
-  if (open !== null && NEEDS_USER.test(open)) reasons.push({ id: 'design-needs-user', detail: '## Open Questions lists a [needs user] item' });
+  if (NEEDS_USER.test(stripExamples(raw))) reasons.push({ id: 'design-needs-user', detail: 'design.md has a [needs user] item' });
   return { stop: reasons.length > 0, reasons };
 }
 

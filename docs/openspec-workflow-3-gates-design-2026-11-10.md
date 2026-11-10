@@ -86,7 +86,7 @@
 | proposal `## Impact` 列出的路徑命中設定的 `high_risk_paths` | 停 |
 | 以上都不成立 | 繼續 |
 
-- exit code：0 = 繼續、10 = 停、1 = 錯誤（視同停）。stdout 列出命中的理由，agent 照抄進回覆。
+- exit code：0 = 繼續、10 = 停、1 = 錯誤：用法或路徑錯，或（p3）tasks.md 格式不合；agent 修好再跑一次，第二次仍失敗才視同停。另有 `p3`／`p6b` 兩個模式：只看設定，p3 先核對 tasks.md 格式。實作時的偏離見 §11。stdout 列出命中的理由，agent 照抄進回覆。
 
 **兩種觸發，強度不同。** 判定由腳本執行，但它讀的內容有兩種：
 - **結構事實**：`BREAKING` 字樣、delta 的 `MODIFIED／REMOVED／RENAMED` 標題。這些也是 agent 寫的，但 OpenSpec 會驗證 delta 格式，而且使用者在 review 時看得到。
@@ -121,7 +121,7 @@
 
 ### 4.3 P3：拿掉確認
 
-- 這個確認 0／20 次改變了結果。tasks.md 寫完後跑 `validate-openspec-workflow.cjs` 檢查格式（一個 Task 一個勾選框），通過就直接進 Phase 4。
+- 這個確認 0／20 次改變了結果。tasks.md 寫完後由 `gate-check p3` 檢查格式（每個 `### Task N` 恰好一個勾選框），通過就直接進 Phase 4（實作時發現 `validate-openspec-workflow.cjs` 並不讀 tasks.md，所以檢查放在 gate-check，見 §11）。
 - 執行方式（Native／SDD）照 `phases.md:174` 的既有規則選，不再問。
 
 ### 4.4 P5：加收斂建議，宣告權仍屬使用者
@@ -238,3 +238,11 @@ high_risk_paths:         # 選填，glob；比對 proposal ## Impact 列出的�
 3. 高風險只認專案設定的路徑清單；預設空的，只靠結構觸發。
 4. Jev 不進 plugin；個人層的落點也先不加（使用者決定，見 §7）。
 5. 這份設計跟 3.0 的實作放同一個 PR。
+
+## 11. 實作時與本稿的偏離（2026-11-11）
+
+- **四個模式**：gate-check 除 `p1`、`p2` 外多了 `p3`、`p6b`，讓 supervised 與設定讀不懂的規則只在程式裡寫一次，文件不必在每個確認點各重述。
+- **P3 的格式檢查在 gate-check，不在 validate-openspec-workflow.cjs**：後者不讀 tasks.md。
+- **沒有 shell 的 session** 照 phases.md「Gates」節的同一份規則手動判定，不是一律停。
+- **比對一律從寬**：`[needs user]` 不限項目寫法與段落，delta 標題不分大小寫，Impact 的路徑可被括號、連結、粗體包住；拼錯的設定 key、行內的 `high_risk_paths`、重複的 `gates` 都算設定讀不懂。這是「有疑慮就停」的同一方向，起因是審查時一再找到「該停卻靜默放行」的輸入形式。
+- **BREAKING 只認大寫**：小寫的 breaking 在一般文字裡太常見（breaking down work）。

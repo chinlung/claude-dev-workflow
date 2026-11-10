@@ -472,7 +472,7 @@ skills/openspec-superpowers-workflow/
 └── validators/
     ├── validate-openspec-workflow.cjs  # change folder 寬鬆 pre-check
     ├── reconcile-check.cjs             # Phase 6 歸檔前核查（snapshot／check／verify）
-    └── gate-check.cjs                  # P1／P2 確認點：停下等使用者（exit 10）或繼續（exit 0）
+    └── gate-check.cjs                  # p1／p2／p3／p6b 確認點：停下等使用者（exit 10）或繼續（exit 0）
 ```
 
 Skill 啟動時 Claude 先讀 `SKILL.md`，辨認當前 Phase 後只載入該 Phase 需要的 reference（Phase 不明讀 `PHASE-IDENTIFICATION.md`、playbook 讀 `phases.md` 對應段落、Phase 2/3/4 交接讀 `SUPERPOWERS-HANDOFF.md`、歸檔前讀 `RECONCILIATION-CRITERIA.md`），即使有近 900 行 playbook 也不會爆 context。

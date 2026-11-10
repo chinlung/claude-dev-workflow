@@ -1,5 +1,5 @@
 #!/bin/bash
-# gate-check.cjs fixture 測試（P1／P2 停或繼續的判定、設定檔、錯誤路徑）
+# gate-check.cjs fixture 測試（p1／p2／p3／p6b 停或繼續的判定、設定檔、tasks.md 格式、錯誤路徑）
 # 用法:bash plugins/openspec-superpowers-workflow/tests/gate-check.test.sh   (GATE=<路徑> 測副本)
 # 消費者:提交前手跑 + CI(.github/workflows/validate.yml 列舉 plugins/*/tests/*.test.sh)
 # 每個停下的理由至少兩個觸發輸入；只有全部通過、且實際跑到的斷言數達下限才 exit 0——下限在案例清單之外計算
@@ -128,7 +128,7 @@ eq "needs-user-in-comment: exit 0" 0 "$RC"
 fresh; printf -- '```\n- [needs user] example only\n```\n' >> "$D/proposal.md"; run p1 "$D"
 eq "needs-user-in-fence: exit 0" 0 "$RC"
 fresh; perl -pi -e 's/^- `src\/export\/invoice.ts`$/- `src\/export\/invoice.ts`\n- [needs user] outside the Decisions section/' "$D/proposal.md"; run p1 "$D"
-eq "needs-user outside Decisions: exit 0" 0 "$RC"
+stops "needs-user in another section" needs-user
 
 # ---- breaking ----
 fresh; perl -pi -e 's/^- Add an invoice export\.$/- **BREAKING** drop the CSV export/' "$D/proposal.md"; run p1 "$D"
@@ -189,6 +189,39 @@ stops "root-level file name in Impact" high-risk-path
 fresh; settings "$P" committed $'---\ngates: risk-based        # 或 supervised\nhigh_risk_paths:         # 選填，glob\n  - app/Http/Middleware/**\n  - src/auth/**\n---\n'; run p1 "$D"
 eq "design doc example parses (no match, proceeds)" 0 "$RC"
 
+# ---- [needs user] 不限項目符號與段落 ----
+for line in '1. [needs user] q' '+ [needs user] q' '- **[needs user]** q' '- [ ] [needs user] q' 'Q1 [needs user] q'; do
+  fresh; printf -- '%s\n' "$line" >> "$D/proposal.md"; run p1 "$D"; stops "needs-user form ($line)" needs-user
+done
+fresh; printf '\n## Risks\n1. [needs user] retention\n' >> "$D/design.md"; run p2 "$D"
+stops "p2 needs-user numbered, under another heading" design-needs-user
+
+# ---- 設定 key 拼錯、重複 → 停，不是靜默忽略 ----
+for body in 'gate: supervised' 'Gates: supervised' 'highRiskPaths:\n  - src/export/**' 'high-risk-paths:\n  - src/export/**'; do
+  fresh; settings "$P" committed "$(printf -- '---\n%b\n---\n' "$body")"; run p1 "$D"; stops "unknown settings key ($body)" settings-unreadable
+done
+fresh; settings "$P" local $'---\ngates: supervised\ngates: risk-based\n---\n'; run p1 "$D"
+stops "duplicate gates key" settings-unreadable
+
+# ---- delta 標題不分大小寫（OpenSpec 也不分） ----
+fresh; printf '## Modified Requirements\n\n### Requirement: Old\nThe system SHALL change.\n' > "$D/specs/api/spec.md"; run p1 "$D"
+stops "delta heading in mixed case" delta-modified
+fresh; printf '## removed requirements\n\n### Requirement: Old\nThe system SHALL go.\n' > "$D/specs/api/spec.md"; run p1 "$D"
+stops "delta heading in lower case" delta-modified
+
+# ---- Impact 的路徑被包起來、目錄不帶斜線、** 後接 / ----
+for form in '- (src/auth/x.ts)' '- [login](src/auth/x.ts)' '- **src/auth/x.ts**' '- "src/auth/x.ts"' '- /src/auth/x.ts' '- src/auth' '- `src/auth` directory'; do
+  fresh; settings "$P" committed $'---\nhigh_risk_paths:\n  - src/auth/**\n---\n'
+  F="$form" perl -pi -e 's/^- `src\/export\/invoice.ts`$/$ENV{F}/' "$D/proposal.md"; run p1 "$D"
+  stops "impact path form ($form)" high-risk-path
+done
+fresh; settings "$P" committed $'---\nhigh_risk_paths:\n  - src/**/secret.ts\n---\n'
+perl -pi -e 's/^- `src\/export\/invoice.ts`$/- `src\/secret.ts`/' "$D/proposal.md"; run p1 "$D"
+stops "glob **/ also matches zero directories" high-risk-path
+fresh; settings "$P" committed $'---\nhigh_risk_paths:\n  - src/**/secret.ts\n---\n'
+perl -pi -e 's/^- `src\/export\/invoice.ts`$/- `src\/a\/b\/secret.ts`/' "$D/proposal.md"; run p1 "$D"
+stops "glob **/ matches several directories" high-risk-path
+
 # ---- 錯誤路徑 ----
 fresh; mkdir -p "$WORK/elsewhere/foo"; cp "$D/proposal.md" "$WORK/elsewhere/foo/"; run p1 "$WORK/elsewhere/foo"
 eq "bad-change-dir (not under openspec/changes): exit 1" 1 "$RC"; has "bad-change-dir: message" "$WORK/out.txt" "not under openspec/changes"
@@ -207,7 +240,7 @@ eq "p2-defaults-only: exit 0" 0 "$RC"
 fresh; printf '# Design\n\nDecision: queued job.\n' > "$D/design.md"; run p2 "$D"
 eq "p2-no-open-questions: exit 0" 0 "$RC"
 fresh; printf '# Design\n\n- [needs user] not under Open Questions\n' > "$D/design.md"; run p2 "$D"
-eq "p2 needs-user outside Open Questions: exit 0" 0 "$RC"
+stops "p2 needs-user outside Open Questions" design-needs-user
 fresh; perl -pi -e 's/^- \[default\] export runs.*$/- [needs user] p1 item/' "$D/proposal.md"; run p2 "$D"
 eq "p2 ignores proposal needs-user: exit 0" 0 "$RC"
 
@@ -239,7 +272,7 @@ out=$(node -e 'const m = require(process.argv[1]); process.stdout.write([typeof 
 eq "require exports the three functions without running main" "function,function,function" "$out"
 
 # ---- summary ----
-MIN=100
+MIN=146
 if [ "$((PASS + FAIL))" -lt "$MIN" ]; then
   echo "FAIL: ran $((PASS + FAIL)) assertions, expected at least $MIN"; FAIL=$((FAIL+1))
 fi
