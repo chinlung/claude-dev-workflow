@@ -36,6 +36,12 @@
 └─ 不明確（見下方「模糊提示處理」）
 ```
 
+**Phase 之間怎麼往下走**（`phases.md` 的「Gates」節）：
+- Phase 1 → 2：`gate-check.cjs p1` 回 0 就接著做；回 10 或 1 要先跑獨立審查，再等使用者核准。
+- Phase 2 → 3：`gate-check.cjs p2`，規則相同。
+- Phase 3 → 4：`validate-openspec-workflow.cjs` 通過就接著做，不等使用者。
+- `gates: supervised` 時，三個轉換都要等使用者核准。
+
 ---
 
 ## 常見模糊提示與正確 Phase 判斷

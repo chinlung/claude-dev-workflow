@@ -52,8 +52,20 @@ eq "each flag has an action line" 8 "$(command grep -c '^- 處置：' "$F" 2>/de
 eq "attribution names the source" yes "$(yn command grep -q 'cursor/plugins' "$F" 2>/dev/null)"
 eq "attribution names the license" yes "$(yn command grep -q 'MIT' "$F" 2>/dev/null)"
 
+# ---- phases.md:提到的 validator 都存在;確認點以 gate-check 的 exit code 轉換,舊的硬停措辭不再出現 ----
+PH="$SKILL_DIR/phases.md"
+cjs=$(perl -ne 'print "$1\n" while /validators\/([a-z-]+\.cjs)/g' "$PH" 2>/dev/null | sort -u)
+eq "phases.md names at least three validators" yes "$(yn test "$(printf '%s\n' "$cjs" | command grep -c .)" -ge 3)"
+while IFS= read -r name; do
+  [ -n "$name" ] || continue
+  eq "validator $name named in phases.md exists" yes "$(yn test -f "$SKILL_DIR/validators/$name")"
+done <<< "$cjs"
+eq "phases.md runs gate-check p1" yes "$(yn command grep -qF 'gate-check.cjs p1' "$PH")"
+eq "phases.md runs gate-check p2" yes "$(yn command grep -qF 'gate-check.cjs p2' "$PH")"
+eq "phases.md no longer hard-stops every Phase 1" no "$(yn command grep -qF 'Do NOT proceed to Phase 2 until user explicitly approves' "$PH")"
+
 # ---- summary ----
-MIN=16
+MIN=24
 if [ "$((PASS + FAIL))" -lt "$MIN" ]; then
   echo "FAIL: ran $((PASS + FAIL)) assertions, expected at least $MIN"; FAIL=$((FAIL+1))
 fi
