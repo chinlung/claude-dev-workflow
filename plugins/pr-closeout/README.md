@@ -50,8 +50,8 @@ It prints one JSON object. Every check runs and `hits[]` lists each condition me
 
 **With `--repo-dir`** (the local clone of the PR's repo):
 
-- **Review coverage.** Each file the PR adds or changes is compared, blob and mode, with review-branch's last record (`<gitdir>/review-branch-last.json`, same branch only). Documents are listed under `docsOnly` and never block; prompt files under `skills/`, `commands/`, `agents/`, `output-styles/` or `hooks/`, `requirements*.txt` and `CMakeLists.txt` are not documents. A file review-branch skipped as unchanged since an earlier round (`unchangedSince`) counts as reviewed. `--accept-unreviewed <path>=<reason>` lets one file through; the reason is required. No record, a different branch or a head that is not fetched gives `coverage.status: "unknown"`, which does not block.
-- **openspec.** If the repo has `openspec/`, the changes the PR touches that are still outside `archive/` are listed, with `reconcile-check verify`'s answer. This is a warning only.
+- **Review coverage.** Each file the PR adds or changes is compared, blob and mode, with review-branch's last record (`<gitdir>/review-branch-last.json`, same branch only). Documents are listed under `docsOnly` and never block; prompt files under `skills/`, `commands/`, `agents/`, `output-styles/` or `hooks/`, `requirements*.txt` and `CMakeLists.txt` are not documents. A file review-branch skipped as unchanged since an earlier round (`unchangedSince`) counts as reviewed. `--accept-unreviewed <path>=<reason>` lets one file through; the reason is required. No record, a different branch or a head that is not fetched gives `coverage.status: "unknown"`, which does not block. The comparison is of the bytes git stores: in a clone where git rewrites them on the way in or does not track the mode (`core.autocrlf`, `core.fileMode=false`), review-branch's record of the working tree can differ from the PR's blobs for a file nobody changed, and that file is reported `unreviewed`; pass `--accept-unreviewed` for it with that as the reason.
+- **openspec.** If the repo has `openspec/`, the changes the PR touches that are still outside `archive/` are listed, with `reconcile-check verify`'s answer. This is a warning only. `verify` reads the change in the working tree of `--repo-dir`, not the PR's head, so it answers for the branch that is checked out there; it shares the run's deadline and a checker that does not answer in time is reported as `unavailable`.
 
 **Also in the JSON**, without affecting the exit: `precedent` (whether the previous merged PR was squashed or merged), `baseBehind`, comment counts and authors per endpoint, and `suspectedSkip` (see below).
 
@@ -91,11 +91,12 @@ It checks four things and exits 0 or 6 (gates `not-merged`, `head-mismatch`, `no
 `hooks/pr-merge-gate.sh` runs before Bash commands and the GitHub MCP `merge_pull_request` tool.
 
 - **What it finds.** `gh pr merge` (a number or URL, `--repo`/`-R`, `--match-head-commit`) and `gh api …/pulls/<n>/merge`, in command position, behind wrappers or a full path to `gh`, inside `$( )` or backticks that still run within double quotes or an unquoted heredoc, and inside a string handed to `bash -c`, `sh -c` or `eval`.
+- **What it does not find.** The hook reads the command text with a small scanner of its own, not with bash. It is there for a merge an agent types by mistake, not for a command built to get past it: a merge behind a variable or an alias, in a script file, inside `$'…'`, or in a `$( )` that itself holds quotes inside double quotes can go unseen. Branch protection is what stops a merge that must not happen.
 - **What it does.** It runs `ready` for that PR; only exit 0 lets the merge through. The deny message lists what `ready` found.
-- **When it denies.** A merge it cannot pin to a PR is denied, a GraphQL `mergePullRequest` among them. So is a missing jq, node or script.
+- **When it denies.** A merge it cannot pin to a PR is denied, a GraphQL `mergePullRequest` among them. So is a missing jq, node or script. So is a `--match-head-commit` (or the MCP tool's `sha`) that is not a literal 40-hex sha: the hook reads the command text, where a variable or `$( )` is not expanded.
 - **Time.** All `ready` runs of one command share a 25 s budget (`PR_MERGE_GATE_BUDGET`) under the hook's 30 s timeout; when too little is left the merge is denied rather than left to a timed-out hook.
 - **Bypass.** Put `PR_CLOSEOUT_OK=1` in the command to bypass once. The MCP tool has no bypass; use `gh`.
-- **Cost for other commands.** A command that is not a merge leaves at a builtin `case`, with no subprocess.
+- **Cost for other commands.** A command that is not a merge leaves at a builtin `case` on the input, after one `cat` to read it: no jq, perl or node starts.
 
 ## Tests
 

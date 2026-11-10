@@ -181,6 +181,9 @@ export function coverage(repoDir, { headRefName, headOid, baseRef, accept = [] }
 }
 
 // ── local clone: openspec changes the PR leaves unarchived (W3-2; a warning, never the exit) ──────
+// reconcile-check verify shares the run's deadline (never less than a second, so a deadline already
+// spent on the queries still lets a quick verify answer).
+const verifyLeft = () => Math.max(1000, DEADLINE - Date.now());
 function reconcileCheckPath() {
   if (process.env.RECONCILE_CHECK) return process.env.RECONCILE_CHECK;
   const cache = path.join(os.homedir(), '.claude', 'plugins', 'cache');
@@ -217,7 +220,9 @@ export function openspecChanges(repoDir, { headOid, baseRef }) {
     .map((name) => {
       let verify = 'unavailable';
       if (script && fs.existsSync(script)) {
-        const r = spawnSync(process.execPath, [script, 'verify', path.join(repoDir, 'openspec', 'changes', name)], { encoding: 'utf8' });
+        // verify reads the change in the working tree of repoDir, not the PR's head: a checkout of
+        // another branch answers for what is on disk. A checker that hangs is cut off: unavailable.
+        const r = spawnSync(process.execPath, [script, 'verify', path.join(repoDir, 'openspec', 'changes', name)], { encoding: 'utf8', timeout: verifyLeft(), killSignal: 'SIGKILL' });
         if (r.status === 0 || r.status === 3) verify = (r.stdout || '').trim().split('\n')[0] || 'unavailable';
       }
       return { name, verify };
