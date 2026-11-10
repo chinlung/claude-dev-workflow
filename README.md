@@ -472,7 +472,8 @@ skills/openspec-superpowers-workflow/
 └── validators/
     ├── validate-openspec-workflow.cjs  # lenient change-folder pre-check
     ├── reconcile-check.cjs             # Phase 6 pre-archive check (snapshot / check / verify)
-    └── gate-check.cjs                  # P1/P2 gate: stop for the user (exit 10) or proceed (exit 0)
+    ├── gate-check.cjs                  # P1/P2 gate: stop for the user (exit 10) or proceed (exit 0)
+    └── safe-write.cjs                  # state files under .claude/ written without following symlinks
 ```
 
 When the skill activates, Claude first reads `SKILL.md`, identifies which phase applies, then loads only the reference that phase needs (`PHASE-IDENTIFICATION.md` when the phase is unclear, the relevant section of `phases.md`, `SUPERPOWERS-HANDOFF.md` for Phase 2/3/4 handoffs, `RECONCILIATION-CRITERIA.md` before archiving). Context budget stays controlled even with ~900 lines of playbook.

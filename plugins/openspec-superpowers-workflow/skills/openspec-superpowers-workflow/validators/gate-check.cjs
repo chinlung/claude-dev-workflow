@@ -20,6 +20,7 @@ const fs = require('fs');
 const path = require('path');
 const { findSpecFiles } = require('./validate-openspec-workflow.cjs');
 const { parseTaskLines } = require('./task-line.cjs');
+const { writeStateFile } = require('./safe-write.cjs');
 
 const GATES = ['risk-based', 'supervised'];
 // The marker counts anywhere in the document (any bullet style, any heading): a stricter reading than the
@@ -297,9 +298,7 @@ function main(argv) {
   const result = check(changeDir, settings);
   if (gate === 'p1') {
     try {
-      const record = recordPath(changeDir);
-      fs.mkdirSync(path.dirname(record), { recursive: true });
-      fs.writeFileSync(record, `${JSON.stringify({ facts: result.facts }, null, 2)}\n`);
+      writeStateFile(recordPath(changeDir), `${JSON.stringify({ facts: result.facts }, null, 2)}\n`);
     } catch (e) {
       // A stale record that stays readable would let P2 wave through a fact this run no longer saw.
       console.error(`gate-check: cannot write the P1 record (${e.message}); fix it and run p1 again`);

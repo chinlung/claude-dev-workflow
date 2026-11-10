@@ -209,6 +209,12 @@ P=$WORK/p15; D=$(make_change "$P" foo)
 node "$CHECK" verify "$D" > "$WORK/v.out" 2>&1; eq "verify: no state exit 3" 3 "$?"
 eq "verify: no state reason" "no-verdict" "$(head -1 "$WORK/v.out")"
 
+# 狀態檔不跟隨 symlink：寫入換成一般檔，專案外的目標不被覆寫
+P=$WORK/p16; D=$(make_change "$P" foo); mkdir -p "$P/.claude" "$WORK/outside"; printf 'keep\n' > "$WORK/outside/victim"
+ln -s "$WORK/outside/victim" "$P/.claude/openspec-reconcile.foo.local.json"; check "$D"
+eq "state write does not follow a symlink" keep "$(cat "$WORK/outside/victim")"
+test -L "$P/.claude/openspec-reconcile.foo.local.json"; eq "the state symlink is replaced by a file" 1 "$?"
+
 # 路徑：上層不是 changes → exit 2
 mkdir -p "$WORK/x"; node "$CHECK" check "$WORK/x" > /dev/null 2>&1; eq "path: not under openspec/changes exit 2" 2 "$?"
 
@@ -218,7 +224,7 @@ out=$(node -e 'const m = require(process.argv[1]); process.stdout.write(typeof m
 eq "validator require exports findSpecFiles without running main" "function" "$out"
 
 # ---- summary ----
-MIN=84
+MIN=86
 if [ "$((PASS + FAIL))" -lt "$MIN" ]; then
   echo "FAIL: ran $((PASS + FAIL)) assertions, expected at least $MIN"; FAIL=$((FAIL+1))
 fi

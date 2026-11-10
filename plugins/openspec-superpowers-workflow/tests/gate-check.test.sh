@@ -275,8 +275,18 @@ fresh; rm "$P/.claude/openspec-gate.foo.local.json"; run p2 "$D"
 stops "p2 without a p1 record" no-p1-record
 fresh; printf 'not json' > "$P/.claude/openspec-gate.foo.local.json"; run p2 "$D"
 stops "p2 with an unreadable p1 record" no-p1-record
+# 記錄不跟隨 symlink：檔案是 symlink 時換成一般檔，專案外的目標不被覆寫；.claude 本身是 symlink 就拒寫
+OUTSIDE=$(mktemp -d "$WORK/outside.XXXXXX"); printf 'keep\n' > "$OUTSIDE/victim"
+fresh; rm "$P/.claude/openspec-gate.foo.local.json"; ln -s "$OUTSIDE/victim" "$P/.claude/openspec-gate.foo.local.json"; run p1 "$D"
+eq "p1 through a record symlink: exit 0" 0 "$RC"
+eq "p1 does not write through a record symlink" keep "$(cat "$OUTSIDE/victim")"
+test -L "$P/.claude/openspec-gate.foo.local.json"; eq "the record symlink is replaced by a file" 1 "$?"
+P=$(new_project); D=$(make_change "$P" foo); mkdir "$OUTSIDE/claude"; ln -s "$OUTSIDE/claude" "$P/.claude"; run p1 "$D"
+eq "p1 with .claude as a symlink: exit 1" 1 "$RC"
+test -e "$OUTSIDE/claude/openspec-gate.foo.local.json"; eq "nothing written through a .claude symlink" 1 "$?"
+
 # 記錄寫不進去 → exit 1（不可讓 P2 信任過期記錄）
-fresh; chmod 444 "$P/.claude/openspec-gate.foo.local.json"; run p1 "$D"; chmod 644 "$P/.claude/openspec-gate.foo.local.json"
+fresh; chmod 555 "$P/.claude"; run p1 "$D"; chmod 755 "$P/.claude"
 eq "p1 that cannot write its record: exit 1" 1 "$RC"; has "p1 record write failure: message" "$WORK/out.txt" "cannot write the P1 record"
 
 # ---- 錯誤路徑 ----
@@ -329,7 +339,7 @@ out=$(node -e 'const m = require(process.argv[1]); process.stdout.write([typeof 
 eq "require exports the three functions without running main" "function,function,function" "$out"
 
 # ---- summary ----
-MIN=185
+MIN=190
 if [ "$((PASS + FAIL))" -lt "$MIN" ]; then
   echo "FAIL: ran $((PASS + FAIL)) assertions, expected at least $MIN"; FAIL=$((FAIL+1))
 fi

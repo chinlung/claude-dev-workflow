@@ -13,6 +13,7 @@
   - 沒有 spec 或讀不到 spec 時，P1 停下（`skip_specs: true` 者除外）。
   - 個人的 `high_risk_paths` 與專案的清單取聯集，不再整份覆蓋。
   - 剝除註解與 fence 時，不再把後面的 `BREAKING` 或 delta 標題一起吞掉。
+  - `.claude/` 底下的狀態檔不再沿著 symlink 寫出去。
 
   詳見該插件 CHANGELOG [3.1.0]。
 

@@ -46,7 +46,8 @@ skills/openspec-superpowers-workflow/
 └── validators/
     ├── validate-openspec-workflow.cjs  # change folder 寬鬆 pre-check（見下方 Validator）
     ├── reconcile-check.cjs             # Phase 6 歸檔前核查（snapshot／check／verify，見下方 Archive gate）
-    └── gate-check.cjs                  # p1／p2／p3／p6b 確認點：停下等使用者（exit 10）或繼續（exit 0），見下方 Gates
+    ├── gate-check.cjs                  # p1／p2／p3／p6b 確認點：停下等使用者（exit 10）或繼續（exit 0），見下方 Gates
+    └── safe-write.cjs                  # .claude/ 底下的狀態檔，寫入時不跟隨 symlink（gate-check 與 reconcile-check 共用）
 ```
 
 觸發時 Claude 先讀 `SKILL.md`，確認當前 Phase 後只載入該 Phase 需要的 reference（Phase 不明讀 `PHASE-IDENTIFICATION.md`、playbook 讀 `phases.md` 對應段落、Phase 2/3/4 交接讀 `SUPERPOWERS-HANDOFF.md`、Phase 6 歸檔前讀 `RECONCILIATION-CRITERIA.md`），避免一次吃下近 900 行拖慢 context。

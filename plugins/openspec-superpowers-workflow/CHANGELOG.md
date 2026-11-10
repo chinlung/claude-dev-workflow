@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Comment and fence stripping no longer swallows real content.** One pass over the lines tracks fences and comments together, so neither pairs across the other (a ``` line inside a comment or a `~~~` fence); a backtick fence's opening line cannot contain another backtick (CommonMark), so ```` ```x``` ```` is a code span; a `<!--` inside inline code opens nothing. Each used to hide a later `BREAKING` marker or delta heading.
+- **State files are never written through a symlink.** gate-check's P1 record and reconcile-check's verdict state go to a temp file in the same directory and are renamed over the target (a new shared `validators/safe-write.cjs`), so a symlink a checkout ships at the state path is replaced, not followed; a `.claude` that is itself a symlink is refused. reconcile-check wrote through such a symlink before this release too.
 - **A P1 run that cannot write its record exits 1** instead of warning and proceeding: a stale record that stays readable would let P2 wave through a fact this run no longer saw.
 
 ### Docs
@@ -24,7 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Tests
 
-- `gate-check.test.sh`: 185 checks; fourteen mutations of the new paths against a copy, each red.
+- `gate-check.test.sh`: 190 checks; `reconcile-check.test.sh`: 86 (state symlink). Seventeen mutations of the new paths against copies, each red.
 
 ## [3.0.0] - 2026-11-10
 
