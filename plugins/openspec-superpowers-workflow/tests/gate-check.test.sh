@@ -222,6 +222,14 @@ fresh; settings "$P" committed $'---\nhigh_risk_paths:\n  - src/**/secret.ts\n--
 perl -pi -e 's/^- `src\/export\/invoice.ts`$/- `src\/a\/b\/secret.ts`/' "$D/proposal.md"; run p1 "$D"
 stops "glob **/ matches several directories" high-risk-path
 
+# 不含 ** 的目錄 glob 也比得到帶尾斜線的 Impact；同一路徑不在停下理由裡重複
+fresh; settings "$P" committed $'---\nhigh_risk_paths:\n  - src/auth\n---\n'
+perl -pi -e 's/^- `src\/export\/invoice.ts`$/- `src\/auth\/` directory/' "$D/proposal.md"; run p1 "$D"
+stops "exact directory glob against a trailing-slash Impact path" high-risk-path
+fresh; settings "$P" committed $'---\nhigh_risk_paths:\n  - src/auth/**\n---\n'
+perl -pi -e 's/^- `src\/export\/invoice.ts`$/- `src\/auth\/x.ts`/' "$D/proposal.md"; run p1 "$D"
+eq "a matched path is listed once in the reason" 1 "$(command grep -o 'src/auth/x.ts' "$WORK/out.txt" | wc -l | tr -d ' ')"
+
 # ---- 錯誤路徑 ----
 fresh; mkdir -p "$WORK/elsewhere/foo"; cp "$D/proposal.md" "$WORK/elsewhere/foo/"; run p1 "$WORK/elsewhere/foo"
 eq "bad-change-dir (not under openspec/changes): exit 1" 1 "$RC"; has "bad-change-dir: message" "$WORK/out.txt" "not under openspec/changes"
@@ -272,7 +280,7 @@ out=$(node -e 'const m = require(process.argv[1]); process.stdout.write([typeof 
 eq "require exports the three functions without running main" "function,function,function" "$out"
 
 # ---- summary ----
-MIN=146
+MIN=149
 if [ "$((PASS + FAIL))" -lt "$MIN" ]; then
   echo "FAIL: ran $((PASS + FAIL)) assertions, expected at least $MIN"; FAIL=$((FAIL+1))
 fi

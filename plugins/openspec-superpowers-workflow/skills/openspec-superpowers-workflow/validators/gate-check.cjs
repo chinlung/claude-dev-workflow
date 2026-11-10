@@ -126,8 +126,8 @@ function impactPaths(proposal) {
   const body = section(proposal, 'Impact') || '';
   const out = [];
   for (const w of body.split(/[\s()[\]<>"'`*|]+/)) {
-    const t = w.replace(/[,;:.]+$/, '').replace(/^\.?\//, '');
-    if (t) out.push(t, t.endsWith('/') ? t : `${t}/`);
+    const t = w.replace(/[,;:.]+$/, '').replace(/^\.?\//, '').replace(/\/+$/, '');
+    if (t) out.push(t, `${t}/`);
   }
   return out;
 }
@@ -150,13 +150,13 @@ function checkP1(changeDir, settings) {
     for (const m of stripExamples(read(spec) || '').matchAll(/^##\s+(MODIFIED|REMOVED|RENAMED)\s+Requirements/gim)) kinds.add(m[1].toUpperCase());
   }
   if (kinds.size) reasons.push({ id: 'delta-modified', detail: `spec deltas change existing requirements: ${[...kinds].sort().join(', ')}` });
-  const hits = [];
+  const hits = new Set();
   const paths = impactPaths(proposal);
   for (const glob of settings.highRiskPaths) {
     const re = globToRegExp(glob);
-    for (const p of paths) if (re.test(p)) hits.push(`${p} (${glob})`);
+    for (const p of paths) if (re.test(p)) hits.add(`${p.replace(/\/$/, '')} (${glob})`);
   }
-  if (hits.length) reasons.push({ id: 'high-risk-path', detail: `## Impact names high-risk paths: ${hits.join(', ')}` });
+  if (hits.size) reasons.push({ id: 'high-risk-path', detail: `## Impact names high-risk paths: ${[...hits].join(', ')}` });
   return { stop: reasons.length > 0, reasons };
 }
 
