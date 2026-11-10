@@ -154,6 +154,44 @@ out=$(run_gate "$(input_json s11 "$P" $'cat > n.md <<\'END.OF_TEXT\'\nopenspec a
 empty "archive words in a heredoc with a quoted dotted delimiter → allow" "$out"
 out=$(run_gate "$(input_json s11 "$P" $'git commit -m "$(cat <<\'EOF\'\nopenspec archive foo --yes\nEOF\n)"')" "$T" "$P")
 empty "archive words in a commit-message heredoc → allow" "$out"
+# 引號狀態跨行延續：跨行字串在某一行收尾、同一行接著開 heredoc，收尾引號不得與 delimiter 的開頭引號配成一對
+out=$(run_gate "$(input_json s11 "$P" $'echo \'line one\nline two\' && cat <<\'EOF\'\nit\'s fine\nEOF\nopenspec archive foo --yes')" "$T" "$P")
+contains "archive after a heredoc opened where a multi-line string closes → deny" "$out" "$DENY"
+out=$(run_gate "$(input_json s11 "$P" $'echo \'a\n<<EOF b\'\nopenspec archive foo --yes\nEOF')" "$T" "$P")
+contains "archive after << inside a multi-line string → deny" "$out" "$DENY"
+out=$(run_gate "$(input_json s11 "$P" $'cat <<EOF \'a\nEOF\nb\'\nopenspec archive foo --yes\nEOF')" "$T" "$P")
+empty "heredoc opened while a string is open: body starts after the string closes → allow" "$out"
+out=$(run_gate "$(input_json s11 "$P" $'grep -c \\\' f <<\'EOF\'\nopenspec archive foo --yes\nEOF')" "$T" "$P")
+empty "an escaped quote before a quoted delimiter → allow" "$out"
+# 放回的行再找一次 heredoc
+out=$(run_gate "$(input_json s11 "$P" $'let x=1<<n\ncat > n.md <<EOF\nopenspec archive foo --yes\nEOF')" "$T" "$P")
+empty "a real heredoc after a shift outside \$(( )) → allow" "$out"
+# DELIM) 不是收尾行：接受它會把同一行後面的命令、或算術位移之後 case 分支前的命令一起丟掉
+out=$(run_gate "$(input_json s11 "$P" $'x=$(cat <<EOF\ntext\nEOF); openspec archive foo --yes')" "$T" "$P")
+contains "archive after EOF) on the same line → deny" "$out" "$DENY"
+out=$(run_gate "$(input_json s11 "$P" $'n=1; echo $((1<<n))\nopenspec archive foo --yes\ncase n in\nn) :;;\nesac')" "$T" "$P")
+contains "archive between an arithmetic shift and a case branch → deny" "$out" "$DENY"
+# "$( … )" 是獨立的命令：外層的 " 還開著，裡面的 heredoc 照樣算；本體落單的 " 不得與外層配對
+out=$(run_gate "$(input_json s11 "$P" $'git commit -m "$(cat <<\'EOF\'\nsay "hi\nEOF\n)"\nopenspec archive foo --yes')" "$T" "$P")
+contains "archive after a commit-message heredoc whose body has a lone quote → deny" "$out" "$DENY"
+# $(( … )) 裡的 << 是位移，幾個都不是 heredoc
+out=$(run_gate "$(input_json s11 "$P" $'true=1; echo $((1<<true<<true))\ntrue\nopenspec archive foo --yes\ntrue')" "$T" "$P")
+contains "archive between lines that equal two shift operands → deny" "$out" "$DENY"
+# 註解不是命令文字：裡面的落單引號不得延續到後面的行
+out=$(run_gate "$(input_json s11 "$P" $'# don\'t archive yet\ncat > n.md <<EOF\nit\'s\nopenspec archive foo --yes\nEOF')" "$T" "$P")
+empty "a lone quote in a comment before a heredoc → allow" "$out"
+# 行尾反斜線續行：命令行還沒結束，本體從續行之後才開始；偶數個反斜線不是續行
+out=$(run_gate "$(input_json s11 "$P" $'cat <<EOF \\\n&& openspec archive foo --yes\nbody\nEOF')" "$T" "$P")
+contains "archive on the continuation line of a heredoc opener → deny" "$out" "$DENY"
+out=$(run_gate "$(input_json s11 "$P" $'echo a\\\\ <<EOF\nopenspec archive foo --yes\nEOF')" "$T" "$P")
+empty "an escaped backslash before the heredoc is not a continuation → allow" "$out"
+out=$(run_gate "$(input_json s11 "$P" $'cat <<EOF \\\\\nopenspec archive foo --yes\nEOF')" "$T" "$P")
+empty "an escaped backslash at the end of the opener line is not a continuation → allow" "$out"
+# 同一行多個 <<：每個 delimiter 依序各有本體；等不到收尾的那個（算術位移）略過，後面的照常
+out=$(run_gate "$(input_json s11 "$P" $'let x=1<<n && cat > n.md <<EOF\nopenspec archive foo --yes\nEOF')" "$T" "$P")
+empty "a real heredoc on the same line as a shift outside \$(( )) → allow" "$out"
+out=$(run_gate "$(input_json s11 "$P" $'cat <<A <<B\nx\nA\nopenspec archive foo --yes\nB')" "$T" "$P")
+empty "the second of two heredocs on one line → allow" "$out"
 
 # 跨 hook 契約：archive-gate 放行時留下的標記，就是 skip-gate 讀的那一個（名稱只改一邊，這裡會紅）。
 # 聲明比 archive/ 目錄新、比標記舊，所以 deny 只可能來自標記；同一份聲明換個沒有標記的 session 則放行。
@@ -204,7 +242,7 @@ if [ "$n" = 2 ]; then PASS=$((PASS+1)); echo "PASS: hooks.json registers two arc
 else FAIL=$((FAIL+1)); echo "FAIL: hooks.json archive-gate handlers with if — got [$n]"; fi
 
 # ---- summary ----
-MIN=48
+MIN=63
 if [ "$((PASS + FAIL))" -lt "$MIN" ]; then
   echo "FAIL: ran $((PASS + FAIL)) assertions, expected at least $MIN"; FAIL=$((FAIL+1))
 fi
