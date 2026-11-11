@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.1] - 2026-11-11
+
+### Fixed
+
+- **archive-gate sees the archive that bash runs from inside a string.** `$( … )` and backticks inside double quotes or inside an unquoted heredoc body still run, so `echo "$(openspec archive foo)"` and `cat <<EOF` followed by a `$(openspec archive foo)` line archived a change without a reconcile-check pass. The gate dropped heredoc bodies whole and never looked inside double quotes. It now scans those substitutions as commands, the way pr-closeout's merge gate has since 1.0.0; a body behind a quoted (`<<'EOF'`) or backslashed (`<<\EOF`) delimiter, single quotes and an escaped `\$` still do not count, because bash does not run them. A heredoc body is scanned as one text, so a `$( … )` that runs across its lines is read whole (pr-closeout 1.0.4 fixes the same line-by-line scan in its copy).
+
+### Tests
+
+- `archive-gate.test.sh`: 95 checks and 7 mutants. Each mutant breaks one path of the substitution scan and must be caught first by the case written for it; the mutant copy sits in a plugin-shaped tree, so it cannot pass by failing to find `reconcile-check.cjs`.
+- **New `shared-tokenizer.test.sh`.** The tokenizer lives in both gates because the two plugins install apart and cannot source each other. The suite compares the regions between `# >>> shared-tokenizer:` and `# <<< shared-tokenizer:` markers in `archive-gate.sh` and pr-closeout's `pr-merge-gate.sh`, indentation aside, with a line floor per region and canaries for an edit inside a region, a missing or repeated marker and empty regions. Before this release the two copies had drifted (the fix above was in one of them only), and nothing said so.
+
 ## [3.1.0] - 2026-11-11
 
 ### Changed

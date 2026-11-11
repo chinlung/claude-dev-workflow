@@ -10,7 +10,8 @@
 # Which PR: `gh pr merge <n|url> --repo|-R <owner/repo> [--match-head-commit <sha>]` (the sha
 # becomes --expect-head), `gh api repos/<owner>/<repo>/pulls/<n>/merge`, or the MCP tool's owner,
 # repo, pullNumber and sha. A merge whose repo or number cannot be read is denied: write them out.
-# Only command position counts (a shell-word tokenizer; quoted text and heredoc bodies never match).
+# Only command position counts (a shell-word tokenizer; quoted text and heredoc bodies never match,
+# except the $( … ) and backticks the shell still runs inside double quotes or an unquoted heredoc body).
 # Bypass for one command: PR_CLOSEOUT_OK=1 in it (the MCP tool has no bypass; use gh).
 #
 # A gate, so it fails closed: no jq, no node or no ready script denies a merge (and says how to
@@ -41,9 +42,11 @@ if [ "$tool" = Bash ]; then
   case $cmd in *PR_CLOSEOUT_OK=1*) allow ;; esac
   command -v perl >/dev/null 2>&1 || deny "需要 perl 才能判斷這是不是 merge。"
   # Merges in command position, one per line. Same tokenizer as openspec's archive-gate: quoted
-  # words never count, heredoc bodies are dropped (the heredoc pass is described where it runs).
+  # words never count and heredoc bodies are dropped, except the $( … ) and backticks the shell still
+  # runs inside double quotes or an unquoted heredoc body (the heredoc pass is described where it runs).
   IFS= read -r -d '' parser <<'PERL' || true
 use strict; use warnings;
+# >>> shared-tokenizer: subs_of (same bytes in openspec's archive-gate.sh; tests/shared-tokenizer.test.sh compares them)
 # Text the shell still runs although it sits inside a string: $( … ) and backticks within double
 # quotes or an unquoted heredoc body. Each is scanned again as a command.
 sub subs_of {
@@ -61,10 +64,12 @@ sub subs_of {
   }
   return @out;
 }
+# <<< shared-tokenizer: subs_of
 my %takes = map { $_ => 1 } qw(--subject -t --body -b --body-file -F --author-email -A);   # gh pr merge options with a value
 my @queue = ($ENV{PMG_CMD} // ''); my $rounds = 0;
 while (@queue && $rounds++ < 50) {
   my $c = shift @queue;
+  # >>> shared-tokenizer: heredoc pass and tokenizer (same bytes in openspec's archive-gate.sh, indentation aside)
   # Heredoc bodies, found in one pass over the characters that carries an open quote from line to
   # line: a << opens a heredoc only outside quotes (a $( … ) starts over, unquoted, inside the quote
   # around it) and outside $(( … )) and (( … )), where it is a shift; never in a # comment or a
@@ -83,7 +88,8 @@ while (@queue && $rounds++ < 50) {
       my $l = shift @todo;
       if (@hd) {
         push @body, $l; (my $t = $l) =~ s/^\t+//;
-        if ($t eq $hd[0][0]) { push @queue, map { subs_of($_) } @body unless $hd[0][1]; shift @hd; @body = (); }
+        # the body as one text: a $( … ) may run across lines, and only the whole of it says which lines it holds
+        if ($t eq $hd[0][0]) { push @queue, subs_of(join "\n", @body) unless $hd[0][1]; shift @hd; @body = (); }
         next;
       }
       push @keep, $l; my $cont = 0;
@@ -109,7 +115,7 @@ while (@queue && $rounds++ < 50) {
       }
       if (@pend && $q eq '' && !$cont) { @hd = @pend; @pend = (); }
     }
-    if (@hd) { shift @hd; @todo = @body; }   # never closed: scan its lines again as commands
+    if (@hd) { shift @hd; @todo = @body; }   # never closed: scan its lines again as commands (fail closed)
   }
   $c = join "\n", @keep;
   my @segs = ([]); my $tok; my $i = 0; my $n = length $c;
@@ -121,17 +127,18 @@ while (@queue && $rounds++ < 50) {
     if ($ch eq '$' && substr($c, $i + 1, 1) eq "'") { my $j = $i + 2; $tok //= ''; while ($j < $n && substr($c, $j, 1) ne "'") { if (substr($c, $j, 1) eq "\\") { my $e = substr($c, $j + 1, 1); $tok .= "\\" unless $e =~ /[\\'"]/; $j++; } $tok .= substr($c, $j, 1); $j++; } $i = $j + 1; next; }   # ansi-c: tokenizer
     if ($ch eq "'") { my $j = index($c, "'", $i + 1); $j = $n if $j < 0; $tok .= substr($c, $i + 1, $j - $i - 1); $i = $j + 1; next; }
     if ($ch eq '"') {
-      my $j = $i + 1; my $dq = ''; $tok //= '';
-      while ($j < $n && substr($c, $j, 1) ne '"') { if (substr($c, $j, 1) eq "\\") { $dq .= "\\"; $j++; } $dq .= substr($c, $j, 1); $tok .= substr($c, $j, 1); $j++; }
-      push @queue, subs_of($dq);
+      my $j = $i + 1; $tok //= '';
+      while ($j < $n && substr($c, $j, 1) ne '"') { if (substr($c, $j, 1) eq "\\") { $j++; } $tok .= substr($c, $j, 1); $j++; }
+      push @queue, subs_of(substr($c, $i + 1, $j - $i - 1));   # the raw text, escapes kept: subs_of skips \$ and \`
       $i = $j + 1; next;
     }
     if ($ch eq "\\") { $tok .= substr($c, $i + 1, 1); $i += 2; next; }
-    if ($ch =~ /[;&|()`\n]/) { $endtok->(); push @segs, []; $i++; next; }
+    if ($ch =~ /[;&|()`\n]/) { $endtok->(); push @segs, []; $i++; next; }   # a backtick opens a command too
     if ($ch =~ /\s/) { $endtok->(); $i++; next; }
     $tok .= $ch; $i++;
   }
   $endtok->();
+  # <<< shared-tokenizer: heredoc pass and tokenizer
   for my $s (@segs) {
     # a command string handed to a shell runs too: `bash -c '…'`, `sh -lc '…'`, `eval …`
     for (my $k = 0; $k < @$s; $k++) {

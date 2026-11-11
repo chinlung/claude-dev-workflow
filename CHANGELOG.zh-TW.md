@@ -4,6 +4,17 @@
 
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
+## [1.17.1] - 2026-11-11
+
+### Fixed
+
+- **openspec-superpowers-workflow 3.1.0 → 3.1.1**：
+  - archive-gate 會掃描雙引號內、以及未加引號 heredoc 本體內 bash 仍會執行的 `$( … )` 與反引號；寫在這些位置的歸檔不再繞過 reconcile-check。
+  - 新增測試，讓它與 pr-closeout merge 閘門共用的 tokenizer 在兩個 plugin 裡保持一致。
+- **pr-closeout 1.0.3 → 1.0.4**：
+  - merge 閘門把未加引號的 heredoc 本體當成一整段掃描，跨行的 `$( … )` 會被完整讀到：寫在裡面的 merge 不再略過 `ready` 直接送到 GitHub，裡面單引號內的 merge 字樣也不再被誤認成 merge。
+  - 與 archive-gate 共用的 tokenizer 區段加上標記。
+
 ## [1.17.0] - 2026-11-11
 
 ### Changed

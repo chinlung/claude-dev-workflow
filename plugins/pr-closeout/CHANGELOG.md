@@ -2,6 +2,21 @@
 
 All notable changes to the `pr-closeout` plugin will be documented in this file.
 
+## [1.0.4] - 2026-11-11
+
+### Fixed
+
+- **Merge gate: a heredoc body is scanned as one text.** The `$( … )` and backticks of an unquoted heredoc body were scanned line by line, so a substitution that runs across lines was cut apart. `cat <<EOF`, `$(echo hi`, `gh pr merge 7 --repo o/r)`, `EOF` merges (bash takes the newline inside `$( … )` as a command separator) and reached GitHub without `ready`; a merge written as text inside single quotes in such a substitution was taken for a merge and sent to `ready`. 1.0.0 scanned it the same way. Found by a cross-vendor review of openspec-superpowers-workflow 3.1.1, which brought archive-gate onto this tokenizer.
+- The header comment said quoted text and heredoc bodies never match; it now names the substitutions that do.
+
+### Changed
+
+- The tokenizer's two regions are marked `# >>> shared-tokenizer:` … `# <<< shared-tokenizer:`; openspec-superpowers-workflow's `tests/shared-tokenizer.test.sh` keeps them identical to archive-gate's copy. The double-quoted text handed to the substitution scan is a plain slice now, with no change in what it holds.
+
+### Tests
+
+- `pr-merge-gate.test.sh`: 146 checks, 36 mutants (two cases and the `per-line-body` mutant for the fix above).
+
 ## [1.0.3] - 2026-11-10
 
 ### Fixed

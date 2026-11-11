@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "Claude Code plugins collection by scl",
-    "version": "1.17.0"
+    "version": "1.17.1"
   },
   "plugins": [
     {
@@ -40,7 +40,7 @@
       "name": "openspec-superpowers-workflow",
       "source": "./plugins/openspec-superpowers-workflow",
       "description": "OpenSpec + Superpowers 六階段功能開發工作流程 - 強制規格生命週期（WHAT）與開發紀律（HOW）嚴格角色分離，避免規格漂移；附 skip-gate hook（SKIP 須先寫契約面聲明檔）與 archive-gate hook（歸檔須有新鮮的 reconcile-check 通過結果，未勾 task 須附 skip 理由）；P1／P2 由 gate-check 依事實決定要不要停下等使用者（P3、P6b 不再等），tasks.md 為執行紀錄、Phase 2 提問上限與設計紅旗自檢、文件對照真實 OpenSpec CLI 由 CI 守住",
-      "version": "3.1.0",
+      "version": "3.1.1",
       "keywords": ["openspec", "superpowers", "workflow", "spec-driven", "tdd", "code-review", "reconciliation"]
     },
     {
@@ -89,7 +89,7 @@
       "name": "pr-closeout",
       "source": "./plugins/pr-closeout",
       "description": "PR 收尾 - ready 從 GitHub 讀出 fail-closed 的合併就緒判定（exit code：衝突、未解決 thread、check 失敗或必跑 check 沒跑、等待中、合併閘門、查詢失敗），給本機 clone 時逐檔確認最後一輪 review-branch 看過的就是要合併的位元組並列出未歸檔的 openspec change；landed 在合併後驗證 merged_at、head、merge commit 在 base 上與分支已刪；PreToolUse hook 在 gh pr merge、gh api …/merge 與 GitHub MCP merge 前先跑 ready，只放行就緒的 PR（PR_CLOSEOUT_OK=1 可略過一次）",
-      "version": "1.0.3",
+      "version": "1.0.4",
       "keywords": ["pull-request", "merge", "closeout", "github", "merge-gate", "ci"]
     }
   ]

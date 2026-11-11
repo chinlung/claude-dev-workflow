@@ -17,6 +17,8 @@ TMPBASE="${TMPDIR:-/tmp}"
 WORK=$(mktemp -d "${TMPBASE%/}/archive-gate-test.XXXXXX") || exit 1
 trap 'rm -rf "$WORK"' EXIT
 PASS=0; FAIL=0
+# STOP_ON_FAIL=1 (set for mutant runs): exit at the first failing case, which is all a mutant run reads
+fail_case() { FAIL=$((FAIL+1)); echo "$1"; [ "${STOP_ON_FAIL:-0}" = 1 ] && exit 1; return 0; }
 
 # input_json <session_id> <cwd> <command>
 input_json() { jq -cn --arg s "$1" --arg c "$2" --arg cmd "$3" '{session_id:$s,cwd:$c,hook_event_name:"PreToolUse",tool_name:"Bash",tool_input:{command:$cmd}}'; }
@@ -27,17 +29,17 @@ run_gate() {
 # contains <名稱> <實際輸出> <固定字串>
 contains() {
   if printf '%s' "$2" | command grep -qF -- "$3"; then PASS=$((PASS+1)); echo "PASS: $1"
-  else FAIL=$((FAIL+1)); echo "FAIL: $1 — output lacks [$3]: $(printf '%s' "$2" | head -c 300)"; fi
+  else fail_case "FAIL: $1 — output lacks [$3]: $(printf '%s' "$2" | head -c 300)"; fi
 }
 # empty <名稱> <實際輸出>(allow = 靜默放行)
 empty() {
   if [ -z "$2" ]; then PASS=$((PASS+1)); echo "PASS: $1"
-  else FAIL=$((FAIL+1)); echo "FAIL: $1 — expected empty, got: $(printf '%s' "$2" | head -c 300)"; fi
+  else fail_case "FAIL: $1 — expected empty, got: $(printf '%s' "$2" | head -c 300)"; fi
 }
 # exists <名稱> <路徑>
 exists() {
   if [ -e "$2" ]; then PASS=$((PASS+1)); echo "PASS: $1"
-  else FAIL=$((FAIL+1)); echo "FAIL: $1 — missing $2"; fi
+  else fail_case "FAIL: $1 — missing $2"; fi
 }
 
 # make_change <專案根> <名稱>：一份完整合法、review 已標 final 的 change
@@ -212,6 +214,21 @@ for c in 'echo then openspec archive foo --yes' 'command -v openspec' "echo bash
   out=$(run_gate "$(input_json s11 "$P" "$c")" "$T" "$P")
   empty "not an archive: [$c] → allow" "$out"
 done
+# 字串裡 bash 照樣執行的部分：雙引號內、以及 delimiter 不加引號的 heredoc 本體內的 $( … ) 與反引號
+for c in $'cat <<EOF\n$(openspec archive foo --yes)\nEOF' $'cat > n.md <<EOF\nnote `openspec archive foo --yes`\nEOF' \
+         'echo "$(openspec archive foo --yes)"' 'echo "done: `openspec archive foo --yes`"' \
+         'git commit -m "x $(mv openspec/changes/foo openspec/changes/archive/2026-11-09-foo)"' \
+         $'cat > m.md <<EOF\n$(echo hi\nopenspec archive foo --yes)\nEOF'; do
+  out=$(run_gate "$(input_json s12 "$P" "$c")" "$T" "$P")
+  contains "substitution bash runs: [$c] → deny" "$out" "$DENY"
+done
+# bash 不執行的：delimiter 加引號或反斜線的本體、單引號、跳脫的 \$
+for c in $'cat <<\'EOF\'\n$(openspec archive foo --yes)\nEOF' $'cat <<\\EOF\n`openspec archive foo --yes`\nEOF' \
+         "echo '\$(openspec archive foo --yes)'" 'echo "\$(openspec archive foo --yes)"' \
+         $'cat <<EOF\n$(echo \'x\n$(openspec archive foo --yes)\ny\')\nEOF'; do
+  out=$(run_gate "$(input_json s12 "$P" "$c")" "$T" "$P")
+  empty "substitution bash does not run: [$c] → allow" "$out"
+done
 
 # 跨 hook 契約：archive-gate 放行時留下的標記，就是 skip-gate 讀的那一個（名稱只改一邊，這裡會紅）。
 # 聲明比 archive/ 目錄新、比標記舊，所以 deny 只可能來自標記；同一份聲明換個沒有標記的 session 則放行。
@@ -262,9 +279,39 @@ if [ "$n" = 2 ]; then PASS=$((PASS+1)); echo "PASS: hooks.json registers two arc
 else FAIL=$((FAIL+1)); echo "FAIL: hooks.json archive-gate handlers with if — got [$n]"; fi
 
 # ---- summary ----
-MIN=84
+MIN=95
 if [ "$((PASS + FAIL))" -lt "$MIN" ]; then
   echo "FAIL: ran $((PASS + FAIL)) assertions, expected at least $MIN"; FAIL=$((FAIL+1))
 fi
+
+# ---- mutants: each breaks one path of the substitution scan, and the case named must catch it ----
+# mutant <label> <text the FIRST failing case must contain> <perl substitution on the gate>
+# The copy sits in a tree shaped like the plugin, so it still finds the real reconcile-check: a copy that
+# cannot find it allows everything, and every deny case would go red for that reason instead. The first
+# failure has to be the named case for the same reason — any failure at all would count a broken copy.
+mutant() {
+  local d="$WORK/mutant-$1" log="$WORK/mutant-$1.log" first
+  mkdir -p "$d/hooks"; ln -s "$SCRIPT_DIR/../skills" "$d/skills"
+  perl -pe "$3" "$GATE" > "$d/hooks/archive-gate.sh" || { FAIL=$((FAIL+1)); echo "FAIL: mutant [$1] perl failed"; return; }
+  if cmp -s "$d/hooks/archive-gate.sh" "$GATE"; then FAIL=$((FAIL+1)); echo "FAIL: mutant [$1] substitution did not apply"; return; fi
+  # alarm: a mutant that makes the parser loop forever must fail, not hang CI
+  if GATE="$d/hooks/archive-gate.sh" NO_MUTANTS=1 STOP_ON_FAIL=1 perl -e 'alarm 120; exec @ARGV' "$BASH_BIN" "$0" > "$log" 2>&1; then
+    FAIL=$((FAIL+1)); echo "FAIL: mutant [$1] suite stayed green"; return
+  fi
+  first=$(command grep -a -m1 '^FAIL' "$log")   # -a: a truncated multibyte char must not make GNU grep call the log binary
+  if [ -z "$first" ]; then FAIL=$((FAIL+1)); echo "FAIL: mutant [$1] suite crashed before any case failed"
+  elif [[ $first == *"$2"* ]]; then PASS=$((PASS+1)); echo "PASS: mutant [$1] caught first by [$2]"
+  else FAIL=$((FAIL+1)); echo "FAIL: mutant [$1] went red first on [${first:0:160}], expected [$2]"; fi
+}
+if [ "${NO_MUTANTS:-0}" != 1 ]; then
+  mutant heredoc-subs  'substitution bash runs: [cat <<EOF'        's/ push \@queue, subs_of\(join "\\n", \@body\) unless \$hd\[0\]\[1\];//'
+  mutant per-line-body 'substitution bash runs: [cat > m.md <<EOF'  's/subs_of\(join "\\n", \@body\)/map { subs_of(\$_) } \@body/'
+  mutant subs-backtick 'substitution bash runs: [cat > n.md <<EOF' 's/^.*index\(\$s, ..., \$i \+ 1\);.*$//'
+  mutant dq-subs       'substitution bash runs: [echo "$(openspec' 's/^\s*push \@queue, subs_of\(substr\(.*$//'
+  mutant quoted-delim  "substitution bash does not run: [cat <<'EOF'" 's/unless \$hd\[0\]\[1\]/unless 0/'
+  mutant backslash-delim 'substitution bash does not run: [cat <<\EOF' 's/\|\| \$3 ne ..\];/|| 0];/'
+  mutant dq-escape     'substitution bash does not run: [echo "\$(' 's/subs_of\(substr\(\$c, \$i \+ 1, \$j - \$i - 1\)\)/subs_of(substr(\$c, \$i + 1, \$j - \$i - 1) =~ s{\\\\}{}gr)/'
+fi
+
 echo "archive-gate: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]
