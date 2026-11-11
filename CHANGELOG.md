@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.17.1] - 2026-11-11
+
+### Fixed
+
+- **openspec-superpowers-workflow 3.1.0 → 3.1.1** — archive-gate scans the `$( … )` and backticks bash still runs inside double quotes and unquoted heredoc bodies, so an archive written there no longer skips the reconcile-check pass. A new test keeps the tokenizer it shares with pr-closeout's merge gate identical in both plugins. See that plugin's CHANGELOG [3.1.1].
+- **pr-closeout 1.0.3 → 1.0.4** — the merge gate scans an unquoted heredoc body as one text, so a `$( … )` that runs across lines is read whole: a merge inside one no longer reaches GitHub without `ready`, and merge text in single quotes inside one is no longer taken for a merge. The tokenizer regions it shares with archive-gate are marked. See that plugin's CHANGELOG [1.0.4].
+
 ## [1.17.0] - 2026-11-11
 
 ### Changed

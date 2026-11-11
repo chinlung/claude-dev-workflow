@@ -37,28 +37,51 @@ proj="${proj%/}"
 
 # Change names the command archives, one per line. A shell-word tokenizer, so quoted paths are read
 # as the shell reads them and words inside quotes (a commit message that mentions
-# `openspec archive`) never count; heredoc bodies are dropped. Only command position counts: the
+# `openspec archive`) never count; heredoc bodies are dropped. What the shell still runs inside a
+# string — $( … ) and backticks within double quotes or an unquoted heredoc body — is scanned as a
+# command (the tokenizer is shared with pr-closeout's merge gate). Only command position counts: the
 # first word of a segment after any VAR=value prefixes, shell keywords (then, do, !, {, …) and
 # wrappers (env, command, exec, time, nohup); segments split on ; & | ( ) ` and newlines. A command
 # string handed to `bash -c`, `sh -lc` or `eval` is parsed the same way. Not seen: a script fed to a
 # shell on stdin (`bash <<EOF`, `… | bash`), an alias, a variable holding the command.
 IFS= read -r -d '' parser <<'PERL' || true
 use strict; use warnings;
+# >>> shared-tokenizer: subs_of (same bytes in pr-closeout's pr-merge-gate.sh; tests/shared-tokenizer.test.sh compares them)
+# Text the shell still runs although it sits inside a string: $( … ) and backticks within double
+# quotes or an unquoted heredoc body. Each is scanned again as a command.
+sub subs_of {
+  my ($s) = @_; my @out; my $i = 0; my $n = length $s;
+  while ($i < $n) {
+    my $ch = substr($s, $i, 1);
+    if ($ch eq "\\") { $i += 2; next; }
+    if ($ch eq '`') { my $j = index($s, '`', $i + 1); $j = $n if $j < 0; push @out, substr($s, $i + 1, $j - $i - 1); $i = $j + 1; next; }
+    if (substr($s, $i, 2) eq '$(') {
+      my ($d, $j) = (1, $i + 2);
+      while ($j < $n && $d) { my $c = substr($s, $j, 1); $d++ if $c eq '('; $d-- if $c eq ')'; $j++; }
+      push @out, substr($s, $i + 2, $d ? $n - $i - 2 : $j - $i - 3); $i = $j; next;
+    }
+    $i++;
+  }
+  return @out;
+}
+# <<< shared-tokenizer: subs_of
 my @queue = ($ENV{AG_CMD} // ''); my $rounds = 0; my %seen;
 # A command string handed to a shell runs too (`bash -c '…'`, `sh -lc '…'`, `eval …`): it is queued and
 # parsed like the command itself. 50 rounds bound a string that keeps quoting itself.
 while (@queue && $rounds++ < 50) {
 my $c = shift @queue;
+# >>> shared-tokenizer: heredoc pass and tokenizer (same bytes in pr-closeout's pr-merge-gate.sh, indentation aside)
 # Heredoc bodies, found in one pass over the characters that carries an open quote from line to
 # line: a << opens a heredoc only outside quotes (a $( … ) starts over, unquoted, inside the quote
 # around it) and outside $(( … )) and (( … )), where it is a shift; never in a # comment or a
 # here-string (<<<). $'…' is a quote whose \' does not close it. The delimiter
 # is the whole word (<<EOF-TEXT closes on EOF-TEXT), quoted or \-escaped too. Bodies start on the
-# line after the command line ends (after the string closes or the trailing-backslash continuation
-# runs out, when that line left one open), one per << on that line in order, each ending at a line
-# equal to its delimiter. A heredoc whose delimiter line never comes is not one ($((1<<n)) looks
-# like it): its lines are put back and scanned again, the later heredocs of its line first.
-my @todo = split /\n/, $c, -1; my @keep; my @hd;   # @hd: delimiters whose bodies come next
+# line after the command line ends (after the string closes or the trailing-backslash
+# continuation runs out, when that line left one open), one per << on that line in order, each
+# ending at a line equal to its delimiter. An unquoted body still runs its $( … ) and backticks.
+# A heredoc whose delimiter line never comes is not one ($((1<<n)) looks like it): its lines are
+# put back and scanned again (fail closed), the later heredocs of its line first.
+my @todo = split /\n/, $c, -1; my @keep; my @hd;   # @hd: [delimiter, quoted] whose bodies come next
 my ($q, $ar, @st) = ('', 0);   # open quote, $(( )) depth, quote outside each open (: kept when a body is rescanned
 while (@todo) {
   my (@pend, @body);
@@ -66,7 +89,8 @@ while (@todo) {
     my $l = shift @todo;
     if (@hd) {
       push @body, $l; (my $t = $l) =~ s/^\t+//;
-      if ($t eq $hd[0]) { shift @hd; @body = (); }
+      # the body as one text: a $( … ) may run across lines, and only the whole of it says which lines it holds
+      if ($t eq $hd[0][0]) { push @queue, subs_of(join "\n", @body) unless $hd[0][1]; shift @hd; @body = (); }
       next;
     }
     push @keep, $l; my $cont = 0;
@@ -75,19 +99,20 @@ while (@todo) {
       if ($ar) { $ar++ if $ch eq '('; $ar-- if $ch eq ')'; next; }             # not-a-heredoc: arithmetic
       if ($q eq "'") { $q = '' if $ch eq "'"; next; }
       if ($q eq 'A') { if ($ch eq "\\") { $i++; next; } $q = '' if $ch eq "'"; next; }   # $'…': \' does not close it
-      if ($ch eq "\\") { $cont = 1 if $i == length($l) - 1; $i++; next; }          # not-a-heredoc: continuation
+      if ($ch eq "\\") { $cont = 1 if $i == length($l) - 1; $i++; next; }        # not-a-heredoc: continuation
       last if $q eq '' && $ch eq '#' && ($i == 0 || substr($l, $i - 1, 1) =~ /[\s;&|()]/);   # not-a-heredoc: comment
       my $sub = $ch eq '$' && substr($l, $i + 1, 1) eq '(';
       if ($sub ? substr($l, $i + 2, 1) eq '(' : $q eq '' && substr($l, $i, 2) eq '((') { $ar = 2; $i += $sub ? 2 : 1; next; }
       if ($sub) { push @st, $q; $q = ''; $i++; next; }                           # not-a-heredoc: substitution
       if ($q eq '"') { $q = '' if $ch eq '"'; next; }
       if ($ch eq '$' && substr($l, $i + 1, 1) eq "'") { $q = 'A'; $i++; next; }               # not-a-heredoc: ansi-c
-      if ($ch eq "'" || $ch eq '"') { $q = $ch; next; }                            # not-a-heredoc: quoted
+      if ($ch eq "'" || $ch eq '"') { $q = $ch; next; }                          # not-a-heredoc: quoted
       if ($ch eq '(') { push @st, ''; next; }
       if ($ch eq ')') { $q = pop @st if @st; next; }
-      if (substr($l, $i, 3) eq '<<<') { $i += 2; next; }                          # not-a-heredoc: here-string
-      next unless substr($l, $i) =~ /^<<-?\s*(?:'([^']+)'|"([^"]+)"|\\?([A-Za-z_][^\s;&|()<>'"\\`]*))/;
-      push @pend, $1 // $2 // $3; $i += length($&) - 1;
+      if (substr($l, $i, 3) eq '<<<') { $i += 2; next; }                        # not-a-heredoc: here-string
+      next unless substr($l, $i) =~ /^<<-?\s*(?:'([^']+)'|"([^"]+)"|(\\?)([A-Za-z_][^\s;&|()<>'"\\`]*))/;
+      push @pend, [$1 // $2 // $4, defined $1 || defined $2 || $3 ne ''];
+      $i += length($&) - 1;
     }
     if (@pend && $q eq '' && !$cont) { @hd = @pend; @pend = (); }
   }
@@ -105,6 +130,7 @@ while ($i < $n) {
   if ($ch eq '"') {
     my $j = $i + 1; $tok //= '';
     while ($j < $n && substr($c, $j, 1) ne '"') { if (substr($c, $j, 1) eq "\\") { $j++; } $tok .= substr($c, $j, 1); $j++; }
+    push @queue, subs_of(substr($c, $i + 1, $j - $i - 1));   # the raw text, escapes kept: subs_of skips \$ and \`
     $i = $j + 1; next;
   }
   if ($ch eq "\\") { $tok .= substr($c, $i + 1, 1); $i += 2; next; }
@@ -113,6 +139,7 @@ while ($i < $n) {
   $tok .= $ch; $i++;
 }
 $endtok->();
+# <<< shared-tokenizer: heredoc pass and tokenizer
 for my $s (@segs) {
   # Command position: after VAR=value prefixes, and after the shell keywords and wrappers a command
   # can sit behind (`if …; then openspec archive x`, `! …`, `env X=1 …`, `command …`).
