@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.0] - 2026-11-11
+
+### Changed
+
+- **P2 stops on a structural fact P1 did not see.** Every `gate-check p1` run records the change's structural facts (a `BREAKING` marker, delta kinds, `high_risk_paths` hits) in `.claude/openspec-gate.<change>.local.json`; `p2` stops with `structure-changed-since-p1` when one is new since P1 (the proposal, the specs or the `high_risk_paths` settings changed), and with `no-p1-record` when there is no readable record; if the user already approved P1 (an earlier session, a change from before 3.1) the agent runs `p1` once to create it and stops for any reason it cannot confirm the user approved, and a session without a shell compares by hand against what the user was shown at P1. On a P1 stop the agent runs `p1` again after folding in the review, so the record matches what the user was shown and an approved trigger does not stop P2 a second time.
+- **P1 stops on missing or unreadable specs:** `no-specs` when there is no `specs/**/spec.md` (unless `.openspec.yaml` sets `skip_specs: true`), `spec-unreadable` when a spec file cannot be read. Both used to read as "no delta".
+- **A personal `high_risk_paths` adds to the project's list** instead of replacing it, so `.claude/openspec-workflow.local.md` can no longer switch off the committed high-risk paths with an empty list. `gates` still lets the local file win.
+
+### Fixed
+
+- **Comment and fence stripping no longer swallows real content.** One pass over the lines tracks fences and comments together, so neither pairs across the other (a ``` line inside a comment or a `~~~` fence); a backtick fence's opening line cannot contain another backtick (CommonMark), so ```` ```x``` ```` is a code span; a `<!--` inside inline code opens nothing. Each used to hide a later `BREAKING` marker or delta heading.
+- **State files are never written through a symlink.** gate-check's P1 record and reconcile-check's verdict state go to a temp file in the same directory and are renamed over the target (a new shared `validators/safe-write.cjs`), so a symlink a checkout ships at the state path is replaced, not followed; a `.claude` that is itself a symlink is refused. reconcile-check wrote through such a symlink before this release too.
+- **A P1 run that cannot write its record exits 1** instead of warning and proceeding: a stale record that stays readable would let P2 wave through a fact this run no longer saw.
+
+### Docs
+
+- phases.md "Gates" and the plugin README say where the settings files live (the project root's `.claude/`, beside `openspec/`).
+
+### Tests
+
+- `gate-check.test.sh`: 190 checks; `reconcile-check.test.sh`: 86 (state symlink). Seventeen mutations of the new paths against copies, each red.
+
 ## [3.0.0] - 2026-11-10
 
 Analysis behind this release: `docs/openspec-hitl-gate-analysis-2026-11-10.md` (of 87 gate events at P1–P3, 1 was a reversal; the problems caught at gates surfaced only after the user asked for an extra review). Design: `docs/openspec-workflow-3-gates-design-2026-11-10.md`.

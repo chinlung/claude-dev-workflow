@@ -4,6 +4,19 @@
 
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
+## [1.17.0] - 2026-11-11
+
+### Changed
+
+- **openspec-superpowers-workflow 3.0.0 → 3.1.0**：
+  - `gate-check p1` 會記下 change 的結構事實；P1 之後出現新的這類事實（改了 proposal、spec 或 high_risk_paths 設定）時，`p2` 會停下。
+  - 沒有 spec 或讀不到 spec 時，P1 停下（`skip_specs: true` 者除外）。
+  - 個人的 `high_risk_paths` 與專案的清單取聯集，不再整份覆蓋。
+  - 剝除註解與 fence 時，不再把後面的 `BREAKING` 或 delta 標題一起吞掉。
+  - `.claude/` 底下的狀態檔不再沿著 symlink 寫出去。
+
+  詳見該插件 CHANGELOG [3.1.0]。
+
 ## [1.16.0] - 2026-11-10
 
 ### Changed

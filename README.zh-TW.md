@@ -464,7 +464,7 @@ Phase 1、2 停下前會先派 opus 獨立審查。Phase 3 與 Phase 6 的改寫
 skills/openspec-superpowers-workflow/
 ├── SKILL.md                    # 61 行 — trigger map + SKIP 條款 + phase 表 + 6 條硬規則（常駐載入）
 ├── PHASE-IDENTIFICATION.md     # 97 行 — Phase 判定決策樹 + SKIP 判定程序（Phase 不明時載入）
-├── phases.md                   # 446 行 — 完整 playbook、tag 語意、gotcha（需要時才載入）
+├── phases.md                   # 447 行 — 完整 playbook、tag 語意、gotcha（需要時才載入）
 ├── SUPERPOWERS-HANDOFF.md      # 142 行 — Phase 2/3/4 sync-back 範本、sidecar 檔 anti-pattern
 ├── OUTPUT-CONTRACTS.md         # 219 行 — 各 Phase 產出契約、requirement 寫法正反例
 ├── RECONCILIATION-CRITERIA.md  # 128 行 — Phase 6 歸檔前核查清單
@@ -472,7 +472,8 @@ skills/openspec-superpowers-workflow/
 └── validators/
     ├── validate-openspec-workflow.cjs  # change folder 寬鬆 pre-check
     ├── reconcile-check.cjs             # Phase 6 歸檔前核查（snapshot／check／verify）
-    └── gate-check.cjs                  # p1／p2／p3／p6b 確認點：停下等使用者（exit 10）或繼續（exit 0）
+    ├── gate-check.cjs                  # p1／p2／p3／p6b 確認點：停下等使用者（exit 10）或繼續（exit 0）
+    └── safe-write.cjs                  # .claude/ 底下的狀態檔，寫入時不跟隨 symlink
 ```
 
 Skill 啟動時 Claude 先讀 `SKILL.md`，辨認當前 Phase 後只載入該 Phase 需要的 reference（Phase 不明讀 `PHASE-IDENTIFICATION.md`、playbook 讀 `phases.md` 對應段落、Phase 2/3/4 交接讀 `SUPERPOWERS-HANDOFF.md`、歸檔前讀 `RECONCILIATION-CRITERIA.md`），即使有近 900 行 playbook 也不會爆 context。

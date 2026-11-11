@@ -17,6 +17,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { execFileSync } = require('child_process');
 const { REQUIRED_FILES, findSpecFiles, checkRequirementBlocks } = require('./validate-openspec-workflow.cjs');
+const { writeStateFile } = require('./safe-write.cjs');
 const { parseTaskLines } = require('./task-line.cjs');
 
 const ARTIFACTS = { proposal: 'proposal.md', design: 'design.md', tasks: 'tasks.md', reviewNotes: 'review-notes.md' };
@@ -68,8 +69,7 @@ function readState(ctx) {
   try { return JSON.parse(fs.readFileSync(ctx.statePath, 'utf8')); } catch { return {}; }
 }
 function writeState(ctx, state) {
-  fs.mkdirSync(path.dirname(ctx.statePath), { recursive: true });
-  fs.writeFileSync(ctx.statePath, JSON.stringify(state, null, 2) + '\n');
+  writeStateFile(ctx.statePath, JSON.stringify(state, null, 2) + '\n');
 }
 
 // review-notes.md → [{ heading, entries }]; an entry is a `- [` bullet under a `## Round` heading.

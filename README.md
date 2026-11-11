@@ -464,7 +464,7 @@ This plugin ships an auto-triggered skill (no slash command) and two PreToolUse 
 skills/openspec-superpowers-workflow/
 ├── SKILL.md                    # 61 lines — trigger map + SKIP clause + phase table + 6 rules (always loaded)
 ├── PHASE-IDENTIFICATION.md     # 97 lines — phase decision tree + SKIP procedure (loaded when phase is unclear)
-├── phases.md                   # 446 lines — full playbook, tag semantics, gotchas (loaded on demand)
+├── phases.md                   # 447 lines — full playbook, tag semantics, gotchas (loaded on demand)
 ├── SUPERPOWERS-HANDOFF.md      # 142 lines — Phase 2/3/4 sync-back templates, sidecar-file anti-patterns
 ├── OUTPUT-CONTRACTS.md         # 219 lines — per-phase output contracts, requirement-writing examples
 ├── RECONCILIATION-CRITERIA.md  # 128 lines — Phase 6 pre-archive gate checklist
@@ -472,7 +472,8 @@ skills/openspec-superpowers-workflow/
 └── validators/
     ├── validate-openspec-workflow.cjs  # lenient change-folder pre-check
     ├── reconcile-check.cjs             # Phase 6 pre-archive check (snapshot / check / verify)
-    └── gate-check.cjs                  # P1/P2 gate: stop for the user (exit 10) or proceed (exit 0)
+    ├── gate-check.cjs                  # P1/P2 gate: stop for the user (exit 10) or proceed (exit 0)
+    └── safe-write.cjs                  # state files under .claude/ written without following symlinks
 ```
 
 When the skill activates, Claude first reads `SKILL.md`, identifies which phase applies, then loads only the reference that phase needs (`PHASE-IDENTIFICATION.md` when the phase is unclear, the relevant section of `phases.md`, `SUPERPOWERS-HANDOFF.md` for Phase 2/3/4 handoffs, `RECONCILIATION-CRITERIA.md` before archiving). Context budget stays controlled even with ~900 lines of playbook.

@@ -38,7 +38,7 @@
 skills/openspec-superpowers-workflow/
 ├── SKILL.md                    # 61 行：trigger 條件、SKIP 條款、phase map、六條硬規則（常駐載入）
 ├── PHASE-IDENTIFICATION.md     # 97 行：Phase 判定決策樹、SKIP 判定程序（Phase 不明時載入）
-├── phases.md                   # 446 行：完整六階段 playbook、tag 分類細節、路徑慣例、anti-pattern（需要時才載入）
+├── phases.md                   # 447 行：完整六階段 playbook、tag 分類細節、路徑慣例、anti-pattern（需要時才載入）
 ├── SUPERPOWERS-HANDOFF.md      # 142 行：Phase 2/3/4 sync-back 範本、sidecar 檔 anti-pattern
 ├── OUTPUT-CONTRACTS.md         # 219 行：各 Phase 產出契約、requirement 寫法正反例、deferred 項慣例
 ├── RECONCILIATION-CRITERIA.md  # 128 行：Phase 6 歸檔前核查清單
@@ -46,7 +46,8 @@ skills/openspec-superpowers-workflow/
 └── validators/
     ├── validate-openspec-workflow.cjs  # change folder 寬鬆 pre-check（見下方 Validator）
     ├── reconcile-check.cjs             # Phase 6 歸檔前核查（snapshot／check／verify，見下方 Archive gate）
-    └── gate-check.cjs                  # p1／p2／p3／p6b 確認點：停下等使用者（exit 10）或繼續（exit 0），見下方 Gates
+    ├── gate-check.cjs                  # p1／p2／p3／p6b 確認點：停下等使用者（exit 10）或繼續（exit 0），見下方 Gates
+    └── safe-write.cjs                  # .claude/ 底下的狀態檔，寫入時不跟隨 symlink（gate-check 與 reconcile-check 共用）
 ```
 
 觸發時 Claude 先讀 `SKILL.md`，確認當前 Phase 後只載入該 Phase 需要的 reference（Phase 不明讀 `PHASE-IDENTIFICATION.md`、playbook 讀 `phases.md` 對應段落、Phase 2/3/4 交接讀 `SUPERPOWERS-HANDOFF.md`、Phase 6 歸檔前讀 `RECONCILIATION-CRITERIA.md`），避免一次吃下近 900 行拖慢 context。
@@ -89,8 +90,8 @@ SKIP 的唯一依據是上述契約面判定，沒有其他豁免類別（例如
 
 | 確認點 | 3.0（預設 `risk-based`） |
 |---|---|
-| P1 | `gate-check.cjs p1`：結構事實（`BREAKING`、修改／移除／改名既有 requirement 的 delta）、`[needs user]` 標記（任何項目寫法、任何段落）、命中 `high_risk_paths` 時，先派 opus 獨立審查再停下；否則公告採用的預設後繼續 |
-| P2 | `gate-check.cjs p2`：design.md 任何位置有 `[needs user]`，或讀不到 design.md，才停 |
+| P1 | `gate-check.cjs p1`：結構事實（`BREAKING`、修改／移除／改名既有 requirement 的 delta）、`[needs user]` 標記（任何項目寫法、任何段落）、命中 `high_risk_paths`、沒有任何 spec（`.openspec.yaml` 設 `skip_specs: true` 者除外）或讀不到 spec 時，先派 opus 獨立審查、重跑一次 p1 更新記錄，再停下；否則公告採用的預設後繼續 |
+| P2 | `gate-check.cjs p2`：design.md 任何位置有 `[needs user]`、讀不到 design.md，或出現 P1 沒看過的結構事實（P1 之後才出現的 BREAKING、delta、高風險路徑命中，不論改的是 proposal、spec 還是 high_risk_paths 設定；p1 每次執行都把看到的寫進 `.claude/openspec-gate.<change>.local.json`），才停 |
 | P3、P6b | `gate-check.cjs p3`／`p6b` 只在 `gates: supervised` 或設定讀不懂時停；p3 先核對 tasks.md 每個 `### Task N` 恰好一個勾選框，不合格 exit 1 由 agent 修好再跑；P6b 的改寫摘要寫進回覆與歸檔 PR，reconcile-check 仍是歸檔閘門 |
 | P5 | 宣告收斂仍由你決定；條件成立時 agent 會主動建議收斂 |
 
@@ -98,7 +99,7 @@ SKIP 的唯一依據是上述契約面判定，沒有其他豁免類別（例如
 
 **設定**（都是選用，只讀 front matter）：
 - `.claude/openspec-workflow.md`（進版控，描述專案）：`high_risk_paths:` 底下列 `- <glob>`，縮排與否都可，中間可以有空白行和 `#` 註解（`**` 跨目錄，`*` 不跨；不含 `/` 的 glob 比對根目錄檔名，如 `Dockerfile`）。行內寫法 `high_risk_paths: [a, b]`、拼錯的 key、重複的 `gates:` 都算設定讀不懂（停下，不會靜默當成空清單）。
-- `.claude/openspec-workflow.local.md`（gitignored，個人偏好）：`gates: supervised` 回到 2.x 的每個確認點都停。這個檔案設定的 key 會覆蓋前者。
+- `.claude/openspec-workflow.local.md`（gitignored，個人偏好）：`gates: supervised` 回到 2.x 的每個確認點都停。它的 `gates` 覆蓋前者；`high_risk_paths` 與前者取聯集，只能多加、不能拿掉專案列的路徑。兩個檔案都在專案根目錄（放 `openspec/` 的那一層）的 `.claude/` 底下。
 
 **界線**：
 - 設定檔讀不懂、`gates` 值認不得，一律視同停下。方向刻意和兩支 hook 的 fail-open 相反：這裡出錯的代價是跳過人類決策。沒有 shell 的 session 照同一份規則手動判定。
