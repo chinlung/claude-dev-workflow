@@ -2,6 +2,17 @@
 
 All notable changes to the `pr-closeout` plugin will be documented in this file.
 
+## [1.0.5] - 2026-11-12
+
+### Fixed
+
+- **Merge gate: a comment no longer hides the merge after it.** A `#` that starts a word comments out the rest of its line; the tokenizer used to read an apostrophe in `# don't merge yet` as the start of a single-quoted string that ran to the next apostrophe, so `gh pr merge 12 --repo o/r` on the next line reached GitHub without `ready` being asked. The heredoc pass already skipped comments, the tokenizer did not. A `#` inside a word (`echo x#y`) is not a comment. Two things bash knows went into the tokenizer with it: inside `` `…` `` a comment ends at the closing backtick (`` echo `# don't`; gh pr merge 8 --repo o/r `` is still checked), and `${…}` is the inside of one word, where a `#`, a quote or a blank starts nothing (`echo ${x:- #}; gh pr merge 12 --repo o/r` is still checked) and a `}` inside quotes does not close it; the `$( … )` and backticks a `${…}` holds are still scanned as commands, except inside its own single quotes. A `#` counts as a comment only at a real word start (not glued to the `)` or backtick that closes a substitution, as in `echo v$(echo 1)#L10 && gh pr merge 2 --repo o/r`).
+- **Each command is read twice, and what either reading finds counts.** One reading has the rules above; the other is the reading from before them, so a mistake in the new rules can add to what the gate checks but not take away. A merge written in a comment is still checked, as before. openspec-superpowers-workflow's `tokenizer-differential.test.sh` checks that today's parser prints every line the 1.0.4 parser prints, on every generated command. Found by the differential test added to openspec-superpowers-workflow 3.1.2, which runs generated commands in bash and compares.
+
+### Tests
+
+- `pr-merge-gate.test.sh`: 180 checks, 43 mutants (`comment`, `backtick-comment`, `plain-reading` and four for `${…}`, each pinned to a case only that rule can save).
+
 ## [1.0.4] - 2026-11-11
 
 ### Fixed

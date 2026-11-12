@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.2] - 2026-11-12
+
+### Fixed
+
+- **archive-gate sees the archive on the line after a comment.** The heredoc pass skipped a `#` comment, the tokenizer did not: an apostrophe in `# don't archive yet` opened a single-quoted string that swallowed everything up to the next apostrophe, so `openspec archive foo` on the next line (or a `bash -c` / `eval` string, or anything inside a `( … )`) was never seen. Bash runs it. A `#` that starts a word now comments out the rest of its line in the tokenizer too; a `#` inside a word (`echo x#y`) is not a comment. Two things bash knows went into the tokenizer with it, because the comment rule is only right where the tokenizer's words are bash's words: inside `` `…` `` a comment ends at the closing backtick (`` echo `# don't`; openspec archive foo `` still archives), and `${…}` is the inside of one word, where a `#`, a quote or a blank starts nothing (`echo ${x:- #}; openspec archive foo` still archives) and a `}` inside quotes does not close it; the `$( … )` and backticks a `${…}` holds are still scanned as commands, except inside its own single quotes. A `#` counts as a comment only at a real word start (not glued to the `)` or backtick that closes a substitution, as in `echo v$(echo 1)#L10 && openspec archive foo`).
+- **Each command is read twice, and what either reading finds counts.** One reading has the rules above; the other is the reading from before them. A mistake in the new rules can therefore add to what the gate catches but not take away: reviews of this release found six command shapes the new rules alone lost, and this is what closes that class instead of the seventh shape. `tokenizer-differential.test.sh` checks it directly: on every generated command, today's parser prints every line the parser before this release prints. Found by the differential test below; the same region lives in pr-closeout's merge gate (pr-closeout 1.0.5).
+
+### Tests
+
+- **New `tokenizer-differential.test.sh` (with `tokenizer-differential.pl`).** Bash is the oracle: generated commands run in an empty directory whose PATH holds only stubs of `openspec` and `gh`, and the gate's parser (the text the hook hands to perl, run the way the hook runs it) must report every `openspec archive` and `gh pr merge` bash ran (the grammar generates only those two: an archive by `mv`, a merge by `gh api` and the MCP merge tool are not covered). A fixed seed keeps it repeatable. The suite also proves the harness can fail: for each past tokenizer fix (#48, #51 in both gates, #55 in both gates) it finds a command the version before the fix misses and the fixed one catches. Those versions are read from git history, so CI checks out with `fetch-depth: 0` and a missing commit fails the suite. Three gaps both gates still have, all older than this release (a heredoc closed by `EOF)` inside `$( … )`; a delimiter written with mixed quotes; a double-quoted string inside a substitution that is itself inside double quotes, as in `echo "x $(echo "a"; openspec archive foo) y"`) are left out of the default grammar and pinned one by one (`--gap 0`, `--gap 1`, `--gap 2`): fixing any one turns its own check red, as the reminder to move it into the default grammar. A parser that runs past 10 s ends the run as "cannot judge" (exit 2), never as a counterexample.
+- `archive-gate.test.sh`: 115 checks and 15 mutants.
+
 ## [3.1.1] - 2026-11-11
 
 ### Fixed

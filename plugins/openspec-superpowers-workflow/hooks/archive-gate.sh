@@ -50,10 +50,11 @@ use strict; use warnings;
 # Text the shell still runs although it sits inside a string: $( … ) and backticks within double
 # quotes or an unquoted heredoc body. Each is scanned again as a command.
 sub subs_of {
-  my ($s) = @_; my @out; my $i = 0; my $n = length $s;
+  my ($s, $sq) = @_; my @out; my $i = 0; my $n = length $s;   # $sq: '…' at this level is text (not so inside "…")
   while ($i < $n) {
     my $ch = substr($s, $i, 1);
     if ($ch eq "\\") { $i += 2; next; }
+    if ($sq && $ch eq "'") { my $j = index($s, "'", $i + 1); last if $j < 0; $i = $j + 1; next; }
     if ($ch eq '`') { my $j = index($s, '`', $i + 1); $j = $n if $j < 0; push @out, substr($s, $i + 1, $j - $i - 1); $i = $j + 1; next; }
     if (substr($s, $i, 2) eq '$(') {
       my ($d, $j) = (1, $i + 2);
@@ -65,7 +66,12 @@ sub subs_of {
   return @out;
 }
 # <<< shared-tokenizer: subs_of
-my @queue = ($ENV{AG_CMD} // ''); my $rounds = 0; my %seen;
+my %seen;
+# The command is read twice and what either reading finds counts. The first knows comments and ${…};
+# the second ($plain) is the reading from before those rules, kept so that a mistake in them can add
+# to what is caught but never take away: whatever the plain reading sees is still seen.
+for my $plain (0, 1) {
+my @queue = ($ENV{AG_CMD} // ''); my $rounds = 0;
 # A command string handed to a shell runs too (`bash -c '…'`, `sh -lc '…'`, `eval …`): it is queued and
 # parsed like the command itself. 50 rounds bound a string that keeps quoting itself.
 while (@queue && $rounds++ < 50) {
@@ -119,13 +125,38 @@ while (@todo) {
   if (@hd) { shift @hd; @todo = @body; }   # never closed: scan its lines again as commands (fail closed)
 }
 $c = join "\n", @keep;
-my @segs = ([]); my $tok; my $i = 0; my $n = length $c;
+my @segs = ([]); my $tok; my $i = 0; my $n = length $c; my $bq = 0;   # $bq: inside a `…` substitution
 my $endtok = sub { push @{$segs[-1]}, $tok if defined $tok; undef $tok; };
 while ($i < $n) {
   my $ch = substr($c, $i, 1);
   # $'…': \' \" and \\ are decoded; any other escape (\n, \062, \x41) keeps its backslash, so a word built
   # with one is never read as other text — a PR number or a change name written that way is not one
   if ($ch eq '$' && substr($c, $i + 1, 1) eq "'") { my $j = $i + 2; $tok //= ''; while ($j < $n && substr($c, $j, 1) ne "'") { if (substr($c, $j, 1) eq "\\") { my $e = substr($c, $j + 1, 1); $tok .= "\\" unless $e =~ /[\\'"]/; $j++; } $tok .= substr($c, $j, 1); $j++; } $i = $j + 1; next; }   # ansi-c: tokenizer
+  # ${…} is the inside of one word to bash: a #, a quote or a blank in it starts nothing. Taken whole
+  # into the word, up to the } that closes it — one inside '…' or "…" does not. The $( … ) and
+  # backticks it holds still run, except inside '…', so those are scanned on their own.
+  # Left to the rules below when its } (or the end of a quote in it) never comes.
+  if (!$plain && $ch eq '$' && substr($c, $i + 1, 1) eq '{') {
+    my ($d, $j) = (1, $i + 2);
+    while ($j < $n && $d) {
+      my $x = substr($c, $j, 1);
+      if ($x eq "\\") { $j += 2; next; }
+      if ($x eq "'") { my $k = index($c, "'", $j + 1); last if $k < 0; $j = $k + 1; next; }
+      if ($x eq '"') { my $k = $j + 1; while ($k < $n && substr($c, $k, 1) ne '"') { $k++ if substr($c, $k, 1) eq "\\"; $k++; } last if $k >= $n; $j = $k + 1; next; }
+      if (substr($c, $j, 2) eq '${') { $d++; $j += 2; next; }   # only a nested ${ opens a level: a bare { is text
+      $d-- if $x eq '}'; $j++;
+    }
+    if (!$d) { my $w = substr($c, $i, $j - $i); push @queue, subs_of($w, 1); $tok .= $w; $i = $j; next; }
+  }
+  # a # that starts a word comments out the rest of its line — inside `…`, the rest up to the closing
+  # backtick — so an apostrophe in it opens no string (the heredoc pass has its own test). A word
+  # starts at the start, after a blank or newline, after ; & | ( or after an opening backtick: not
+  # after the ) or backtick that closes a substitution, where bash is still in the same word.
+  if (!$plain && $ch eq '#' && !defined $tok && ($i == 0 || substr($c, $i - 1, 1) =~ /[ \t\n;&|(]/ || ($bq && substr($c, $i - 1, 1) eq '`'))) {
+    my $j = index($c, "\n", $i); $j = $n if $j < 0;
+    if ($bq) { my $k = index($c, '`', $i); $j = $k if $k >= 0 && $k < $j; }
+    $i = $j; next;
+  }
   if ($ch eq "'") { my $j = index($c, "'", $i + 1); $j = $n if $j < 0; $tok .= substr($c, $i + 1, $j - $i - 1); $i = $j + 1; next; }
   if ($ch eq '"') {
     my $j = $i + 1; $tok //= '';
@@ -134,7 +165,7 @@ while ($i < $n) {
     $i = $j + 1; next;
   }
   if ($ch eq "\\") { $tok .= substr($c, $i + 1, 1); $i += 2; next; }
-  if ($ch =~ /[;&|()`\n]/) { $endtok->(); push @segs, []; $i++; next; }   # a backtick opens a command too
+  if ($ch =~ /[;&|()`\n]/) { $bq = !$bq if $ch eq '`'; $endtok->(); push @segs, []; $i++; next; }   # a backtick opens a command too
   if ($ch =~ /\s/) { $endtok->(); $i++; next; }
   $tok .= $ch; $i++;
 }
@@ -164,6 +195,7 @@ for my $s (@segs) {
       print "$2\n" unless $seen{$2}++;
     }
   }
+}
 }
 }
 PERL
