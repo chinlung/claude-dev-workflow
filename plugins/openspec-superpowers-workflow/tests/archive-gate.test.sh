@@ -222,6 +222,23 @@ for c in $'cat <<EOF\n$(openspec archive foo --yes)\nEOF' $'cat > n.md <<EOF\nno
   out=$(run_gate "$(input_json s12 "$P" "$c")" "$T" "$P")
   contains "substitution bash runs: [$c] → deny" "$out" "$DENY"
 done
+# 註解：以 # 開頭的詞到行尾都不是命令，裡面的撇號不得開出單引號字串、吞掉下一行的歸檔；詞中間的 # 不是註解
+for c in $'# don\'t archive yet\nopenspec archive foo --yes' $'true # it\'s fine\nopenspec archive foo --yes' \
+         $'# don\'t\neval \'openspec archive foo --yes\'' 'echo x#y; openspec archive foo --yes' \
+         'echo `# a note`; openspec archive foo --yes' 'echo ${x:- #}; openspec archive foo --yes' \
+         "echo \${x:- #}; openspec archive 'foo' --yes" \
+         'echo `# don'"'"'t`; openspec archive foo --yes' 'echo ${x:-`openspec archive foo --yes`}' \
+         "echo \${x:-'}'}; openspec archive foo --yes" 'echo ${x:-"}"}; openspec archive foo --yes'; do
+  out=$(run_gate "$(input_json s13 "$P" "$c")" "$T" "$P")
+  contains "comment: [$c] → deny" "$out" "$DENY"
+done
+out=$(run_gate "$(input_json s13 "$P" '# openspec archive foo --yes')" "$T" "$P")
+empty "comment: archive words in a comment → allow" "$out"
+out=$(run_gate "$(input_json s13 "$P" "echo \${x:-'\$(openspec archive foo --yes)'}")" "$T" "$P")
+empty "comment: a substitution in single quotes inside \${…} is text → allow" "$out"
+# 本體沒有自己的撇號：只有 heredoc pass 跳過註解，才不會讓註解裡的落單撇號把 << 藏起來
+out=$(run_gate "$(input_json s13 "$P" $'# don\'t archive yet\ncat > n.md <<EOF\nopenspec archive foo --yes\nEOF')" "$T" "$P")
+empty "comment: a lone quote in a comment before a heredoc with a plain body → allow" "$out"
 # bash 不執行的：delimiter 加引號或反斜線的本體、單引號、跳脫的 \$
 for c in $'cat <<\'EOF\'\n$(openspec archive foo --yes)\nEOF' $'cat <<\\EOF\n`openspec archive foo --yes`\nEOF' \
          "echo '\$(openspec archive foo --yes)'" 'echo "\$(openspec archive foo --yes)"' \
@@ -279,7 +296,7 @@ if [ "$n" = 2 ]; then PASS=$((PASS+1)); echo "PASS: hooks.json registers two arc
 else FAIL=$((FAIL+1)); echo "FAIL: hooks.json archive-gate handlers with if — got [$n]"; fi
 
 # ---- summary ----
-MIN=95
+MIN=109
 if [ "$((PASS + FAIL))" -lt "$MIN" ]; then
   echo "FAIL: ran $((PASS + FAIL)) assertions, expected at least $MIN"; FAIL=$((FAIL+1))
 fi
@@ -305,6 +322,13 @@ mutant() {
 }
 if [ "${NO_MUTANTS:-0}" != 1 ]; then
   mutant heredoc-subs  'substitution bash runs: [cat <<EOF'        's/ push \@queue, subs_of\(join "\\n", \@body\) unless \$hd\[0\]\[1\];//'
+  mutant comment       "comment: [# don't archive yet"           's/if \(\$ch eq .#. && !defined \$tok\) \{/if (0) {/'
+  mutant backtick-comment 'comment: [echo `# a note`'           's/^\s*if \(\$bq\) \{.*$//'
+  mutant brace-word    'comment: [echo ${x:- #}; openspec archive foo'  's/^(\s*)if \(!\$d\) \{.*$/$1if (0) {}/'
+  mutant brace-subs    'comment: [echo ${x:-`openspec'         's/push \@queue, subs_of\(\$w, 1\); //'
+  mutant brace-quote   "comment: [echo \${x:-'}'}"             's/^\s*if \(\$x eq "\x27"\) \{ my \$k = index.*$//'
+  mutant brace-sq-text 'comment: a substitution in single quotes inside' 's/subs_of\(\$w, 1\)/subs_of(\$w)/'
+  mutant heredoc-comment 'comment: a lone quote in a comment before a heredoc with a plain body' 's/^.*# not-a-heredoc: comment$//'
   mutant per-line-body 'substitution bash runs: [cat > m.md <<EOF'  's/subs_of\(join "\\n", \@body\)/map { subs_of(\$_) } \@body/'
   mutant subs-backtick 'substitution bash runs: [cat > n.md <<EOF' 's/^.*index\(\$s, ..., \$i \+ 1\);.*$//'
   mutant dq-subs       'substitution bash runs: [echo "$(openspec' 's/^\s*push \@queue, subs_of\(substr\(.*$//'

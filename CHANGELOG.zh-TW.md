@@ -4,6 +4,14 @@
 
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
+## [1.17.2] - 2026-11-12
+
+### Fixed
+
+- **openspec-superpowers-workflow 3.1.1 → 3.1.2、pr-closeout 1.0.4 → 1.0.5**：
+  - 兩支閘門的 tokenizer 現在也把「詞開頭的 `#`」當註解；`# don't …` 裡的撇號不再吞掉後面的行，讓其後的 `openspec archive`、`gh pr merge` 被放行（bash 會執行它們）。
+  - 由新增的 `tokenizer-differential.test.sh` 找出：它在 bash 裡執行隨機生成的命令，要求閘門抓到 bash 實際執行的每一個 `openspec archive`／`gh pr merge`，並且要能分辨 #48、#51、#55 每次修正前後的版本；CI 因此改為取完整歷史。
+
 ## [1.17.1] - 2026-11-11
 
 ### Fixed

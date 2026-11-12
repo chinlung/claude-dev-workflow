@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.17.2] - 2026-11-12
+
+### Fixed
+
+- **openspec-superpowers-workflow 3.1.1 → 3.1.2, pr-closeout 1.0.4 → 1.0.5** — both gates read a `#` that starts a word as a comment in the tokenizer too, so an apostrophe in `# don't …` no longer swallows the next lines and hides the `openspec archive` or `gh pr merge` after it (bash runs them). Found by the new `tokenizer-differential.test.sh`, which runs generated commands in bash and requires each gate to report every `openspec archive` / `gh pr merge` bash ran, and which can tell each past fix (#48, #51, #55) from the version before it; CI now checks out full history for it. See the two plugins' CHANGELOGs [3.1.2] and [1.0.5].
+
 ## [1.17.1] - 2026-11-11
 
 ### Fixed
