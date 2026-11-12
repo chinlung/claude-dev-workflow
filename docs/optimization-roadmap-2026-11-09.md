@@ -16,6 +16,30 @@
 
 ---
 
+## 進度（2026-11-12 回填）
+
+依兩個 repo 的 git 歷史與各計畫文件的狀態行整理。下面各 Wave 的表格保留原案，實際結果以本節為準。
+
+| 項目 | 狀態 | 落點 |
+|---|---|---|
+| W0-1 稽核腳本與「規則 → 執行者」表 | 完成 | 個人設定 repo（knowledge-usage）；本 repo openspec plugin（archive-stats） |
+| W0-2 能力查證 | 完成 | 個人設定 repo 的 `refs/claude-code-capability-checks.md` |
+| W0-3 紅燈 eval 與盲測紀律 | 完成 | 盲測規則與禁用字掃描在個人設定 repo；eval suite 依計畫留本機 |
+| W1-1 裸 `cd` | 完成，換了做法 | 先做 hook，後改用內建的「每次呼叫後重設 cwd」，hook 退役 |
+| W1-2 Pest 規則改 `paths:` rule | 未做 | 併入 W4 後轉為候選清單 |
+| W2-1 至 W2-5 | 完成 | PR #41、#42（2.0.0） |
+| W2-6 schema fork | 放棄 | W0-2④：fork 加得進去，但 `validate` 不檢查它 |
+| （路線圖外）gates 依事實停下 | 完成 | PR #52（3.0.0）、#54（3.1.0） |
+| W3-1、W3-2 PR 收尾 skill | 完成 | PR #43（pr-closeout 1.0.0，落在本 repo） |
+| W4 瘦身 | 範圍縮小後完成 | PR #46；判定類子代理稽核 hook 在個人設定 repo。W4-1 改為候選清單，W4-2、W4-3 不做，W4-4 經 W0-2 判定不可行 |
+| W4-5 子代理規則盤點、W4-6 reflect 增補 | 未開始 | 另案 |
+| W5-7 tokenizer differential 試點 | 完成 | PR #57（見 Wave 5） |
+| W5 其餘 | 未開始 | W5-1、W5-5 已依 `docs/pstack-verification-skills-2026-11-11.md` 修訂（見 Wave 5） |
+
+待驗收：W1-1 的「兩週後重跑 W0-1」約在 2026-11-23 之後才到期。
+
+---
+
 ## 基準值（驗收時重跑同兩支腳本比對）
 
 | 指標 | 基準 | 來源 |
@@ -96,12 +120,14 @@
 
 | ID | 工作 | Repo | 規模 | 備註 |
 |---|---|---|---|---|
-| W5-1 | **證據階梯**（pstack P1 2.1）：finding-verifier 加 `evidence_rung`，schema 與 validator 擋下「2 階以下卻 PASS」；`/review-branch --prove` | R | M，設計文件 | 裁決點：第 4 階是鼓勵還是正確性類必要。建議先鼓勵，用 W0-1 量一輪再定 |
+| W5-1 | **證據階梯**（pstack P1 2.1）：finding-verifier 加 `evidence_rung`，schema 與 validator 擋下「2 階以下卻 PASS」；`/review-branch --prove`。**2026-11-11 修訂，同一次 schema 變更加兩項**：① 結果檔加 `safety_pivot`（「這個 diff 安全，是因為 X」與 X 到第幾階；零 finding 的輪次也要填，填不出來寫 `unproven`）；② 「grep 停下的地方」清單放 `plugins/code-audit-rigor/tools/`（動態關聯、字串類名、序列化 payload、DB 欄位與 JSON 形狀），codegraph skill 加一行指過去 | R | M，設計文件 | 裁決點：第 4 階是鼓勵還是正確性類必要。建議先鼓勵，用 W0-1 量一輪再定。驗收：拿已記錄的逃逸案例回放，看動態關聯那一類有沒有被點名 |
 | W5-2 | **量測數字審查**（P1 2.2）：七問 skill；CLAUDE.md 加一行 trigger | R 或 C | S | W2 的 eval 與 W0-1 統計就是第一批適用對象 |
 | W5-3 | 決策軌跡（P2 3.3）：`/loop`、`/goal`、`tree` 長跑用 | R | M | 裁決點：併入 scope-ledger 或獨立 |
 | W5-4 | 證據分級用語（P2 3.5）收進 refs，供 pr plugin 與分析文件引用 | C | S | |
-| W5-5 | 專案驗證 skill 產生器（P2 3.6），可接內建 `run` | R | M | 先在一個 Laravel 專案試點 |
+| W5-5 | ~~專案驗證 skill 產生器（P2 3.6），可接內建 `run`~~ **2026-11-11 修訂**：Claude Code 已內建 `/run-skill-generator` 與讀取其產出的 `run`，不再移植產生器。改為：在一個 Laravel 專案跑內建產生器，對照 pstack 的六段與 feature map，只補缺的部分（唯讀健康檢查、副作用驗證、cleanup 後證據仍在、功能清單） | 應用專案 | S | 驗收：checkout 到某個 UI bug 修正前的 commit，照產出的 skill 驅動，必須重現該 bug。定期稽核（maintain）等功能檔有 3 個以上再評估 |
 | W5-6 | P3 其餘：攻擊前提（2 次失敗共用同一前提）、測試的第二種想像編輯、`tree` 的「缺口不算通過」、偏好需跨兩段證實、worktree 盤點腳本、catch-up 格式 | 混合 | 各 S | 可隨相關 PR 順手做 |
+| W5-7 | **tokenizer differential 試點**（2026-11-11 新增，來自 pstack formal-verification 的方法）：以 bash 當 oracle 測兩支 gate 的 shell tokenizer。**已完成，PR #57**：`tests/tokenizer-differential.pl` 與 `.test.sh`；找到並修正註解撇號的缺陷；每條命令讀兩次取聯集，新規則只能多抓 | R | 已完成 | 能分辨 #48、#51、#55 每次修正前後的版本；對 main 的超集檢查零遺漏。留下三個既有缺口，由 `--gap 0/1/2` 盯著 |
+| W5-8 | **gate tokenizer 合成單一 lexer**（2026-11-12 新增）：heredoc pass 與 tokenizer 目前是兩個掃描器，各自判斷引號、註解與續行。合成一個在換行處讀 heredoc 本體的 lexer，是修三個既有缺口的正確位置：雙引號內替換裡的雙引號（直接解決）、`$( … )` 內以 `EOF)` 收尾的 heredoc（要先查 bash 各版本的實際行為）、混合引號的 delimiter（重寫時一併做對，不會自動消失） | R | M–L，設計文件 | 兩支 gate 的共用區段同步改。驗收：三個 `--gap` 檢查轉紅後移回預設語法；對 main 的超集檢查維持零遺漏；兩支 suite 的 mutant 全數仍被殺掉。merge gate 是 fail-closed，先寫設計再動手 |
 
 ---
 
