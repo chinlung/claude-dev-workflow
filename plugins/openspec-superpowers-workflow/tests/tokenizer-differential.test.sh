@@ -59,7 +59,10 @@ done <<EOF
 EOF
 
 # 2b. never less than before the comment rules: on every generated command (the gaps included), today's
-#     parsers print every line the parsers at b81dcdc print. This is what reading each command twice buys.
+#     parsers print every line the parsers at b81dcdc print. The first commit of these rules failed this on
+#     about one case in five. It does not by itself prove the second reading is there: on this grammar the
+#     rules as they are now pass it alone, and the `plain-reading` mutant in the two gate suites is what
+#     shows the second reading is used.
 BASE=b81dcdc
 if git -C "$ROOT" cat-file -e "$BASE^{commit}" 2>/dev/null \
    && git -C "$ROOT" show "$BASE:$AG_PATH" > "$WORK/base-ag.sh" && git -C "$ROOT" show "$BASE:$PMG_PATH" > "$WORK/base-pmg.sh"; then
