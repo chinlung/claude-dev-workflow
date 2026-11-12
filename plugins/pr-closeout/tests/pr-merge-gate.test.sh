@@ -158,12 +158,25 @@ FAKE_RC=0 gate allow "merge after a comment with an apostrophe" "$(bash_in $'# d
 called "ready o/r 3" "comment apostrophe: args"
 FAKE_RC=0 gate allow "merge after a trailing comment" "$(bash_in $'true # it\'s\ngh pr merge 4 --repo o/r')"
 called "ready o/r 4" "trailing comment: args"
-gate allow "merge words in a comment" "$(bash_in '# gh pr merge 3 --repo o/r')"
-called "" "comment text: ready not called"
+# the plain reading has no comment rule and takes gh anywhere in a segment, as before 1.0.5: the safe side
+FAKE_RC=0 gate allow "merge words in a comment are still checked" "$(bash_in '# gh pr merge 3 --repo o/r')"
+called "ready o/r 3" "comment text: args"
 FAKE_RC=0 gate allow "merge after a comment with an apostrophe inside backticks" "$(bash_in 'echo `# don'"'"'t`; gh pr merge 8 --repo o/r')"
 called "ready o/r 8" "backtick comment apostrophe: args"
 FAKE_RC=0 gate allow "a merge inside \${…} still runs" "$(bash_in 'echo ${x:-`gh pr merge 9 --repo o/r`}')"
 called "ready o/r 9" "brace substitution: args"
+# behind a comment with an apostrophe the plain reading sees nothing, so these rest on the ${…} rules alone
+FAKE_RC=0 gate allow "behind a comment: # inside \${…}" "$(bash_in $'# isn\'t\necho ${x:- #}; gh pr merge 21 --repo o/r')"
+called "ready o/r 21" "behind a comment, brace word: args"
+FAKE_RC=0 gate allow "behind a comment: a merge inside \${…}" "$(bash_in $'# isn\'t\necho ${x:-`gh pr merge 22 --repo o/r`}')"
+called "ready o/r 22" "behind a comment, brace subs: args"
+FAKE_RC=0 gate allow "behind a comment: a quoted } inside \${…}" "$(bash_in $'# isn\'t\necho ${x:-\'}\'}; gh pr merge 23 --repo o/r')"
+called "ready o/r 23" "behind a comment, brace quote: args"
+# a # right after a substitution closes is part of the same word, not a comment
+FAKE_RC=0 gate allow "merge after a # glued to \$( … )" "$(bash_in 'echo $(true)#; gh pr merge 14 --repo o/r')"
+called "ready o/r 14" "glued after paren: args"
+FAKE_RC=0 gate allow "merge after a # glued to backticks" "$(bash_in 'echo `true`#; gh pr merge 15 --repo o/r')"
+called "ready o/r 15" "glued after backtick: args"
 # a } inside quotes does not close the ${…}; a substitution in single quotes inside it is text
 FAKE_RC=0 gate allow "merge after a quoted } inside \${…}" "$(bash_in "echo \${x:-'}'}; gh pr merge 3 --repo o/r")"
 called "ready o/r 3" "brace quoted close: args"
@@ -248,7 +261,7 @@ gate allow "nothing about merge" "$(bash_in 'ls -la')"
 gate deny "PR number written with an ANSI-C escape" "$(bash_in $'gh pr merge $\'1\\062\' --repo o/r')"
 called "" "ansi-c escape in the number: ready not called"
 
-MIN_PASS=170
+MIN_PASS=180
 if [ "$pass" -lt "$MIN_PASS" ] && [ "${STOP_ON_FAIL:-0}" != 1 ]; then failed "only $pass checks passed, expected at least $MIN_PASS"; fi
 echo "pr-merge-gate: $pass passed, $fail failed"
 
@@ -285,20 +298,23 @@ if [ "${NO_MUTANTS:-0}" != 1 ]; then
   mutant first-only    "[same-line shift"             's/^        push \@pend, \[/        \@pend or push \@pend, [/'
   mutant no-subst      "[dq substitution heredoc: args]" 's/^.*# not-a-heredoc: substitution$//'
   mutant no-arith      "[two shifts: args]"           's/^.*# not-a-heredoc: arithmetic$//'
-  mutant no-comment    "[comment before a plain heredoc" 's/^.*# not-a-heredoc: comment$//'
+  mutant no-comment    "[comment quote"               's/^.*# not-a-heredoc: comment$//'
   mutant ansi-tok      "[ansi-c: args]"               's/^.*# ansi-c: tokenizer$//'
   mutant ansi-scan     "[ansi-c heredoc: args]"       's/^.*# not-a-heredoc: ansi-c$//'
   mutant ansi-strip    "[PR number written with an ANSI-C escape]" 's/\$tok \.= "\\\\" unless \$e =~ \/\[\\\\\x27"\]\/; //'
   mutant reset-state   "[rescan keeps state: args]"   's/^    my \(\@pend, \@body\);$/    my (\@pend, \@body); (\$q, \$ar, \@st) = ("", 0);/'
-  mutant api-unread    "[graphql mergePullRequest]"   's/print "- - -\\n" if !\$found/print "" if !\$found/'
+  mutant api-unread    "[graphql mergePullRequest]"   's/out\("- - -\\n"\) if !\$found/out("") if 0 \&\& !\$found/'
   mutant prefilter-case "[graphql auto-merge]"        's/\*\[Mm\]\[Ee\]\[Rr\]\[Gg\]\[Ee\]\*/*merge*/'
   mutant dq-subs       "[dq substitution: args]"      's/^      push \@queue, subs_of\(substr\(.*$//'
   mutant heredoc-subs  "[heredoc substitution: args]" 's/push \@queue, subs_of\(join "\\n", \@body\) unless \$hd\[0\]\[1\]; //'
-  mutant comment       "[comment apostrophe: args]"   's/if \(\$ch eq .#. && !defined \$tok\) \{/if (0) {/'
+  mutant comment       "[comment apostrophe: args]"   's/if \(!\$plain && \$ch eq .#. && !defined \$tok/if (0 \&\& !defined \$tok/'
+  mutant plain-reading "[comment text: args]"         's/^for my \$plain \(0, 1\) \{$/for my \$plain (0) {/'
   mutant backtick-comment "[backtick comment"         's/^\s*if \(\$bq\) \{.*$//'
-  mutant brace-word    "[brace comment: args]"        's/^(\s*)if \(!\$d\) \{.*$/$1if (0) {}/'
-  mutant brace-subs    "[brace substitution: args]"   's/push \@queue, subs_of\(\$w, 1\); //'
-  mutant brace-quote   "[brace quoted close: args]"   's/^\s*if \(\$x eq "\x27"\) \{ my \$k = index.*$//'
+  # the plain reading catches what it always caught, so these are pinned to cases only the new rule
+  # can save: ones behind a comment with an apostrophe, which the plain reading loses whole
+  mutant brace-word    "[behind a comment, brace word: args]"   's/^(\s*)if \(!\$d\) \{.*$/$1if (0) {}/'
+  mutant brace-subs    "[behind a comment, brace subs: args]"   's/push \@queue, subs_of\(\$w, 1\); //'
+  mutant brace-quote   "[behind a comment, brace quote: args]"  's/^\s*if \(\$x eq "\x27"\) \{ my \$k = index.*$//'
   mutant brace-sq-text "[brace quoted substitution"   's/subs_of\(\$w, 1\)/subs_of(\$w)/'
   mutant per-line-body "[multi-line heredoc substitution: args]" 's/subs_of\(join "\\n", \@body\)/map { subs_of(\$_) } \@body/'
   mutant quoted-hd     "[quoted heredoc: ready not called]" 's/ unless \$hd\[0\]\[1\];/;/'
@@ -308,7 +324,7 @@ if [ "${NO_MUTANTS:-0}" != 1 ]; then
   mutant eval          "[eval: args]"                 's/elsif \(\$w eq '"'"'eval'"'"'\)/elsif (0)/'
   mutant budget        "[two merges, budget spent]"   's/if \[ "\$left" -lt 1000 \]; then/if false; then/'
   mutant quoted-lt     "[dq <<: args]"                's/^.*# not-a-heredoc: quoted$//'
-  MUT_WANT_N=42
+  MUT_WANT_N=43
   if [ "$mut_n" != "$MUT_WANT_N" ]; then echo "FAIL: $mut_n of $MUT_WANT_N mutants ran"; mut_bad=1; fi
   [ "$mut_bad" = 0 ] || fail=$((fail + 1))
 fi

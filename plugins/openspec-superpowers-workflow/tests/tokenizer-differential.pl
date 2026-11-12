@@ -16,6 +16,8 @@
 #   --gap I adds only gap I (0-based, repeatable), so each gap can be shown to be still open on its own.
 # --fixed-by <later parser>: instead of counting, look for one case the source misses and the later
 #   parser catches — proof that this harness sees what a real fix changed. Exit 1 when found.
+# --superset-of <earlier parser>: instead of asking bash, require that every line the earlier parser
+#   prints for a generated command is printed by the source too — the gate never sees less than it did.
 # Exit: 0 no counterexample, 1 counterexamples (printed), 2 the harness could not judge
 #       (the parser did not compile, a tool is missing, or too few cases reached bash's payload).
 use strict; use warnings;
@@ -24,12 +26,14 @@ use Getopt::Long;
 use List::Util qw(min);
 use POSIX ();
 
-my ($kind, $source, $seed, $n, $min_ex, $show, $gaps, $fixed_by, @gap_ids) = ('', '', 20261111, 400, 0, 5, 0, '');
+my ($kind, $source, $seed, $n, $min_ex, $show, $gaps, $fixed_by, $superset, @gap_ids) = ('', '', 20261111, 400, 0, 5, 0, '', '');
 GetOptions('kind=s' => \$kind, 'source=s' => \$source, 'seed=i' => \$seed, 'n=i' => \$n,
            'min-exercised=i' => \$min_ex, 'show=i' => \$show, 'known-gaps' => \$gaps,
-           'gap=i' => \@gap_ids, 'fixed-by=s' => \$fixed_by) or exit 2;
+           'gap=i' => \@gap_ids, 'fixed-by=s' => \$fixed_by, 'superset-of=s' => \$superset) or exit 2;
 $kind =~ /^(ag|pmg)$/ or do { print STDERR "--kind must be ag or pmg\n"; exit 2 };
 -f $source or do { print STDERR "no such source: $source\n"; exit 2 };
+$fixed_by && $superset and do { print STDERR "--fixed-by and --superset-of do not combine\n"; exit 2 };
+$fixed_by ||= $superset;   # the second parser, either way
 !$fixed_by || -f $fixed_by or do { print STDERR "no such source: $fixed_by\n"; exit 2 };
 
 # ---- the parser under test: the text the hook hands to perl ----
@@ -145,6 +149,10 @@ my @wrap = (
   sub { $_[0] =~ /^(\w+)( [^\n]*)$/ ? "echo \${x:- #}; '$1'$2" : undef },   # …and the command word quoted
   sub { $_[0] =~ /[`\n]/ ? undef : "echo \${x:-`$_[0]`}" },    # a command inside ${…} still runs
   sub { $_[0] =~ /\n/ ? undef : "echo \${x:-'}'}; $_[0]" },   # a quoted } does not close it
+  sub { $_[0] =~ /\n/ ? undef : "echo \${x:-{}; $_[0]; echo }" },   # a bare { inside ${…} opens nothing
+  sub { $_[0] =~ /\n/ ? undef : "echo v\$(echo 1)#L10 && $_[0]" },  # a # glued to a substitution is text
+  sub { $_[0] =~ /[`\n]/ ? undef : "echo `true`#; $_[0]" },
+  sub { $_[0] =~ /\n/ ? undef : "echo a\x0b# ; $_[0]" },            # \v is not a blank to bash
 );
 # Text before the command that once made a parser lose the lines after it (#48, #51), with the line
 # that closes what an older parser took for a heredoc.
@@ -195,6 +203,13 @@ sub oneline { (my $s = $_[0]) =~ s/\n/\x{23ce}/g; return $s }
 my ($exercised, @bad) = (0);
 for my $i (1 .. $n) {
   my $cmd = gen();
+  if ($superset) {
+    my %now = map { $_ => 1 } split /\n/, parse($texts[0], $cmd);
+    my @lost = grep { !$now{$_} } split /\n/, parse($texts[1], $cmd);
+    $exercised++;
+    push @bad, [$i, $cmd, join(',', @lost), join("\n", sort keys %now)] if @lost;
+    next;
+  }
   my @calls = run_bash($cmd);
   next unless @calls;
   $exercised++;
@@ -208,7 +223,7 @@ for my $i (1 .. $n) {
   }
   push @bad, [$i, $cmd, join(',', @m), $out];
 }
-if ($fixed_by) { print "$kind $flat: no case in $n separates it from the fix ($exercised exercised)\n"; exit 0; }
+if ($fixed_by && !$superset) { print "$kind $flat: no case in $n separates it from the fix ($exercised exercised)\n"; exit 0; }
 
 print "$kind $flat: seed=$seed cases=$n exercised=$exercised counterexamples=" . scalar(@bad) . "\n";
 for my $b (@bad[0 .. min($show, scalar @bad) - 1]) {   # bounded: a slice past the end, aliased by for, grows @bad

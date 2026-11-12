@@ -58,6 +58,17 @@ done <<EOF
 #55-merge-gate pmg $PMG_PATH a86abf5 38f95d7
 EOF
 
+# 2b. never less than before the comment rules: on every generated command (the gaps included), today's
+#     parsers print every line the parsers at b81dcdc print. This is what reading each command twice buys.
+BASE=b81dcdc
+if git -C "$ROOT" cat-file -e "$BASE^{commit}" 2>/dev/null \
+   && git -C "$ROOT" show "$BASE:$AG_PATH" > "$WORK/base-ag.sh" && git -C "$ROOT" show "$BASE:$PMG_PATH" > "$WORK/base-pmg.sh"; then
+  expect "archive-gate sees everything it saw at $BASE" 0 --kind ag --source "$AG" --superset-of "$WORK/base-ag.sh" --known-gaps --n 400
+  expect "pr-merge-gate sees everything it saw at $BASE" 0 --kind pmg --source "$PMG" --superset-of "$WORK/base-pmg.sh" --known-gaps --n 400
+else
+  bad "superset check — commit $BASE is not in this clone (needs full history)"
+fi
+
 # 3. open gaps are still open, each on its own: with both in one run, a fixed gap would hide behind the other
 for g in 0 1 2; do
   expect "known gap $g still found in archive-gate" 1 --kind ag --source "$AG" --gap "$g" --n 200 --show 0
@@ -79,7 +90,7 @@ done
 
 # ---- summary ----
 # written out, not counted as the checks run: a check that is skipped must lower the count
-MIN=15
+MIN=17
 if [ "$((PASS + FAIL))" -lt "$MIN" ]; then bad "ran $((PASS + FAIL)) checks, expected at least $MIN"; fi
 echo "tokenizer-differential: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]

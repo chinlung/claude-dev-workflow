@@ -228,7 +228,11 @@ for c in $'# don\'t archive yet\nopenspec archive foo --yes' $'true # it\'s fine
          'echo `# a note`; openspec archive foo --yes' 'echo ${x:- #}; openspec archive foo --yes' \
          "echo \${x:- #}; openspec archive 'foo' --yes" \
          'echo `# don'"'"'t`; openspec archive foo --yes' 'echo ${x:-`openspec archive foo --yes`}' \
-         "echo \${x:-'}'}; openspec archive foo --yes" 'echo ${x:-"}"}; openspec archive foo --yes'; do
+         "echo \${x:-'}'}; openspec archive foo --yes" 'echo ${x:-"}"}; openspec archive foo --yes' \
+         'echo $(true)#; openspec archive foo --yes' 'echo `true`#; openspec archive foo --yes' \
+         'true # note; openspec archive foo --yes' \
+         $'# isn\'t w\necho ${x:- #}; openspec archive foo --yes' $'# isn\'t s\necho ${x:-`openspec archive foo --yes`}' \
+         $'# isn\'t q\necho ${x:-\'}\'}; openspec archive foo --yes'; do
   out=$(run_gate "$(input_json s13 "$P" "$c")" "$T" "$P")
   contains "comment: [$c] → deny" "$out" "$DENY"
 done
@@ -296,7 +300,7 @@ if [ "$n" = 2 ]; then PASS=$((PASS+1)); echo "PASS: hooks.json registers two arc
 else FAIL=$((FAIL+1)); echo "FAIL: hooks.json archive-gate handlers with if — got [$n]"; fi
 
 # ---- summary ----
-MIN=109
+MIN=115
 if [ "$((PASS + FAIL))" -lt "$MIN" ]; then
   echo "FAIL: ran $((PASS + FAIL)) assertions, expected at least $MIN"; FAIL=$((FAIL+1))
 fi
@@ -322,13 +326,16 @@ mutant() {
 }
 if [ "${NO_MUTANTS:-0}" != 1 ]; then
   mutant heredoc-subs  'substitution bash runs: [cat <<EOF'        's/ push \@queue, subs_of\(join "\\n", \@body\) unless \$hd\[0\]\[1\];//'
-  mutant comment       "comment: [# don't archive yet"           's/if \(\$ch eq .#. && !defined \$tok\) \{/if (0) {/'
-  mutant backtick-comment 'comment: [echo `# a note`'           's/^\s*if \(\$bq\) \{.*$//'
-  mutant brace-word    'comment: [echo ${x:- #}; openspec archive foo'  's/^(\s*)if \(!\$d\) \{.*$/$1if (0) {}/'
-  mutant brace-subs    'comment: [echo ${x:-`openspec'         's/push \@queue, subs_of\(\$w, 1\); //'
-  mutant brace-quote   "comment: [echo \${x:-'}'}"             's/^\s*if \(\$x eq "\x27"\) \{ my \$k = index.*$//'
+  mutant comment       "comment: [# don't archive yet"           's/if \(!\$plain && \$ch eq .#. && !defined \$tok/if (0 \&\& !defined \$tok/'
+  mutant plain-reading 'comment: [true # note; openspec'       's/^for my \$plain \(0, 1\) \{$/for my \$plain (0) {/'
+  # the plain reading also catches what it always caught, so each mutant below is pinned to a case only
+  # the new rule can save: one behind a comment with an apostrophe, which the plain reading loses whole
+  mutant backtick-comment 'comment: [echo `# don'               's/^\s*if \(\$bq\) \{.*$//'
+  mutant brace-word    "comment: [# isn't w"                   's/^(\s*)if \(!\$d\) \{.*$/$1if (0) {}/'
+  mutant brace-subs    "comment: [# isn't s"                   's/push \@queue, subs_of\(\$w, 1\); //'
+  mutant brace-quote   "comment: [# isn't q"                   's/^\s*if \(\$x eq "\x27"\) \{ my \$k = index.*$//'
   mutant brace-sq-text 'comment: a substitution in single quotes inside' 's/subs_of\(\$w, 1\)/subs_of(\$w)/'
-  mutant heredoc-comment 'comment: a lone quote in a comment before a heredoc with a plain body' 's/^.*# not-a-heredoc: comment$//'
+  mutant heredoc-comment 'a lone quote in a comment before a heredoc' 's/^.*# not-a-heredoc: comment$//'
   mutant per-line-body 'substitution bash runs: [cat > m.md <<EOF'  's/subs_of\(join "\\n", \@body\)/map { subs_of(\$_) } \@body/'
   mutant subs-backtick 'substitution bash runs: [cat > n.md <<EOF' 's/^.*index\(\$s, ..., \$i \+ 1\);.*$//'
   mutant dq-subs       'substitution bash runs: [echo "$(openspec' 's/^\s*push \@queue, subs_of\(substr\(.*$//'
