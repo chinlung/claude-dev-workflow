@@ -299,8 +299,23 @@ n=$(jq '[.hooks.PreToolUse[] | select(.matcher == "Bash") | .hooks[] | select((.
 if [ "$n" = 2 ]; then PASS=$((PASS+1)); echo "PASS: hooks.json registers two archive-gate handlers with if"
 else FAIL=$((FAIL+1)); echo "FAIL: hooks.json archive-gate handlers with if — got [$n]"; fi
 
+# W5-8：lexer（第三種讀法）照 bash 讀出的歸檔，bash 都會執行。前五個舊的兩種讀法看不到（後四個
+# 舊讀法靠「等不到 delimiter 就把後面的行當命令重掃」也擋下）。這段必須留在最後：下面的 mutant 跑在
+# 只剩兩種舊讀法的副本上，前五個在那裡是紅的，只能排在每個 mutant 的目標案例之後
+P=$WORK/p12; T=$WORK/t12; mkdir -p "$T"; make_change "$P" foo
+lexer_case() { out=$(run_gate "$(input_json s12 "$P" "$2")" "$T" "$P"); contains "lexer: $1 → deny" "$out" "$DENY"; }
+lexer_case "line continuation before the command"   $'true && \\\nopenspec archive foo --yes'
+lexer_case "a quote inside backticks"               $'echo `\'-#`\nopenspec archive foo --yes'
+lexer_case "a redirection glued to the name"        'openspec archive foo>/dev/null --yes'
+lexer_case "a heredoc in backticks in double quotes" $'echo "done: `cat <<EOF\nnote $(true\nopenspec archive foo --yes)\nEOF`"'
+lexer_case "a heredoc closed by EOF) in \$( … )"    $'x=$(cat <<EOF\ntext\nEOF)\nopenspec archive foo --yes'
+lexer_case "a delimiter in mixed quotes"            $'cat <<\'E\'"F"\nit\'s\nEF\nopenspec archive foo --yes'
+lexer_case "double quotes in \$( … ) in double quotes" 'echo "x $(echo "a"; openspec archive foo --yes) y"'
+lexer_case "a substitution inside \$(( … ))"        'echo $(( $(openspec archive foo --yes) 0 ))'
+lexer_case "a shift inside \$[ … ]"                 $'echo $[1<<2]\nopenspec archive foo --yes'
+
 # ---- summary ----
-MIN=115
+MIN=124
 if [ "$((PASS + FAIL))" -lt "$MIN" ]; then
   echo "FAIL: ran $((PASS + FAIL)) assertions, expected at least $MIN"; FAIL=$((FAIL+1))
 fi
@@ -310,11 +325,16 @@ fi
 # The copy sits in a tree shaped like the plugin, so it still finds the real reconcile-check: a copy that
 # cannot find it allows everything, and every deny case would go red for that reason instead. The first
 # failure has to be the named case for the same reason — any failure at all would count a broken copy.
+# These mutants break the two older readings, so they run on a copy that has only those two: with the
+# lexer in the loop it would catch most of what they break and the mutant would live. The lexer's own
+# mutants are in tokenizer-differential.test.sh, where bash is the judge.
+OLD="$WORK/old-readings.sh"
+perl -pe 's/^for my \$mode \(0, 1, 2\) \{$/for my \$mode (0, 1) {/' "$GATE" > "$OLD"
 mutant() {
   local d="$WORK/mutant-$1" log="$WORK/mutant-$1.log" first
   mkdir -p "$d/hooks"; ln -s "$SCRIPT_DIR/../skills" "$d/skills"
-  perl -pe "$3" "$GATE" > "$d/hooks/archive-gate.sh" || { FAIL=$((FAIL+1)); echo "FAIL: mutant [$1] perl failed"; return; }
-  if cmp -s "$d/hooks/archive-gate.sh" "$GATE"; then FAIL=$((FAIL+1)); echo "FAIL: mutant [$1] substitution did not apply"; return; fi
+  perl -pe "$3" "$OLD" > "$d/hooks/archive-gate.sh" || { FAIL=$((FAIL+1)); echo "FAIL: mutant [$1] perl failed"; return; }
+  if cmp -s "$d/hooks/archive-gate.sh" "$OLD"; then FAIL=$((FAIL+1)); echo "FAIL: mutant [$1] substitution did not apply"; return; fi
   # alarm: a mutant that makes the parser loop forever must fail, not hang CI
   if GATE="$d/hooks/archive-gate.sh" NO_MUTANTS=1 STOP_ON_FAIL=1 perl -e 'alarm 120; exec @ARGV' "$BASH_BIN" "$0" > "$log" 2>&1; then
     FAIL=$((FAIL+1)); echo "FAIL: mutant [$1] suite stayed green"; return
@@ -325,9 +345,10 @@ mutant() {
   else FAIL=$((FAIL+1)); echo "FAIL: mutant [$1] went red first on [${first:0:160}], expected [$2]"; fi
 }
 if [ "${NO_MUTANTS:-0}" != 1 ]; then
+  if cmp -s "$OLD" "$GATE"; then FAIL=$((FAIL+1)); echo "FAIL: the copy with the two older readings is the gate itself: the reading loop changed"; fi
   mutant heredoc-subs  'substitution bash runs: [cat <<EOF'        's/ push \@queue, subs_of\(join "\\n", \@body\) unless \$hd\[0\]\[1\];//'
   mutant comment       "comment: [# don't archive yet"           's/if \(!\$plain && \$ch eq .#. && !defined \$tok/if (0 \&\& !defined \$tok/'
-  mutant plain-reading 'comment: [true # note; openspec'       's/^for my \$plain \(0, 1\) \{$/for my \$plain (0) {/'
+  mutant plain-reading 'comment: [true # note; openspec'       's/^for my \$mode \(0, 1\) \{$/for my \$mode (0) {/'
   # the plain reading also catches what it always caught, so each mutant below is pinned to a case only
   # the new rule can save: one behind a comment with an apostrophe, which the plain reading loses whole
   mutant backtick-comment 'comment: [echo `# don'               's/^\s*if \(\$bq\) \{.*$//'

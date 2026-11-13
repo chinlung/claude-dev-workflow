@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.18.0] - 2026-11-13
+
+### Added
+
+- **openspec-superpowers-workflow 3.1.2 → 3.2.0, pr-closeout 1.0.5 → 1.1.0** — both gates read each command a third time, with a lexer that reads it the way bash does (one pass, a context for each quote and substitution, heredoc bodies read at the end of their line); what any reading finds counts, so it can add to what the gates check but not take away. It closes the three gaps recorded with 1.17.2 and the shapes a new random-punctuation grammar in `tokenizer-differential.test.sh` found (a `\` line continuation, a quote inside backticks, a redirection glued to a word, a `$( … )` inside `$(( … ))`, and more), all older than this release. One gap stays open and is pinned: a line bash drops as a syntax error. The lexer reads each text once and stops after a step limit that every one of its loops counts toward, so nested shapes it reads two ways, deep `$((` nesting and runs of unclosed `${` cannot run past the hook's timeout. The merge gate also takes a PR number that is not all digits (a newline in `--repo` splitting its line, an odd MCP `pullNumber`) as a merge it cannot pin. See the two plugins' CHANGELOGs [3.2.0] and [1.1.0], and `docs/gate-lexer-design-2026-11-13.md`.
+
 ## [1.17.2] - 2026-11-12
 
 ### Fixed

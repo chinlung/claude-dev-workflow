@@ -66,11 +66,212 @@ sub subs_of {
   return @out;
 }
 # <<< shared-tokenizer: subs_of
+# >>> shared-tokenizer: lexer (same bytes in pr-closeout's pr-merge-gate.sh; tests/shared-tokenizer.test.sh compares them)
+# The command read the way bash reads it, in one pass with a context for each quote and substitution
+# (docs/gate-lexer-design-2026-11-13.md). lex_segs returns the commands it holds, those inside every
+# $( … ), `…` and ${…} included, as lists of words. A heredoc body is read where bash reads it, at the
+# end of its line; one whose delimiter never comes takes the rest of the text, as it does in bash.
+# $LEX_UNREAD: set when nesting runs deeper than 50 or the reading takes more than $LEX_MAX steps, so
+# what lies past that was not read. The merge gate denies on it; archive-gate, fail-open, does not read it.
+# A step is a character one of the loops below looks at; a scan that finds no close and a text copied
+# for a reading of its own count every character again, so no input reads for longer than the limit.
+our ($LEX_UNREAD, $LEX_STEPS, $LEX_MAX, %LEX_READ) = (0, 0, 3_000_000);
+eval { require Digest::MD5; 1 };   # core perl; without it a text is its own key
+sub lex_tick { die "lex: step limit\n" if ($LEX_STEPS += $_[0] // 1) > $LEX_MAX; }
+sub lex_segs {   # past the limit, the commands read so far
+  my ($s) = @_; my @segs; %LEX_READ = (); $LEX_STEPS = 0;
+  unless (eval { lex_cmd(\$s, 0, '', \@segs, 0); 1 }) { die $@ unless $@ eq "lex: step limit\n"; $LEX_UNREAD = 1; }
+  return @segs;
+}
+# A text of its own (a substitution's, the rest after a quote, an arithmetic body) read as commands.
+# Each text once: the readings below that also read a text a second way nest, and reading the same
+# text again could only find the same commands — without this, nested ones cost time exponential in
+# their depth.
+sub lex_text {
+  my ($t, $segs, $depth) = @_;
+  lex_tick(length $t);
+  return if $LEX_READ{eval { Digest::MD5::md5($t) } // $t}++;
+  lex_cmd(\$t, 0, '', $segs, $depth + 1);
+}
+# A quote that never closes runs to the end, and bash fails there. But a line bash rejects as a syntax
+# error is dropped and the lines after it still run (bash 3.2 and 5.3), and a quote on such a line was
+# never one: so the text after the quote is read as commands too.
+sub lex_rest { my ($sr, $i, $segs, $depth) = @_; lex_text(substr($$sr, $i), $segs, $depth); }
+# A $(( or (( is arithmetic only when the ) that closes its first ( is followed at once by another );
+# otherwise bash reads it as ( ( … ) … ). Its text is expanded as if in "…" with quotes plain, so the
+# $( … ), `…` and ${…} in it run, those inside '…' too (bash 3.2 and 5.3 alike). $[ … ] is the old
+# spelling of $(( … )) and is read the same way, up to the ] that closes its [. Where the arithmetic
+# ends, bash finds with quotes that count (an unclosed ' in it makes a $( ( … ) … ) of it), so the text
+# of a $(( … )) or (( … )) is also read as the ( … ) it would be then.
+sub lex_arith {   # a $((, (( or $[ at $i: the index past its close, or undef when it is not arithmetic
+  my ($sr, $i, $segs, $depth) = @_; my $n = length $$sr; my $d = 0;
+  if ($depth > 50) { $LEX_UNREAD = 1; return $n; }
+  $i++ if substr($$sr, $i, 1) eq '$';
+  my $from = $i + 1;   # where the ( … ) reading starts
+  my ($o, $c, $last) = substr($$sr, $i, 1) eq '[' ? ('[', ']', 0) : ('(', ')', 1);
+  while ($i < $n) {
+    lex_tick();
+    my $x = substr($$sr, $i, 1);
+    if ($x eq "\\") { $i += 2; next; }
+    if (substr($$sr, $i, 2) eq '$(') {
+      my $j = substr($$sr, $i, 3) eq '$((' ? lex_arith($sr, $i, $segs, $depth + 1) : undef;
+      $i = defined $j ? $j : lex_cmd($sr, $i + 2, ')', $segs, $depth + 1); next;
+    }
+    if ($x eq '`') { $i = lex_bq($sr, $i, $segs, $depth, 1); next; }
+    if (substr($$sr, $i, 2) eq '${') { my $j = lex_param($sr, $i, $segs, $depth, 0); if (defined $j) { $i = $j; next; } }
+    if ($x eq $o) { $d++ } elsif ($x eq $c && --$d == $last) {
+      return $i + 1 unless $last;
+      return undef unless substr($$sr, $i + 1, 1) eq ')';
+      lex_text(substr($$sr, $from, $i + 1 - $from), $segs, $depth);
+      return $i + 2;
+    }
+    $i++;
+  }
+  return $n;
+}
+sub param_end {   # the index past the } that closes a ${ at $i, a quoted } not counting; undef when it never comes
+  my ($sr, $i) = @_; my $n = length $$sr; my ($d, $j) = (1, $i + 2);
+  while ($j < $n && $d) {
+    lex_tick();
+    my $x = substr($$sr, $j, 1);
+    if ($x eq "\\") { $j += 2; next; }
+    if ($x eq "'") { my $k = index($$sr, "'", $j + 1); lex_tick(($k < 0 ? $n : $k) - $j); return undef if $k < 0; $j = $k + 1; next; }
+    if ($x eq '"') { my $k = $j + 1; while ($k < $n && substr($$sr, $k, 1) ne '"') { $k++ if substr($$sr, $k, 1) eq "\\"; $k++; } lex_tick($k - $j); return undef if $k >= $n; $j = $k + 1; next; }
+    if (substr($$sr, $j, 2) eq '${') { $d++; $j += 2; next; }   # only a nested ${ opens a level: a bare { is text
+    $d-- if $x eq '}'; $j++;
+  }
+  return $d ? undef : $j;
+}
+sub lex_bq {   # a `…` at $i: bash finds its closing backtick first, then reads the text as a command line
+  my ($sr, $i, $segs, $depth, $indq) = @_; my $n = length $$sr; my ($j, $t) = ($i + 1, '');
+  my $esc = $indq ? qr/[\\`\$"]/ : qr/[\\`\$]/;
+  while ($j < $n && substr($$sr, $j, 1) ne '`') { $j++ if substr($$sr, $j, 1) eq "\\" && substr($$sr, $j + 1, 1) =~ $esc; $t .= substr($$sr, $j, 1); $j++; }
+  lex_tick($j - $i);
+  lex_text($t, $segs, $depth);
+  return $j < $n ? $j + 1 : $n;
+}
+sub lex_param {   # a ${…} at $i ($sq: its '…' is text): the index past it, or undef when its } never comes
+  my ($sr, $i, $segs, $depth, $sq) = @_;
+  my $j = param_end($sr, $i); return undef unless defined $j;
+  if (substr($$sr, $i + 2, 1) =~ /[ \t\n|]/) {   # ${ cmd; } and ${| cmd; }: bash 5.3 runs it (3.2 rejects it)
+    my $x = substr($$sr, $i + 2, $j - $i - 3); $x =~ s/^\|//; lex_text($x, $segs, $depth);
+  } else {
+    lex_text($_, $segs, $depth) for subs_of(substr($$sr, $i, $j - $i), $sq);
+  }
+  return $j;
+}
+# The value of a substitution is bash's to know: a word keeps only its literal parts, and a word made
+# of substitutions alone is left out (`` `x`openspec `` is the command openspec; `$(echo foo)` names nothing).
+sub lex_dq {   # the inside of "…" from $i: the index past its closing ", its literal text, whether it held a substitution
+  my ($sr, $i, $segs, $depth, $body) = @_; my $n = length $$sr; my ($t, $sub, $from) = ('', 0, $i);   # $body: an unquoted heredoc body, where " is text
+  while ($i < $n) {
+    lex_tick();
+    my $ch = substr($$sr, $i, 1);
+    return ($i + 1, $t, $sub) if $ch eq '"' && !$body;
+    if ($ch eq "\\") { my $e = substr($$sr, $i + 1, 1); $t .= $e eq "\n" ? '' : $e =~ ($body ? qr/[\$`\\]/ : qr/[\$`"\\]/) ? $e : "\\$e"; $i += 2; next; }
+    if (substr($$sr, $i, 3) eq '$((' || substr($$sr, $i, 2) eq '$[') { my $j = lex_arith($sr, $i, $segs, $depth); if (defined $j) { $i = $j; $sub = 1; next; } }
+    if (substr($$sr, $i, 2) eq '$(') { $i = lex_cmd($sr, $i + 2, ')', $segs, $depth + 1); $sub = 1; next; }
+    if ($ch eq '`') { $i = lex_bq($sr, $i, $segs, $depth, 1); $sub = 1; next; }
+    if (substr($$sr, $i, 2) eq '${') {   # inside "…" a ' in ${…} is a plain character, so what it holds runs
+      my $j = lex_param($sr, $i, $segs, $depth, 0);
+      if (defined $j) { $i = $j; $sub = 1; next; }
+    }
+    $t .= $ch; $i++;
+  }
+  lex_rest($sr, $from, $segs, $depth) unless $body;   # the " never closed
+  return ($n, $t, $sub);
+}
+# lex_cmd: commands from $i up to the $end that closes this level (')' for $( … ), '' for the whole
+# text); returns the index past it. Each command is a new list in @$segs, nested ones included.
+sub lex_cmd {
+  my ($sr, $i, $end, $segs, $depth) = @_; my $n = length $$sr;
+  if ($depth > 50) { $LEX_UNREAD = 1; return $n; }
+  my $cur = []; push @$segs, $cur;
+  my ($tok, $sub, $skip, $par, @pend) = (undef, 0, 0, 0);   # $sub: the word held a substitution; $skip: the next word is a redirection's target; @pend: [delimiter, quoted, strip tabs]
+  my $word = sub { if (defined $tok && ($tok ne '' || !$sub)) { if ($skip) { $skip = 0 } else { push @$cur, $tok } } undef $tok; $sub = 0; };
+  my $seg = sub { $word->(); $skip = 0; $cur = []; push @$segs, $cur; };
+  while ($i < $n) {
+    lex_tick();
+    my $ch = substr($$sr, $i, 1);
+    if ($ch eq "\\") { my $e = substr($$sr, $i + 1, 1); $tok .= $e eq '' ? "\\" : $e unless $e eq "\n"; $i += 2; next; }   # \⏎ joins two lines; a \ at the very end is itself
+    if ($ch eq "'") { my $j = index($$sr, "'", $i + 1); if ($j < 0) { $j = $n; lex_rest($sr, $i + 1, $segs, $depth); } $tok .= substr($$sr, $i + 1, $j - $i - 1); $i = $j + 1; next; }
+    # $'…': \' \" and \\ are decoded; any other escape keeps its backslash, so a word built with one is never read as other text
+    if ($ch eq '$' && substr($$sr, $i + 1, 1) eq "'") { my $j = $i + 2; $tok .= ''; while ($j < $n && substr($$sr, $j, 1) ne "'") { if (substr($$sr, $j, 1) eq "\\") { my $e = substr($$sr, $j + 1, 1); $tok .= "\\" unless $e =~ /[\\'"]/; $j++; } $tok .= substr($$sr, $j, 1); $j++; } lex_tick($j - $i); lex_rest($sr, $i + 2, $segs, $depth) if $j >= $n; $i = $j + 1; next; }
+    if ($ch eq '"') { my ($j, $t, $s) = lex_dq($sr, $i + 1, $segs, $depth); $tok .= $t; $sub ||= $s; $i = $j; next; }
+    if (substr($$sr, $i, 3) eq '$((' || substr($$sr, $i, 2) eq '$[') { my $j = lex_arith($sr, $i, $segs, $depth); if (defined $j) { $i = $j; $tok .= ''; $sub = 1; next; } }
+    if (substr($$sr, $i, 2) eq '$(') { $i = lex_cmd($sr, $i + 2, ')', $segs, $depth + 1); $tok .= ''; $sub = 1; next; }
+    if ($ch eq '`') { $i = lex_bq($sr, $i, $segs, $depth, 0); $tok .= ''; $sub = 1; next; }
+    if (substr($$sr, $i, 2) eq '${') {   # one word to bash; what runs in it is read as commands, except inside its own '…'
+      my $j = lex_param($sr, $i, $segs, $depth, 1);
+      if (defined $j) { $i = $j; $tok .= ''; $sub = 1; next; }
+    }
+    # a # that starts a word comments out the rest of the line (inside `…`, its text is a line of its own)
+    if ($ch eq '#' && !defined $tok && ($i == 0 || substr($$sr, $i - 1, 1) =~ /[ \t\n;&|(]/)) { my $j = index($$sr, "\n", $i); $i = $j < 0 ? $n : $j; next; }
+    if (!defined $tok && substr($$sr, $i, 2) eq '((') {   # (( … )): arithmetic, << in it is a shift
+      my $j = lex_arith($sr, $i, $segs, $depth); if (defined $j) { $i = $j; next; }
+    }
+    if (substr($$sr, $i, 3) eq '<<<') { $word->(); $skip = 1; $i += 3; next; }   # here-string: the word after it is data
+    if (substr($$sr, $i, 2) eq '<<') {   # heredoc: the delimiter is the whole word, its quoted and unquoted parts joined
+      $word->(); my $strip = substr($$sr, $i + 2, 1) eq '-' ? 1 : 0; my $j = $i + 2 + $strip;
+      $j++ while $j < $n && substr($$sr, $j, 1) =~ /[ \t]/;
+      my ($d, $quoted) = ('', 0);
+      while ($j < $n) {
+        my $x = substr($$sr, $j, 1);
+        last if $x =~ /[ \t\n;&|()<>]/;
+        # a ${…} or `…` in it is part of the word, and a quote or \ inside one does not make the body literal
+        if (substr($$sr, $j, 2) eq '${') { my $k = param_end($sr, $j); if (defined $k) { $d .= substr($$sr, $j, $k - $j); $j = $k; next; } }
+        if ($x eq '`') { my $k = index($$sr, '`', $j + 1); $k = $n - 1 if $k < 0; $d .= substr($$sr, $j, $k + 1 - $j); $j = $k + 1; next; }
+        if ($x eq "'" || $x eq '"') { my $k = index($$sr, $x, $j + 1); $k = $n if $k < 0; $d .= substr($$sr, $j + 1, $k - $j - 1); $quoted = 1; $j = $k + 1; next; }
+        if ($x eq "\\") { if (substr($$sr, $j + 1, 1) ne "\n") { $d .= substr($$sr, $j + 1, 1); $quoted = 1; } $j += 2; next; }   # \⏎ joins lines
+        $d .= $x; $j++;
+      }
+      lex_tick($j - $i);
+      push @pend, [$d, $quoted, $strip] if length $d;
+      $i = $j; next;
+    }
+    if ($ch eq '<' || $ch eq '>') {   # redirection: a number right before it is the fd, the word after it the target
+      undef $tok if defined $tok && $tok =~ /^\d+$/;
+      $word->(); my $j = $i + 1; $j++ while $j < $n && substr($$sr, $j, 1) =~ /[<>&|]/;
+      $skip = 1; $i = $j; next;
+    }
+    if ($ch eq '(') { $par++; $seg->(); $i++; next; }
+    if ($ch eq ')') { if ($par) { $par-- } elsif ($end eq ')') { $word->(); return $i + 1; } $seg->(); $i++; next; }
+    if ($ch eq ';' || $ch eq '&' || $ch eq '|') { $seg->(); $i++; next; }
+    if ($ch eq "\n") {
+      $seg->(); $i++;
+      while (my $h = shift @pend) {   # each heredoc of the line, in order: its body ends at a line equal to its delimiter
+        my ($d, $quoted, $strip) = @$h; my ($p, $stop, $next) = ($i);
+        while (1) {
+          my $e = index($$sr, "\n", $p); $e = $n if $e < 0; lex_tick($e - $p + 1);
+          my $raw = substr($$sr, $p, $e - $p); my $l = $raw; $l =~ s/^\t+// if $strip;
+          if ($l eq $d) { ($stop, $next) = ($p, $e < $n ? $e + 1 : $n); last; }
+          # inside $( … ) a line DELIM) ends the body there, and the ) closes the substitution (bash 3.2 and 5.3 alike)
+          if ($end eq ')' && substr($l, 0, length($d) + 1) eq "$d)") { ($stop, $next) = ($p, $p + length($raw) - length($l) + length $d); last; }
+          last if $e >= $n; $p = $e + 1;
+        }
+        if (!defined $stop) {   # its delimiter never comes: the rest of the text is its body, and no line of it runs
+          unless ($quoted) { my $x = substr($$sr, $i); lex_dq(\$x, 0, $segs, $depth, 1); }
+          return $n;
+        }
+        unless ($quoted) { my $x = substr($$sr, $i, $stop - $i); lex_dq(\$x, 0, $segs, $depth, 1); }   # an unquoted body is expanded as in "…"
+        $i = $next;
+      }
+      next;
+    }
+    if ($ch eq ' ' || $ch eq "\t") { $word->(); $i++; next; }
+    $tok .= $ch; $i++;
+  }
+  $word->();
+  return $n;
+}
+# <<< shared-tokenizer: lexer
 my %seen;
-# The command is read twice and what either reading finds counts. The first knows comments and ${…};
-# the second ($plain) is the reading from before those rules, kept so that a mistake in them can add
-# to what is caught but never take away: whatever the plain reading sees is still seen.
-for my $plain (0, 1) {
+# The command is read three times and what any reading finds counts. The first knows comments and
+# ${…}; the second ($plain) is the reading from before those rules; the third ($mode 2) is the lexer.
+# The older readings stay so that a mistake in a newer one can add to what is caught but never take
+# away (docs/gate-lexer-design-2026-11-13.md §4).
+for my $mode (0, 1, 2) {
+my $plain = $mode == 1;
 my @queue = ($ENV{AG_CMD} // ''); my $rounds = 0;
 # A command string handed to a shell runs too (`bash -c '…'`, `sh -lc '…'`, `eval …`): it is queued and
 # parsed like the command itself. 50 rounds bound a string that keeps quoting itself.
@@ -87,6 +288,8 @@ my $c = shift @queue;
 # ending at a line equal to its delimiter. An unquoted body still runs its $( … ) and backticks.
 # A heredoc whose delimiter line never comes is not one ($((1<<n)) looks like it): its lines are
 # put back and scanned again (fail closed), the later heredocs of its line first.
+my @segs;
+if ($mode == 2) { @segs = lex_segs($c); } else {   # the third reading is the lexer; the two below are the older scanners
 my @todo = split /\n/, $c, -1; my @keep; my @hd;   # @hd: [delimiter, quoted] whose bodies come next
 my ($q, $ar, @st) = ('', 0);   # open quote, $(( )) depth, quote outside each open (: kept when a body is rescanned
 while (@todo) {
@@ -125,7 +328,7 @@ while (@todo) {
   if (@hd) { shift @hd; @todo = @body; }   # never closed: scan its lines again as commands (fail closed)
 }
 $c = join "\n", @keep;
-my @segs = ([]); my $tok; my $i = 0; my $n = length $c; my $bq = 0;   # $bq: inside a `…` substitution
+@segs = ([]); my $tok; my $i = 0; my $n = length $c; my $bq = 0;   # $bq: inside a `…` substitution
 my $endtok = sub { push @{$segs[-1]}, $tok if defined $tok; undef $tok; };
 while ($i < $n) {
   my $ch = substr($c, $i, 1);
@@ -170,6 +373,7 @@ while ($i < $n) {
   $tok .= $ch; $i++;
 }
 $endtok->();
+}
 # <<< shared-tokenizer: heredoc pass and tokenizer
 for my $s (@segs) {
   # Command position: after VAR=value prefixes, and after the shell keywords and wrappers a command

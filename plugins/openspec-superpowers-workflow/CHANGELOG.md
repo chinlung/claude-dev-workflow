@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.0] - 2026-11-13
+
+### Added
+
+- **archive-gate reads each command a third time, with a lexer that reads it the way bash does** (W5-8, `docs/gate-lexer-design-2026-11-13.md`). One pass over the characters with a context for each quote and substitution: `$( … )`, backticks and `${…}` are read by the same lexer, recursively, instead of being cut out and scanned again; a heredoc body is read at the end of its line. What any of the three readings finds counts, so the lexer can add to what the gate checks but not take away; the two older readings stay until a later release shows, by the same machine check, that the lexer alone loses nothing. The lexer is a new shared region (`# >>> shared-tokenizer: lexer`), byte for byte the same in pr-closeout's merge gate (pr-closeout 1.1.0).
+
+### Fixed
+
+Archives bash runs and the gate did not see, all older than this release:
+
+- The three gaps recorded with 3.1.2: a heredoc closed by `EOF)` inside `$( … )` (the commands up to a later `EOF` line were swallowed); a delimiter written in mixed quotes (`<<'E'"F"` closes on `EF`); a double-quoted string inside a substitution that is itself inside double quotes (`echo "x $(echo "a"; openspec archive foo) y"`).
+- Found by the new random-punctuation grammar: an archive after a `\` line continuation (`true && \⏎openspec archive foo`); after a backtick that holds a lone quote (`` echo `'-#`⏎openspec archive foo ``); a redirection glued to the name (`openspec archive foo>/dev/null` was read as the change `foo>/dev/null`, which does not exist, so the archive was let through); a heredoc inside backticks inside double quotes.
+- Found while writing the lexer, each checked in bash 3.2 and 5.3: a `$( … )` or a backtick inside `$(( … ))` runs, a backtick inside its `'…'` too; `$[ … ]` is arithmetic; `<<\⏎EOF` is `<<EOF` (the `\⏎` joins lines, so the body is expanded); a `${…}` or a backtick in a delimiter is part of the word, and a quote inside one does not make the body literal.
+
+Bash facts the lexer follows where they differ from what the older readings assumed: a heredoc whose delimiter never comes takes the rest of the text and no line of it runs; `$((` is arithmetic only when the `)` that closes its first `(` is followed at once by another (otherwise it is `$( ( … ) … )`), and since an unclosed quote also changes where bash ends it, the text of a `$(( … ))` is read as `( … )` too; `${ cmd; }` runs in bash 5.3 (3.2 rejects it), and the lexer reads it as commands. The text after a quote that never closes is read as commands too: bash drops a line it rejects as a syntax error and runs the lines after it, and a quote on such a line was never one. Those second readings nest, so each text is read only once (reading it again could only find the same commands); without that, 40 nested `$((` would take hours. The lexer stops after 3,000,000 steps, a step being a character any of its loops looks at — a scan for a `}` that never comes and a text copied for a reading of its own count each time — and `$((` nests no deeper than 50, as `$(` does: while only the main loop counted, the pre-commit review found 12,000 nested `$((` taking 20 s (0.07 s before the lexer), past archive-gate's 10 s hook timeout, and 4,000 unclosed `${a:-` doubling the parse from 3.8 s to 7.9 s. The lexer now stops on either in half a second at most.
+
+### Known gap
+
+- **A line bash drops as a syntax error.** When bash rejects a line (`a=(-( <<EOF`), a heredoc opened on it was never one and the lines after it run; all three readings take them for its body. Knowing which lines bash rejects takes bash's grammar. Pinned as `--gap 0` in `tokenizer-differential.test.sh` and recorded in follow-ups.
+
+### Tests
+
+- `tokenizer-differential.test.sh` (55 checks): 40 nested unclosed `"$(` and 40 nested `$((` must finish in under 5 s in both gates, and so must 15,000 nested `$((` (both gates) and 8,000 unclosed `${a:-` (each gate's lexer alone: the two older readings are themselves quadratic on them); 60 nested `$((` are past the lexer's depth; three canaries each remove one guard and must fail (without reading each text once the 40 nested `$((` spend the step limit and the merge after them goes unread; without the counting in `param_end` the `${a:-` run out of time; without the depth check and the counting in `lex_arith` and `lex_text` the 15,000 `$((` do); a copy with a lowered step limit must make the merge gate report an unreadable merge; the three gaps and the shapes above are in the default grammar; both gates are also run with only the lexer (a copy whose reading loop runs the third pass alone), over the default grammar and the random-punctuation grammar (`--chars`, one fixed seed each); 18 lexer mutants, each breaking one path of the lexer in that copy, must each give bash a command the copy misses; today's gates must print every line the gates at `b81dcdc` and at `01457c3` print, and the harness must tell `01457c3` from today's gate. The harness now waits for the process group of each bash run before reading what it ran: a process bash left running could write into the next case's record and fake a counterexample. It reads the merge gate's output lines the way the hook does (`read -r`, a number that is not all digits counts as unreadable).
+- `archive-gate.test.sh` (139 checks): nine end-to-end cases for the lexer, kept last; the 15 mutants run on a copy with only the two older readings, which the lexer would otherwise cover for.
+- `shared-tokenizer.test.sh` compares three regions (the lexer added, with a line floor and a canary).
+
 ## [3.1.2] - 2026-11-12
 
 ### Fixed

@@ -11,7 +11,10 @@
 #
 # Usage: perl tokenizer-differential.pl --kind ag|pmg --source <hook.sh|parser.pl>
 #             [--seed N] [--n N] [--min-exercised N] [--show N] [--known-gaps | --gap I …]
-#             [--fixed-by <hook.sh|parser.pl>]
+#             [--fixed-by <hook.sh|parser.pl>] [--chars]
+# --chars: noise is built from shell punctuation at random (quotes, #, \, <<, $(, ((, ${, `, ; and
+#   newlines) instead of the hand-written list, to find kinds of input nobody wrote down yet. Most such
+#   commands are syntax errors bash refuses; those run nothing and are not counted as exercised.
 # --known-gaps adds the grammar items behind gaps that are recorded and not fixed yet (see @gaps);
 #   --gap I adds only gap I (0-based, repeatable), so each gap can be shown to be still open on its own.
 # --fixed-by <later parser>: instead of counting, look for one case the source misses and the later
@@ -26,10 +29,11 @@ use Getopt::Long;
 use List::Util qw(min);
 use POSIX ();
 
-my ($kind, $source, $seed, $n, $min_ex, $show, $gaps, $fixed_by, $superset, @gap_ids) = ('', '', 20261111, 400, 0, 5, 0, '', '');
+my ($kind, $source, $seed, $n, $min_ex, $show, $gaps, $fixed_by, $superset, $chars, @gap_ids) = ('', '', 20261111, 400, 0, 5, 0, '', '', 0);
 GetOptions('kind=s' => \$kind, 'source=s' => \$source, 'seed=i' => \$seed, 'n=i' => \$n,
            'min-exercised=i' => \$min_ex, 'show=i' => \$show, 'known-gaps' => \$gaps,
-           'gap=i' => \@gap_ids, 'fixed-by=s' => \$fixed_by, 'superset-of=s' => \$superset) or exit 2;
+           'gap=i' => \@gap_ids, 'fixed-by=s' => \$fixed_by, 'superset-of=s' => \$superset,
+           'chars' => \$chars) or exit 2;
 $kind =~ /^(ag|pmg)$/ or do { print STDERR "--kind must be ag or pmg\n"; exit 2 };
 -f $source or do { print STDERR "no such source: $source\n"; exit 2 };
 $fixed_by && $superset and do { print STDERR "--fixed-by and --superset-of do not combine\n"; exit 2 };
@@ -105,6 +109,7 @@ sub run_bash {
   unlink $log;
   my $pid = fork // die "fork: $!";
   if (!$pid) {
+    setpgrp(0, 0);   # its own process group, so what it leaves running can be waited for below
     chdir $work or POSIX::_exit(127);
     open STDIN, '<', '/dev/null'; open STDOUT, '>', '/dev/null'; open STDERR, '>', '/dev/null';
     %ENV = (PATH => $stub, LOG => $log, HOME => $work, LC_ALL => 'C');
@@ -113,6 +118,11 @@ sub run_bash {
     POSIX::_exit(127);
   }
   waitpid $pid, 0;
+  # bash can return before a process it started has finished (a heredoc body expanded in a pipeline):
+  # its call would land in the next case's log. Wait for the group to empty, up to 3 s, then end it.
+  my $until = time + 3;
+  select undef, undef, undef, 0.02 while kill(0, -$pid) && time < $until;
+  kill 'KILL', -$pid;
   my @calls;
   if (open my $f, '<', $log) { @calls = map { chomp; $_ } <$f>; close $f; }
   return @calls;
@@ -153,6 +163,26 @@ my @wrap = (
   sub { $_[0] =~ /\n/ ? undef : "echo v\$(echo 1)#L10 && $_[0]" },  # a # glued to a substitution is text
   sub { $_[0] =~ /[`\n]/ ? undef : "echo `true`#; $_[0]" },
   sub { $_[0] =~ /\n/ ? undef : "echo a\x0b# ; $_[0]" },            # \v is not a blank to bash
+  # what the lexer reads and the two older scanners did not (W5-8): the first three were the gaps
+  # recorded with #57; the others came from --chars
+  sub { $_[0] =~ /["\n]/ ? undef : "echo \"x \$(echo \"a\"; $_[0]) y\"" },   # "…" inside $( … ) inside "…"
+  sub { "true && \\\n$_[0]" },                                       # \⏎ joins the lines
+  sub { "echo `'-#`\n$_[0]" },                                       # a backtick closes before its quote does
+  sub { $_[0] =~ /\n/ ? undef : $_[0] . pick('>/dev/null', '<<<x', ' 2>&1') },   # a redirection glued on
+  sub { $_[0] =~ /\n/ ? undef : pick('>/dev/null ', '2>&1 ', '<<<x ') . $_[0] },   # …or before the command
+  sub { "echo \$(( \$($_[0]) 0 ))" },                                # $( … ) inside arithmetic runs
+  sub { "echo \$[ \$($_[0]) 0 ]" },                                  # …inside $[ … ] too
+  sub { $_[0] =~ /['`\n]/ ? undef : "echo \$(( '`$_[0]`' ))" },      # …and a backtick inside its '…'
+  sub { "echo \$[1<<2]\n$_[0]" },                                   # $[ … ] is arithmetic: << is a shift
+  sub { $_[0] =~ /\n/ ? undef : "echo a\\ #; $_[0]" },               # a # after an escaped blank is in the word
+  sub { $_[0] =~ /\n/ ? undef : "echo \$((true); $_[0])" },          # $(( not closed by )): a subshell
+  sub { $_[0] =~ /\n/ ? undef : "\$(true) $_[0]" },                  # a word that expands to nothing is gone
+  sub { "cat <<NEVER\n\$($_[0])" },                                 # a heredoc whose delimiter never comes
+  # a quote on a line bash drops, never closed. Not under --chars: random text after it can close the
+  # quote, and that is gap 0 (the parser cannot know the line is dropped)
+  sub { my $q = pick("'", '"'); $chars || index($_[0], $q) >= 0 ? undef : "a=(-( $q\n$_[0]" },
+  sub { $_[0] =~ /['`]/ ? undef : "echo \$((\n(\necho `'`\n$_[0]\n); :))" },   # an unclosed ' makes $(( a $( (
+  sub { my $d = pick(qw(EOF END)); $_[0] =~ /^$d$/m ? undef : "cat <<\\\n$d\n\$($_[0])\n$d" },   # <<\⏎EOF is <<EOF
 );
 # Text before the command that once made a parser lose the lines after it (#48, #51), with the line
 # that closes what an older parser took for a heredoc.
@@ -165,22 +195,35 @@ my @noise = (
   # line, parentheses inside $(( … )), $'…' and backticks inside double quotes
   ["cat <<A <<B\nx\nA\ny\nB", undef], ['echo $(( (1) + 2 ))', undef], ["echo \"\$'x' `true`\"", undef],
   ['echo "($(( 1<<2 )))"', undef],
+  # the gaps recorded with #57, read by the lexer since W5-8
+  ["x=\$(cat <<EOF\ntext\nEOF)", 'EOF'],   # a heredoc closed by EOF) inside $( … )
+  ["cat <<'E'\"F\"\nit's\nEF", undef],    # a delimiter written with mixed quotes
+  ['((x=1<<2))', undef],                   # (( … )) is arithmetic: << is a shift
 );
-# Gaps both gates still have. Recorded as findings and left out of the default grammar until they are
+# Gaps the gates still have. Recorded as findings and left out of the default grammar until they are
 # fixed, so the suite guards everything else; --known-gaps / --gap I put them back, and the suite checks
 # each one still finds counterexamples. An entry is a noise item, or a wrapper (a sub).
 my @gaps = (
-  ["x=\$(cat <<EOF\ntext\nEOF)", 'EOF'],   # 0: a heredoc closed by EOF) inside $( … )
-  ["cat <<'E'\"F\"\nit's\nEF", undef],    # 1: a delimiter written with mixed quotes
-  # 2: a double-quoted string inside a substitution that is itself inside double quotes: the outer
-  # string is cut at the inner quote, and the command after it is taken for text
-  sub { $_[0] =~ /["\n]/ ? undef : "echo \"x \$(echo \"a\"; $_[0]) y\"" },
+  # 0: a line bash rejects as a syntax error is dropped and the lines after it run (bash 3.2 and 5.3);
+  # a heredoc opened on it was never one, so its "body" runs as commands. A parser cannot know which
+  # lines bash rejects without bash's grammar. (A quote opened on such a line is covered: the text
+  # after a quote that never closes is read as commands too.)
+  ["a=(-( <<EOF", 'EOF'],
 );
 for (@gap_ids) { $_ >= 0 && $_ < @gaps or do { print STDERR "--gap $_: there are " . scalar(@gaps) . " gaps\n"; exit 2 } }
 for my $g ($gaps ? @gaps : @gaps[@gap_ids]) { push @{ ref $g eq 'CODE' ? \@wrap : \@noise }, $g; }
+# Shell punctuation for --chars, weighted toward what has broken a parser before; words and blanks
+# keep enough of the output parseable for bash to run the command at all.
+my @alpha = ("'", "'", '"', '"', '#', '# ', '\\', '<<', '<<-', '<<<', '$(', '(', ')', '$((', '))', '${',
+             '}', '{', '`', ';', '&&', '|', "\n", "\n", ' ', ' ', ' ', 'x', 'EOF', "\$'", 'echo ', 'cat ',
+             '-', '=', 'a=', ':');
+sub chars { join '', map { pick(@alpha) } 1 .. 1 + int rand 7 }
 sub gen {
   my $s = payload();
   for (1 .. 1 + int rand 2) { my $w = pick(@wrap)->($s); $s = $w if defined $w; }
+  if ($chars) {   # random punctuation around the command, on its line or the lines next to it
+    return join '', chars(), pick("\n", '; ', ' && ', "\n", ' '), $s, pick('', "\n", '; ', ' '), chars();
+  }
   my (@pre, @post);
   for (1 .. int rand 3) { my $z = pick(@noise); push @pre, $z->[0]; push @post, $z->[1] if defined $z->[1]; }
   return join "\n", @pre, $s, @post;
@@ -193,7 +236,9 @@ sub missed {   # what bash ran (change names, or PR numbers) that this parser ou
   my @m;
   for my $v (@calls) {
     if ($kind eq 'ag') { push @m, $v unless grep { $_ eq $v } @seen; }
-    else { push @m, $v unless grep { my @f = split / /; @f >= 2 && ($f[1] eq $v || $f[1] eq '-') } @seen; }
+    # read as pr-merge-gate reads it: `read -r repo num sha` (blanks run together), and a number that is
+    # not all digits is a merge it cannot pin (`-`, denied)
+    else { push @m, $v unless grep { my $num = (split ' ')[1] // ''; $num = '-' unless $num =~ /^\d+$/; $num eq $v || $num eq '-' } @seen; }
   }
   return @m;
 }

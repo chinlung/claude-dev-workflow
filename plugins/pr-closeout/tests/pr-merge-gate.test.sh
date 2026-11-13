@@ -260,16 +260,45 @@ gate allow "nothing about merge" "$(bash_in 'ls -la')"
 # cannot be told, so the merge is denied, never checked against the wrong PR
 gate deny "PR number written with an ANSI-C escape" "$(bash_in $'gh pr merge $\'1\\062\' --repo o/r')"
 called "" "ansi-c escape in the number: ready not called"
+# one line of three fields per merge: a quoted newline glued to the repo splits the line, and the part
+# without a PR number is a merge the hook cannot pin — denied as such, not for an empty sha
+gate deny "a repo with a quoted newline glued on" "$(bash_in $'gh pr merge 3 --repo o/r\'\nx\'')"
+called "" "newline in the repo: ready not called"
+reason_has "newline in the repo" "讀不出是哪個 repo"
+gate deny "an api path with a quoted newline in the repo" "$(bash_in $'gh api -X PUT \'repos/o/r\nx/pulls/3/merge\'')"
+called "" "newline in the api repo: ready not called"
+reason_has "newline in the api repo" "讀不出是哪個 repo"
+gate deny "MCP merge with a pull number that is not a number" "$(mcp_in '{"owner":"o","repo":"r","pullNumber":"x3"}')"
+called "" "MCP odd number: ready not called"
+reason_has "MCP odd number" "讀不出是哪個 repo"
 
-MIN_PASS=180
+# W5-8: merges the lexer (the third reading) reads the way bash does; bash runs every one of them.
+# Keep these last: the mutants below run on a copy with only the two older readings, which miss some of
+# these, so they must come after every mutant's own case.
+lexer_case() { FAKE_RC=0 gate allow "lexer: $1" "$(bash_in "$2")"; called "ready o/r 3" "lexer: $1: args"; }
+lexer_case "line continuation before the command"    $'true && \\\ngh pr merge 3 --repo o/r'
+lexer_case "a quote inside backticks"                $'echo `\'-#`\ngh pr merge 3 --repo o/r'
+lexer_case "a heredoc in backticks in double quotes" $'echo "done: `cat <<EOF\nnote $(true\ngh pr merge 3 --repo o/r)\nEOF`"'
+lexer_case "a heredoc closed by EOF) in \$( … )"     $'x=$(cat <<EOF\ntext\nEOF)\ngh pr merge 3 --repo o/r'
+lexer_case "a delimiter in mixed quotes"             $'cat <<\'E\'"F"\nit\'s\nEF\ngh pr merge 3 --repo o/r'
+lexer_case "double quotes in \$( … ) in double quotes" 'echo "x $(echo "a"; gh pr merge 3 --repo o/r) y"'
+lexer_case "a substitution inside \$(( … ))"         'echo $(( $(gh pr merge 3 --repo o/r) 0 ))'
+lexer_case "a shift inside \$[ … ]"                  $'echo $[1<<2]\ngh pr merge 3 --repo o/r'
+
+MIN_PASS=205
 if [ "$pass" -lt "$MIN_PASS" ] && [ "${STOP_ON_FAIL:-0}" != 1 ]; then failed "only $pass checks passed, expected at least $MIN_PASS"; fi
 echo "pr-merge-gate: $pass passed, $fail failed"
 
 mut_bad=0; mut_n=0
+# The tokenizer mutants break the two older readings, so every mutant runs on a copy that has only
+# those two: with the lexer in the loop it would catch most of what they break and the mutant would
+# live. The lexer's own mutants are in openspec's tokenizer-differential.test.sh, where bash judges.
+old="$tmp/old-readings.sh"
+perl -pe 's/^for my \$mode \(0, 1, 2\) \{$/for my \$mode (0, 1) {/' "$HOOK" > "$old"
 mutant() {   # <label> <substring of the case that must kill it> <perl substitution>
   local label=$1 want=$2 m="$tmp/mutant-$1.sh" log="$tmp/mutant-$1.log" rc first
-  perl -pe "$3" "$HOOK" > "$m" || { echo "MUTANT [$label] perl failed"; mut_bad=1; return; }
-  if cmp -s "$m" "$HOOK"; then echo "MUTANT [$label] substitution did not apply"; mut_bad=1; return; fi
+  perl -pe "$3" "$old" > "$m" || { echo "MUTANT [$label] perl failed"; mut_bad=1; return; }
+  if cmp -s "$m" "$old"; then echo "MUTANT [$label] substitution did not apply"; mut_bad=1; return; fi
   HOOK="$m" NO_MUTANTS=1 STOP_ON_FAIL=1 perl -e 'alarm 120; exec @ARGV' bash "$0" > "$log" 2>&1; rc=$?
   mut_n=$((mut_n + 1))
   first=$(command grep -a -m1 '^FAIL' "$log")   # -a: a truncated multibyte char must not make GNU grep call the log binary
@@ -279,7 +308,8 @@ mutant() {   # <label> <substring of the case that must kill it> <perl substitut
   else echo "mutant [$label]: suite red as required (by [$want])"; fi
 }
 if [ "${NO_MUTANTS:-0}" != 1 ]; then
-  mutant bypass        "[bypass]"                     's/^  case \$cmd in \*PR_CLOSEOUT_OK=1\*\) allow ;; esac$/  :/'
+  if cmp -s "$old" "$HOOK"; then echo "FAIL: the copy with the two older readings is the hook itself: the reading loop changed"; mut_bad=1; fi
+  mutant bypass       "[bypass]"                     's/^  case \$cmd in \*PR_CLOSEOUT_OK=1\*\) allow ;; esac$/  :/'
   mutant here-string   "[here-string: args]"          's/^.*# not-a-heredoc: here-string$//'
   mutant rc-check      "[ready says unresolved threads]" 's/\[ "\$rc" = 0 \] && continue/continue/'
   mutant need-target   "[no --repo]"                  's/if \[ "\$repo" = - \] \|\| \[ "\$num" = - \]; then/if false; then/'
@@ -308,7 +338,8 @@ if [ "${NO_MUTANTS:-0}" != 1 ]; then
   mutant dq-subs       "[dq substitution: args]"      's/^      push \@queue, subs_of\(substr\(.*$//'
   mutant heredoc-subs  "[heredoc substitution: args]" 's/push \@queue, subs_of\(join "\\n", \@body\) unless \$hd\[0\]\[1\]; //'
   mutant comment       "[comment apostrophe: args]"   's/if \(!\$plain && \$ch eq .#. && !defined \$tok/if (0 \&\& !defined \$tok/'
-  mutant plain-reading "[comment text: args]"         's/^for my \$plain \(0, 1\) \{$/for my \$plain (0) {/'
+  mutant plain-reading "[comment text: args]"         's/^for my \$mode \(0, 1\) \{$/for my \$mode (0) {/'
+  mutant field-blank   "[newline in the repo] reason"  's/^  \[\[ \$num =~ \^\[0-9\]\+\$ \]\] \|\| num=-$/  :/'
   mutant backtick-comment "[backtick comment"         's/^\s*if \(\$bq\) \{.*$//'
   # the plain reading catches what it always caught, so these are pinned to cases only the new rule
   # can save: ones behind a comment with an apostrophe, which the plain reading loses whole
@@ -324,7 +355,7 @@ if [ "${NO_MUTANTS:-0}" != 1 ]; then
   mutant eval          "[eval: args]"                 's/elsif \(\$w eq '"'"'eval'"'"'\)/elsif (0)/'
   mutant budget        "[two merges, budget spent]"   's/if \[ "\$left" -lt 1000 \]; then/if false; then/'
   mutant quoted-lt     "[dq <<: args]"                's/^.*# not-a-heredoc: quoted$//'
-  MUT_WANT_N=43
+  MUT_WANT_N=44
   if [ "$mut_n" != "$MUT_WANT_N" ]; then echo "FAIL: $mut_n of $MUT_WANT_N mutants ran"; mut_bad=1; fi
   [ "$mut_bad" = 0 ] || fail=$((fail + 1))
 fi
