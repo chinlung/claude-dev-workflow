@@ -4,6 +4,18 @@
 
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
+## [1.18.0] - 2026-11-13
+
+### Added
+
+- **openspec-superpowers-workflow 3.1.2 → 3.2.0、pr-closeout 1.0.5 → 1.1.0**：
+  - 兩支閘門對每條命令多讀一次：第三種讀法是照 bash 逐字元讀的 lexer（一次走完、每種引號與替換各有脈絡、heredoc 本體在該行結尾處讀）。三種讀法取聯集，新讀法只會多擋、不會少擋。
+  - 補上 1.17.2 記下的三個缺口，以及 `tokenizer-differential.test.sh` 新增的隨機標點語法找到的形狀（行尾 `\` 續行、反引號裡的引號、黏在詞上的重導向、`$(( … ))` 裡的 `$( … )` 等），全是本版之前就有的漏洞。
+  - 仍有一個缺口並以 `--gap 0` 釘住：bash 判為語法錯誤而丟棄的那一行。
+  - lexer 每段文字只讀一次，並有一個所有迴圈共同累計的步數上限，所以「兩種都讀」的巢狀形狀、很深的 `$((` 巢狀、一長串未收尾的 `${` 都不會跑過 hook 的時限。
+  - merge gate 另外修正：PR 號碼欄不是全數字時（`--repo` 帶換行把輸出行切開、MCP 的 `pullNumber` 不是數字）一律視為讀不出是哪個 PR 而拒絕。
+  - 詳見兩個 plugin 的 CHANGELOG [3.2.0]、[1.1.0] 與 `docs/gate-lexer-design-2026-11-13.md`。
+
 ## [1.17.2] - 2026-11-12
 
 ### Fixed

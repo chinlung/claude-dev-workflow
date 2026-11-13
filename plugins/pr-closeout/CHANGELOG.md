@@ -2,6 +2,26 @@
 
 All notable changes to the `pr-closeout` plugin will be documented in this file.
 
+## [1.1.0] - 2026-11-13
+
+### Added
+
+- **The merge gate reads each command a third time, with a lexer that reads it the way bash does.** The same region, byte for byte, as openspec-superpowers-workflow 3.2.0's archive-gate (see its CHANGELOG for the rules and the bash facts behind them). What any reading finds counts: the lexer can add to what the gate checks, not take away.
+
+### Fixed
+
+- **Merges bash runs and the gate let through without `ready`**, all older than this release: after a `\` line continuation (`true && \⏎gh pr merge 7 --repo o/r`); after a backtick holding a lone quote; inside a `$( … )` that holds a double-quoted string inside double quotes; behind a heredoc closed by `EOF)` inside `$( … )` or a delimiter in mixed quotes; inside a `$( … )` in `$(( … ))` or `$[ … ]`. Found by openspec-superpowers-workflow's differential test, which runs generated commands in bash.
+- **A PR number that is not all digits is a merge the hook cannot pin.** The parser and the MCP input each hand the hook one line of `repo number sha` per merge. A `--repo` value with a quoted newline glued on (`--repo o/r'⏎x'`) split that line in two, and the hook denied only because the broken line's empty sha was not a literal sha, with that as the reason; an MCP `pullNumber` that was not a number went to `ready` as it was. The hook now takes anything but digits in the number field as `-` and denies with "讀不出是哪個 repo 的哪個 PR".
+- **The lexer's time is bounded.** It reads some texts a second way (see openspec-superpowers-workflow 3.2.0), and those readings nest: before release, 20 nested unclosed `"$(` or 20 nested `$((` took seconds and 40 would have taken hours, past the hook's timeout. Each text is now read once, and past 3,000,000 steps the rest is unread, which the merge gate denies as a merge it cannot read. Every loop of the lexer counts toward that limit, one limit for the whole command with its `bash -c` and `eval` strings, and `$((` nests no deeper than 50, as `$(` does: while only the main loop counted, the pre-commit review found 12,000 nested `$((` taking 20 s (0.07 s before the lexer) and 4,000 unclosed `${a:-` doubling the parse from 3.8 s to 7.9 s; the review before merging found the limit reset for each `bash -c` string, so 50 of them took the lexer 18 s and the parse 33 s (now 0.5 s and 15 s, the rest being the older readings, which are quadratic there too: a follow-up). The parse runs before the 25 s budget for `ready` starts, so time spent there was time the hook's 30 s timeout did not have.
+
+### Known gap
+
+- A line bash drops as a syntax error (`a=(-( <<EOF`): a merge on a later line runs, and the gate takes it for the heredoc's body. See openspec-superpowers-workflow 3.2.0.
+
+### Tests
+
+- `pr-merge-gate.test.sh`: 205 checks and 44 mutants. Eight end-to-end cases for the lexer, kept last; three cases for a number field that is not a number (a newline in the repo, in a `gh api` path, an MCP `pullNumber`) and the `field-blank` mutant. The tokenizer mutants run on a copy with only the two older readings, which the lexer would otherwise cover for; the lexer's own mutants are in openspec-superpowers-workflow's `tokenizer-differential.test.sh`, where bash judges.
+
 ## [1.0.5] - 2026-11-12
 
 ### Fixed

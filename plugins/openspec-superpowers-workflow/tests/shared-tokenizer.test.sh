@@ -13,7 +13,7 @@ A=${A:-"$SCRIPT_DIR/../hooks/archive-gate.sh"}
 B=${B:-"$SCRIPT_DIR/../../pr-closeout/hooks/pr-merge-gate.sh"}
 # name and the fewest lines its region may hold: the floor is set here, not read from the files, so
 # two regions that both came out empty can never compare as the same
-REGIONS=('subs_of:14' 'heredoc pass and tokenizer:60')
+REGIONS=('subs_of:14' 'heredoc pass and tokenizer:60' 'lexer:140')
 
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/shared-tokenizer-test.XXXXXX") || exit 1
 trap 'rm -rf "$WORK"' EXIT
@@ -59,15 +59,18 @@ done
 # ---- canaries: the comparison itself must be able to fail ----
 first=${REGIONS[0]%:*}; ffloor=${REGIONS[0]##*:}
 second=${REGIONS[1]%:*}; sfloor=${REGIONS[1]##*:}
+third=${REGIONS[2]%:*}; tfloor=${REGIONS[2]##*:}
 expect_rc() {  # <label> <want rc> <file a> <file b> <name> <floor>
   same_regions "$3" "$4" "$5" "$6"; local rc=$?
   if [ "$rc" = "$2" ]; then ok "canary: $1"; else bad "canary: $1 — rc $rc, wanted $2"; fi
 }
-# one changed character inside a region, in either region
+# one changed character inside a region, in each region
 perl -pe 's/\$i \+= 2; next; \}/\$i += 3; next; }/ if /if \(\$ch eq "\\\\"\) \{ \$i \+= 2; next; \}/ && !$done++' "$B" > "$WORK/b-sub.sh"
 expect_rc "an edit inside [$first] is caught" 1 "$A" "$WORK/b-sub.sh" "$first" "$ffloor"
 perl -pe 's/# not-a-heredoc: here-string/# not-a-heredoc: here string/' "$B" > "$WORK/b-hd.sh"
 expect_rc "an edit inside [$second] is caught" 1 "$A" "$WORK/b-hd.sh" "$second" "$sfloor"
+perl -pe 's/# here-string: the word after it is data/# here string: the word after it is data/' "$B" > "$WORK/b-lex.sh"
+expect_rc "an edit inside [$third] is caught" 1 "$A" "$WORK/b-lex.sh" "$third" "$tfloor"
 # indentation and lines outside the markers are not compared
 perl -pe 's/^/  /' "$B" > "$WORK/b-indent.sh"
 expect_rc "indentation alone is not a difference" 0 "$A" "$WORK/b-indent.sh" "$second" "$sfloor"
@@ -84,7 +87,7 @@ expect_rc "two empty regions are below the floor" 2 "$WORK/empty.sh" "$WORK/empt
 
 # ---- summary ----
 # written out, not counted as the canaries run: a canary that is skipped must lower the count
-MIN=$(( ${#REGIONS[@]} + 7 ))
+MIN=$(( ${#REGIONS[@]} + 8 ))
 if [ "$((PASS + FAIL))" -lt "$MIN" ]; then bad "ran $((PASS + FAIL)) assertions, expected at least $MIN"; fi
 echo "shared-tokenizer: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]

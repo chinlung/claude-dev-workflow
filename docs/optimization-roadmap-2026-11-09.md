@@ -34,6 +34,7 @@
 | W4 瘦身 | 範圍縮小後完成 | PR #46；判定類子代理稽核 hook 在個人設定 repo。W4-1 改為候選清單，W4-2、W4-3 不做，W4-4 經 W0-2 判定不可行 |
 | W4-5 子代理規則盤點、W4-6 reflect 增補 | 未開始 | 另案 |
 | W5-7 tokenizer differential 試點 | 完成 | PR #57（見 Wave 5） |
+| W5-8 單一 lexer | 第一步完成（lexer 當第三種讀法）；第二步（退役舊讀法）未開始 | openspec-superpowers-workflow 3.2.0、pr-closeout 1.1.0；結果與新的 gap 0 見 `docs/gate-lexer-design-2026-11-13.md` §10 |
 | W5 其餘 | 未開始 | W5-1、W5-5 已依 `docs/pstack-verification-skills-2026-11-11.md` 修訂（見 Wave 5） |
 
 待驗收：W1-1 的「兩週後重跑 W0-1」約在 2026-11-23 之後才到期。
