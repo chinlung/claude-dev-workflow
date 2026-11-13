@@ -148,6 +148,7 @@ fi
 LEX_MUTANTS_WANT=18
 [ "$LEX_MUTANTS" = "$LEX_MUTANTS_WANT" ] || bad "ran $LEX_MUTANTS lexer mutants, expected $LEX_MUTANTS_WANT"
 
+wait   # the clocked checks below run alone: the harness jobs above would share the CPU with them
 # 6. bounded time: the lexer reads some texts a second way, and those readings nest. Without reading
 #    each text only once, 20 nested unclosed `"$(` or 20 nested `$((` took seconds and 40 took hours;
 #    with the step limit they now spend it instead, and an ordinary command goes unread.
