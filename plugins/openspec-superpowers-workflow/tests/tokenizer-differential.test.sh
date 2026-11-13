@@ -183,9 +183,10 @@ if [ -f "$WORK/ag-lexer.sh" ] && [ -f "$WORK/pmg-lexer.sh" ]; then
   timed "archive-gate's lexer: 8000 unclosed \${ in under 5 s" 0 "" 5 AG_CMD "$WIDE_PARAM" "$WORK/ag-lexer.pl"
   timed "pr-merge-gate's lexer: 8000 unclosed \${ in under 5 s, unreadable" 0 "- - -" 5 PMG_CMD "$WIDE_PARAM" "$WORK/pmg-lexer.pl"
   timed "pr-merge-gate's lexer: 60 nested \$(( are deeper than it reads" 0 "- - -" 5 PMG_CMD "$DEEP60" "$WORK/pmg-lexer.pl"
-  # one budget for the whole command: 50 bash -c strings, each enough to spend the limit on its own
-  MANY_C=$(perl -e 'my $x = q[${a:-] x 1100; print "gh pr merge 3 --repo o/r", map({ "; bash -c \x27$x\x27" } 1 .. 50)')
-  timed "pr-merge-gate's lexer: 50 bash -c strings share one step limit, under 5 s" 0 "- - -" 5 PMG_CMD "$MANY_C" "$WORK/pmg-lexer.pl"
+  # one budget for the whole command: 20 bash -c strings of 1200 unclosed ${ each (about 0.4 s apiece
+  # with a budget of their own). 120 KB: Linux refuses an environment variable over 128 KB (exit 126).
+  MANY_C=$(perl -e 'my $x = q[${a:-] x 1200; print "gh pr merge 3 --repo o/r", map({ "; bash -c \x27$x\x27" } 1 .. 20)')
+  timed "pr-merge-gate's lexer: 20 bash -c strings share one step limit, under 5 s" 0 "- - -" 5 PMG_CMD "$MANY_C" "$WORK/pmg-lexer.pl"
   perl -pe 's/^(\s*my \(\$s\) = \@_; my \@segs; %LEX_READ = \(\);)$/$1 \$LEX_STEPS = 0;/' "$WORK/pmg-lexer.pl" > "$WORK/c-reset.pl"
   if cmp -s "$WORK/pmg-lexer.pl" "$WORK/c-reset.pl"; then bad "canary [reset]: lex_segs is not where this test finds it"
   else timed "canary [reset]: a step limit per bash -c string runs out of time" 142 "" 5 PMG_CMD "$MANY_C" "$WORK/c-reset.pl"; fi
