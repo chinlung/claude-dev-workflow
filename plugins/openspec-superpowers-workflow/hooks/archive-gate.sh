@@ -78,8 +78,8 @@ sub subs_of {
 our ($LEX_UNREAD, $LEX_STEPS, $LEX_MAX, %LEX_READ) = (0, 0, 3_000_000);
 eval { require Digest::MD5; 1 };   # core perl; without it a text is its own key
 sub lex_tick { die "lex: step limit\n" if ($LEX_STEPS += $_[0] // 1) > $LEX_MAX; }
-sub lex_segs {   # past the limit, the commands read so far
-  my ($s) = @_; my @segs; %LEX_READ = (); $LEX_STEPS = 0;
+sub lex_segs {   # past the limit, the commands read so far; the steps are the whole command's, its bash -c strings included
+  my ($s) = @_; my @segs; %LEX_READ = ();
   unless (eval { lex_cmd(\$s, 0, '', \@segs, 0); 1 }) { die $@ unless $@ eq "lex: step limit\n"; $LEX_UNREAD = 1; }
   return @segs;
 }

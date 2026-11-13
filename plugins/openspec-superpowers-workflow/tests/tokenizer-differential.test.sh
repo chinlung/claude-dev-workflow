@@ -183,6 +183,12 @@ if [ -f "$WORK/ag-lexer.sh" ] && [ -f "$WORK/pmg-lexer.sh" ]; then
   timed "archive-gate's lexer: 8000 unclosed \${ in under 5 s" 0 "" 5 AG_CMD "$WIDE_PARAM" "$WORK/ag-lexer.pl"
   timed "pr-merge-gate's lexer: 8000 unclosed \${ in under 5 s, unreadable" 0 "- - -" 5 PMG_CMD "$WIDE_PARAM" "$WORK/pmg-lexer.pl"
   timed "pr-merge-gate's lexer: 60 nested \$(( are deeper than it reads" 0 "- - -" 5 PMG_CMD "$DEEP60" "$WORK/pmg-lexer.pl"
+  # one budget for the whole command: 50 bash -c strings, each enough to spend the limit on its own
+  MANY_C=$(perl -e 'my $x = q[${a:-] x 1100; print "gh pr merge 3 --repo o/r", map({ "; bash -c \x27$x\x27" } 1 .. 50)')
+  timed "pr-merge-gate's lexer: 50 bash -c strings share one step limit, under 5 s" 0 "- - -" 5 PMG_CMD "$MANY_C" "$WORK/pmg-lexer.pl"
+  perl -pe 's/^(\s*my \(\$s\) = \@_; my \@segs; %LEX_READ = \(\);)$/$1 \$LEX_STEPS = 0;/' "$WORK/pmg-lexer.pl" > "$WORK/c-reset.pl"
+  if cmp -s "$WORK/pmg-lexer.pl" "$WORK/c-reset.pl"; then bad "canary [reset]: lex_segs is not where this test finds it"
+  else timed "canary [reset]: a step limit per bash -c string runs out of time" 142 "" 5 PMG_CMD "$MANY_C" "$WORK/c-reset.pl"; fi
   # canaries, each on what it removes: without reading each text once, 40 nested $(( spend the whole
   # limit and the merge after them goes unread; without the counting in param_end, the unclosed ${ run
   # out of time; without the depth check and the counting in lex_arith and lex_text, so do the $((
@@ -217,7 +223,7 @@ done
 
 # ---- summary ----
 # written out, not counted as the checks run: a check that is skipped must lower the count
-MIN=55
+MIN=57
 if [ "$((PASS + FAIL))" -lt "$MIN" ]; then bad "ran $((PASS + FAIL)) checks, expected at least $MIN"; fi
 echo "tokenizer-differential: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]
