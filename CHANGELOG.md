@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.19.2] - 2026-11-14
+
+### Fixed
+
+- **openspec-superpowers-workflow 4.0.0 → 4.0.1, pr-closeout 1.1.1 → 1.1.2** — the two older readings in both gates take linear time. Three loops in their shared section were quadratic (a `${` that never closes scanned to the end once per `${`, the rest of a line copied at every character, a heredoc that never closes collecting every later line once per heredoc): 50 `bash -c` strings of 1100 unclosed `${` took 14 s, past archive-gate's 10 s timeout, after which the harness gives up and the archive runs. The same inputs now take under 0.5 s, and what the readings report is unchanged (compared both ways on generated commands and byte for byte on hand-written ones). The merge gate's 25 s budget now counts the reading of the command too. See the two plugins' CHANGELOGs.
+
 ## [1.19.1] - 2026-11-14
 
 ### Fixed

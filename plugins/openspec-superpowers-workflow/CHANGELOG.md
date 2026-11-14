@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.1] - 2026-11-14
+
+### Fixed
+
+- **archive-gate's two older readings take linear time.** Three loops in the shared section (also in pr-closeout's merge gate) were quadratic: a `${` that never closes was scanned to the end of the text once per `${`; the heredoc pass copied the rest of the line at every character; and a heredoc that never closes collected every later line before they were scanned again, once per such heredoc. 4000 `${a:-` took 3.7 s, 50 `bash -c` strings of 1100 each 14 s, an 800,000-character line 3.8 s per reading, 10,000 unclosed heredocs 6.4 s per reading — and archive-gate's timeout is 10 s, past which the harness gives up on the hook and the archive runs. Now the `${` nested in the first close in the same pass, the heredoc pattern is matched where the scan stands, and a heredoc whose delimiter line is not among the lines left is put back at once: the same inputs take 0.03 s, 0.46 s and 0.08 s. What the readings report is unchanged (compared both ways and byte for byte; see pr-closeout's CHANGELOG [1.1.2]).
+
+### Tests
+
+- `tokenizer-differential.test.sh` §7 (68 checks): the two older readings, on a copy with only them, read 8000 unclosed `${` and 20,000 unclosed heredocs in under 3 s, and a line 4× as long in under 8× the CPU time, for both gates; the commands are read from a file inside one perl, since Linux refuses an environment variable over 128 KB. Three canaries each put one quadratic loop back and turn the check red.
+
 ## [4.0.0] - 2026-11-14
 
 ### Changed (BREAKING)

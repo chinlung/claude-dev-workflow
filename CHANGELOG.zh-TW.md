@@ -4,6 +4,16 @@
 
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
+## [1.19.2] - 2026-11-14
+
+### Fixed
+
+- **openspec-superpowers-workflow 4.0.0 → 4.0.1、pr-closeout 1.1.1 → 1.1.2**：兩支閘門的兩種舊讀法改為線性時間。
+  - 共用區段有三個二次方迴圈：未收尾的 `${` 每個都掃到結尾、heredoc 讀法在每個字元複製整行剩餘部分、未收尾的 heredoc 每個都把其後所有行收起來再重掃。
+  - 50 段各帶 1100 個未收尾 `${` 的 `bash -c` 原本要 14 秒，超過 archive-gate 的 10 秒時限；逾時後 harness 放棄這個 hook，歸檔照常執行。
+  - 同樣的輸入現在都在 0.5 秒內，回報內容不變：以生成的命令雙向比對、以手寫的命令逐位元組比對。
+  - merge 閘門的 25 秒預算現在也計入讀命令的時間。詳見兩個 plugin 的 CHANGELOG。
+
 ## [1.19.1] - 2026-11-14
 
 ### Fixed
