@@ -55,9 +55,10 @@ done
 # 1b. the lexer alone: the reading loop cut down to its third pass. It must miss nothing bash runs in the
 #     grammars either; its mutants (5) and the wide inputs (6) run on these copies, because the two older
 #     readings would catch most of what a broken lexer misses.
-lexer_only() {   # <gate> <copy>: 0 when the copy was made and differs from the gate
-  perl -pe 's/^for my \$mode \(0, 1, 2\) \{$/for my \$mode (2) {/' "$1" > "$2" && ! cmp -s "$1" "$2"
+readings_only() {   # <modes> <gate or parser> <copy>: 0 when the copy was made and differs from its source
+  MODES=$1 perl -pe 's/^for my \$mode \(0, 1, 2\) \{$/for my \$mode ($ENV{MODES}) {/' "$2" > "$3" && ! cmp -s "$2" "$3"
 }
+lexer_only() { readings_only 2 "$@"; }
 AGL="$WORK/ag-lexer.sh"; PMGL="$WORK/pmg-lexer.sh"
 lexer_only "$AG" "$AGL" && lexer_only "$PMG" "$PMGL" || bad "lexer alone — the reading loop `for my \$mode (0, 1, 2)` is not in both gates"
 expect "archive-gate's lexer alone misses nothing bash runs" 0 --kind ag --source "$AGL" --n 400 --min-exercised 350
@@ -168,9 +169,9 @@ ARITH_AG=$(perl -e 'print "echo " . (q{$(( } x 40) . "1" . (" ))" x 40) . "; ope
 ARITH_PMG=$(perl -e 'print "echo " . (q{$(( } x 40) . "1" . (" ))" x 40) . "; gh pr merge 3 --repo o/r"')
 parser_of "$AG" > "$WORK/ag-parser.pl"; parser_of "$PMG" > "$WORK/pmg-parser.pl"
 parser_of "$AGL" > "$WORK/ag-lexer.pl"; parser_of "$PMGL" > "$WORK/pmg-lexer.pl"
-timed() {   # <label> <want rc> <want text in the output, or ""> <within args…>
+timed() {   # <label> <want rc> <want text in the output, or ""> <within args…> (RUN=inproc: <inproc args…>)
   local label=$1 want=$2 text=$3 out rc; shift 3
-  out=$(within "$@" 2>/dev/null); rc=$?
+  out=$(${RUN:-within} "$@" 2>/dev/null); rc=$?
   if [ "$rc" = "$want" ] && { [ -z "$text" ] || [[ $out == *"$text"* ]]; }; then ok "$label"; else bad "$label — exit $rc, output [${out:0:80}]"; fi
 }
 timed "archive-gate: 40 nested unclosed \"\$( in under 5 s" 0 "" 5 AG_CMD "$UNCLOSED" "$WORK/ag-parser.pl"
@@ -179,7 +180,7 @@ timed "pr-merge-gate: 40 nested unclosed \"\$( in under 5 s" 0 "" 5 PMG_CMD "$UN
 timed "pr-merge-gate: 40 nested \$(( in under 5 s, the merge after them seen" 0 "o/r 3 -" 5 PMG_CMD "$ARITH_PMG" "$WORK/pmg-parser.pl"
 # Wide inputs: every loop of the lexer counts against one step limit and $(( nests no deeper than 50, so
 # the lexer reads no command for longer than the hook's timeout (archive-gate 10 s, the merge gate 30 s).
-# The unclosed ${ go to the lexer alone: the two older readings are themselves quadratic on them (follow-up).
+# The unclosed ${ go to the lexer alone here; the two older readings are timed on their own in 7.
 WIDE_ARITH=$(perl -e 'print "echo ", q{$((} x 15000, "1", q{))} x 15000')
 WIDE_PARAM=$(perl -e 'print "gh pr merge 3 --repo o/r; echo ", q[${a:-] x 8000')
 DEEP60=$(perl -e 'print "echo ", q{$((} x 60, "1", q{))} x 60, "; gh pr merge 3 --repo o/r"')
@@ -217,6 +218,53 @@ else
   if [[ $out == *"o/r 3 -"* && $out != *"- - -"* ]]; then ok "pr-merge-gate under the step limit: the merge, nothing unread"; else bad "pr-merge-gate under the step limit — output [${out:0:80}]"; fi
 fi
 
+# 7. the two older readings in linear time. Each was quadratic somewhere: a ${ that never closes was
+#    scanned to the end of the text once per ${, the heredoc pass copied the rest of the line at each
+#    character, and a heredoc that never closes collected every later line before they were scanned
+#    again, once per heredoc (8000 ${a:- took 17 s, 20000 such heredocs over a minute). Timed on a copy
+#    with only those two readings, the command read from a file inside one perl (Linux refuses an
+#    environment variable over 128 KB), by CPU time; each canary puts one quadratic loop back.
+inproc() {   # <seconds> <parser file> <env var> <command file> [<cpu file>]: the parser's output; exit 142 past the time
+  perl -e 'my ($s, $pf, $var, $cf, $cpu) = @ARGV; alarm $s;
+    my $p = do { local $/; open my $f, "<", $pf or die; <$f> };
+    $ENV{$var} = do { local $/; open my $f, "<", $cf or die; <$f> };
+    my $t = (times)[0]; eval $p; die $@ if $@;
+    if ($cpu) { open my $o, ">", $cpu or die; printf $o "%.4f\n", (times)[0] - $t; }' "$@"
+}
+fast() { RUN=inproc timed "$@"; }   # <label> <want rc> <want text, or ""> <inproc args…>
+linear() {   # <label> <want 0 linear | 1 not> <parser> <env var> <file n> <file 4n>: 4n under 10 s and under 6× the time of n
+  # (measured on 150,000 → 600,000 characters: the linear parsers take 4.0×, the substr canary 12.7×; at
+  # 75,000 → 300,000 a slower CI machine measured the canary at 7.5× and a threshold of 8 let it through)
+  local label=$1 want=$2 p=$3 v=$4 got t1 t4
+  inproc 10 "$p" "$v" "$5" "$WORK/cpu1" > /dev/null 2>&1 && inproc 10 "$p" "$v" "$6" "$WORK/cpu4" > /dev/null 2>&1 \
+    && t1=$(cat "$WORK/cpu1") && t4=$(cat "$WORK/cpu4") && perl -e 'exit !($ARGV[1] < 6 * ($ARGV[0] > 0.05 ? $ARGV[0] : 0.05))' "$t1" "$t4"
+  got=$?; [ "$got" = 0 ] || got=1
+  if [ "$got" = "$want" ]; then ok "$label"; else bad "$label — n ${t1:-?} s, 4n ${t4:-?} s"; fi
+  rm -f "$WORK/cpu1" "$WORK/cpu4"
+}
+for g in ag pmg; do readings_only "0, 1" "$WORK/$g-parser.pl" "$WORK/$g-older.pl" || bad "$g: the readings loop is not where this test narrows it"; done
+perl -e 'print "openspec archive foo; echo ", q[${a:-] x 8000' > "$WORK/ag-brace"
+printf '%s' "$WIDE_PARAM" > "$WORK/pmg-brace"
+perl -e 'print "openspec archive foo\n", map { "echo <<EOF$_\n" } 1 .. 20000' > "$WORK/ag-here"
+perl -e 'print "gh pr merge 3 --repo o/r\n", map { "echo <<EOF$_\n" } 1 .. 20000' > "$WORK/pmg-here"
+for n in 150000 600000; do
+  perl -e 'print "openspec archive foo; echo ", "x" x $ARGV[0]' $n > "$WORK/ag-long-$n"
+  perl -e 'print "gh pr merge 3 --repo o/r; echo ", "x" x $ARGV[0]' $n > "$WORK/pmg-long-$n"
+done
+fast   "archive-gate's older readings: 8000 unclosed \${ in under 3 s" 0 foo 3 "$WORK/ag-older.pl" AG_CMD "$WORK/ag-brace"
+fast   "pr-merge-gate's older readings: 8000 unclosed \${ in under 3 s" 0 "o/r 3 -" 3 "$WORK/pmg-older.pl" PMG_CMD "$WORK/pmg-brace"
+fast   "archive-gate's older readings: 20000 heredocs that never close in under 3 s" 0 foo 3 "$WORK/ag-older.pl" AG_CMD "$WORK/ag-here"
+fast   "pr-merge-gate's older readings: 20000 heredocs that never close in under 3 s" 0 "o/r 3 -" 3 "$WORK/pmg-older.pl" PMG_CMD "$WORK/pmg-here"
+linear "archive-gate's older readings: a line 4× as long takes under 6× the time" 0 "$WORK/ag-older.pl" AG_CMD "$WORK/ag-long-150000" "$WORK/ag-long-600000"
+linear "pr-merge-gate's older readings: a line 4× as long takes under 6× the time" 0 "$WORK/pmg-older.pl" PMG_CMD "$WORK/pmg-long-150000" "$WORK/pmg-long-600000"
+perl -pe 's/if \(!exists \$brace\{\$i\}\) \{/if (1) {/' "$WORK/pmg-older.pl" > "$WORK/q-brace.pl"
+perl -pe 's{!\$left\{\$hd\[0\]\[0\]\}}{!grep { s/^\\t+//r eq \$hd[0][0] } \@todo}' "$WORK/pmg-older.pl" > "$WORK/q-here.pl"
+perl -ne 'next if /^\s*pos\(\$l\) = \$i;/; s/\$l =~ \/\\G<</substr(\$l, \$i) =~ \/^<</; print' "$WORK/pmg-older.pl" > "$WORK/q-pos.pl"
+for c in brace here pos; do cmp -s "$WORK/pmg-older.pl" "$WORK/q-$c.pl" && bad "canary [quadratic $c]: what it puts back is not in the parser"; done
+fast   "canary [quadratic brace]: scanning each \${ again runs out of time" 142 "" 3 "$WORK/q-brace.pl" PMG_CMD "$WORK/pmg-brace"
+fast   "canary [quadratic here]: looking through the lines left for each heredoc runs out of time" 142 "" 3 "$WORK/q-here.pl" PMG_CMD "$WORK/pmg-here"
+linear "canary [quadratic pos]: copying the rest of the line at each character is not linear" 1 "$WORK/q-pos.pl" PMG_CMD "$WORK/pmg-long-150000" "$WORK/pmg-long-600000"
+
 wait
 for i in $(seq 1 "$N"); do
   head -4 "$WORK/job-$i.out" 2>/dev/null | sed 's/^/    /'
@@ -226,7 +274,7 @@ done
 
 # ---- summary ----
 # written out, not counted as the checks run: a check that is skipped must lower the count
-MIN=59
+MIN=68
 if [ "$((PASS + FAIL))" -lt "$MIN" ]; then bad "ran $((PASS + FAIL)) checks, expected at least $MIN"; fi
 echo "tokenizer-differential: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]
