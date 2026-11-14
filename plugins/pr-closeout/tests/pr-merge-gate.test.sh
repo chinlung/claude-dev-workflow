@@ -229,6 +229,9 @@ printf '#!/bin/bash\n[ -n "${PMG_CMD:-}" ] && sleep 1.5\nexec %q "$@"\n' "$(comm
 FAKE_RC=0 PR_MERGE_GATE_BUDGET=2 PATH="$tmp/slowperl:$PATH" gate deny "slow reading, budget spent" "$(bash_in 'gh pr merge 3 --repo o/r')"
 reason_has "slow reading: says so" "時間"
 called "" "slow reading: ready not called"
+# the clock is the hook's own: a start_ms in the environment (here one at the epoch) spends no budget
+FAKE_RC=0 start_ms=0 gate allow "MCP merge, start_ms in the environment" "$(mcp_in '{"owner":"o","repo":"r","pullNumber":9}')"
+called "ready o/r 9" "start_ms in the environment: ready ran"
 
 # ── not a merge: allowed without asking ──────────────────────────────────────────────────────────
 gate allow "merge in a commit message" "$(bash_in 'git commit -m "gh pr merge later"')"
@@ -341,7 +344,7 @@ lexer_case "a shift inside \$[ … ]"                  $'echo $[1<<2]\ngh pr mer
 FAKE_RC=0 gate allow "merge words in a comment are still checked" "$(bash_in '# gh pr merge 3 --repo o/r')"
 called "ready o/r 3" "comment text: args"
 
-MIN_PASS=240
+MIN_PASS=242
 if [ "$pass" -lt "$MIN_PASS" ] && [ "${STOP_ON_FAIL:-0}" != 1 ]; then failed "only $pass checks passed, expected at least $MIN_PASS"; fi
 echo "pr-merge-gate: $pass passed, $fail failed"
 
@@ -418,7 +421,8 @@ if [ "${NO_MUTANTS:-0}" != 1 ]; then
   mutant eval-mark     "[a substitution in an eval string]"   's/push \@queue, join\(.*\) =~ tr\/\\x01\/\\x02\/r; last;/push \@queue, join(" ", \@\$s[\$k + 1 .. \$#\$s]); last;/'
   mutant budget        "[two merges, budget spent]"   's/if \[ "\$left" -lt 1000 \]; then/if false; then/'
   mutant clock-start   "[slow reading, budget spent]" 's/^\s*start_ms=\$\(now_ms\)   # the budget below counts the reading of the command too$//'
-  MUT_WANT_N=43
+  mutant clock-own     "[MCP merge, start_ms in the environment]" 's/^start_ms=$//'
+  MUT_WANT_N=44
   if [ "$mut_n" != "$MUT_WANT_N" ]; then echo "FAIL: $mut_n of $MUT_WANT_N mutants ran"; mut_bad=1; fi
   [ "$mut_bad" = 0 ] || fail=$((fail + 1))
 fi

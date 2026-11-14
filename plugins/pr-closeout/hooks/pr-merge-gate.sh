@@ -31,8 +31,10 @@ deny() {
   fi
   exit 0
 }
-# Milliseconds via perl: /bin/bash 3.2 has no EPOCHREALTIME. For the budget below.
+# Milliseconds via perl: /bin/bash 3.2 has no EPOCHREALTIME. For the budget below; start_ms is this
+# hook's own, never one the environment brought.
 now_ms() { perl -MTime::HiRes=time -e 'printf "%d", time * 1000'; }
+start_ms=
 
 input=$(cat) || allow
 case $input in *[Mm][Ee][Rr][Gg][Ee]*) ;; *) allow ;; esac   # any case: enablePullRequestAutoMerge

@@ -12,11 +12,11 @@ All notable changes to the `pr-closeout` plugin will be documented in this file.
   - a heredoc that never closes collected every later line before they were scanned again, once per such heredoc (10,000 of them took 6.4 s per reading).
 
   Now one pass closes every `${` nested in the first (a stack), the heredoc pattern is matched where the scan stands (`\G`), and a heredoc whose delimiter line is not among the lines left is put back at once. The same inputs take 0.03 s, 0.47 s and 0.09 s. What the readings report is unchanged: for each reading, the old and new parser were compared both ways on 144 runs of 1,500 generated commands (`--superset-of` each way, default grammar, `--chars` and `--known-gaps`, eight seeds) and byte for byte on 108 hand-written shapes, with no difference. The shared section is the same in openspec-superpowers-workflow's archive-gate.
-- **Reading the command counts against the budget.** The clock started after the command was read; it now starts before.
+- **Reading the command counts against the budget.** The clock started after the command was read; it now starts before. The hook clears `start_ms` first, so the MCP path, which starts the clock later, never takes a value from the environment.
 
 ### Tests
 
-- `pr-merge-gate.test.sh` (240 checks, 43 mutants): a `perl` that takes 1.5 s to read the command leaves under a second of a 2 s budget, and ready is not run (red at 1.1.1); mutant `clock-start` puts the clock back after the reading. The time checks for the older readings are in openspec-superpowers-workflow's `tokenizer-differential.test.sh`.
+- `pr-merge-gate.test.sh` (242 checks, 44 mutants): a `perl` that takes 1.5 s to read the command leaves under a second of a 2 s budget, and ready is not run (red at 1.1.1); an MCP merge with `start_ms=0` in the environment still runs ready. Mutants `clock-start` (the clock after the reading) and `clock-own` (no clearing). The time checks for the older readings are in openspec-superpowers-workflow's `tokenizer-differential.test.sh`.
 
 ## [1.1.1] - 2026-11-14
 
