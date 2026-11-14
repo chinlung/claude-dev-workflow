@@ -211,4 +211,38 @@ lexer 回傳**命令清單**：每個命令是詞的陣列（引號已解開、`
 
 ### 11.5 之後
 
-第二步不再排程。要重啟的前提是 lexer 能判斷 bash 會丟棄哪一行（gap 0），那等於實作 bash 的語法，不在這個專案的範圍。舊讀法的代價（每支 gate 約 100 行、對極長命令是二次方時間）已記在 follow-ups。（2026-11-14 補記：二次方時間已修成線性，輸出不變——openspec-superpowers-workflow 4.0.1、pr-closeout 1.1.2 的 CHANGELOG。）
+第二步不再排程。要重啟的前提是 lexer 能判斷 bash 會丟棄哪一行（gap 0），那等於實作 bash 的語法，不在這個專案的範圍。舊讀法的代價（每支 gate 約 100 行、對極長命令是二次方時間）已記在 follow-ups。（2026-11-14 補記：二次方時間已修成線性，輸出不變——openspec-superpowers-workflow 4.0.1、pr-closeout 1.1.2 的 CHANGELOG。）上句「等於實作 bash 的語法」不成立，見 §12；結論不變。
+
+## 12. gap 0 與根因：停止擴充文字讀法（2026-11-14～15）
+
+### 12.1 gap 0 的實測
+
+以 bash 為 oracle（`-c` 與 `eval`、3.2 與 5.3 結果相同）：
+
+- 只有 `name=( … )` 括號內的語法錯誤（`<<`、`(`、`|`、`;`、`&`、跨行收尾的引號）讓 bash 丟掉那一行、續跑下一行；`)`、`fi`、`then`、`;;` 等其他語法錯誤整串中止，一行都不跑。
+- 真的 merge gate 對 8 種形狀放行而 bash 執行了 merge；archive gate 由 harness `--gap 0` 找到同類反例。
+
+### 12.2 試做：問 `bash -n`
+
+「要知道 bash 丟哪一行就得實作 bash 的語法」不成立：`bash -n` 不執行就能指出每個語法錯誤的行號。試做（未合併，diff 存在本機 scratchpad）在共用區段對每段多行文字跑一次 `bash -n`，把錯誤行之後到下一個錯誤行之前另當一段文字給三種讀法再讀。
+
+- 有效：290／290 個 gap 0 反例 `bash -n` 都指出；64 輪 harness（兩支 gate × bash 3.2／5.3 × 預設語法／`--chars`）由 290 個反例降為 0。
+- 但它立刻長出一連串補強，每項都是審查或量測逼出來的：
+  - 判定必須讀 stderr，不能讀 exit code（bash 3.2 從檔案或 stdin 讀時，丟行後 rc 為 0），而 CI 的 bash 5 測不到這個退化；
+  - 文字經暫存檔（`-c` 在 Linux 有 128 KB 單一參數上限，stdin 同時讀寫有死鎖風險）；
+  - 遞迴推剩餘文字是二次方（canary 13 s 對 0.7 s），改為不重疊的段落；
+  - 段落佔用為遞迴設的 50 段上限，archive gate 的 FIFO 因此讓排在後面的替換讀不到（fail-open），又要另計；
+  - `require File::Temp` 佔新增成本的 65%。
+- 修完後重跑同一組 64 輪，又出現一個無關的新反例：bash 3.2 下，行尾 `\` 碰到 EOF，舊讀法讀出的名稱與 bash 不同（`--chars` seed 2）。
+
+### 12.3 根因
+
+閘門在命令執行前讀的是文字，再去預測 bash 會執行什麼。預測要準，就要 bash 的完整語法，加上版本差異（3.2 對 5.3）與執行期狀態（alias、extglob、函式）——沒有上限。兩支 gate 至今 12 個 commit、8 輪 tokenizer 修補（#48、#51、#55、#57、#59、#60、#63，加上這次），parser 與 harness 約 1,750 行，每次擴大語法都找到新形狀。`bash -n` 只回答「哪一行被丟」一個子問題，其餘照樣要猜。
+
+讀事實的地方本來就在別處：差分 harness 的 oracle 是 PATH 上記下 argv 的 `gh`／`openspec` stub——在執行點看 bash 交出的參數，與文字無關。但這條路在 Claude Code 裡走不通：plugin 的 `bin/` 附加在 PATH 之後，官方文件明寫 plugin 不能遮蔽系統命令（code.claude.com/docs/en/plugins/components.md「Executables」）。用 SessionStart hook 寫 `CLAUDE_ENV_FILE` 把 shim 排到前面，等於刻意繞過那條平台規則，且子代理與中途重載的行為未載明，不採用。合併真正讀得到事實的地方是 GitHub 伺服器端的分支保護與 ruleset。
+
+### 12.4 決定
+
+不再擴充文字讀法（含 `bash -n` 試做）。兩支 gate 防的是代理打錯，`a=(-( <<EOF` 這類形狀代理不會自然寫出；已知缺口照舊寫在 README 的「攔不到什麼」，gap 0 由 harness 的 `--gap 0` 釘住，必須擋住的合併靠分支保護。harness 之後只用來確認改動沒有讓既有讀法變差，不再擴大語法去找新形狀。
+
+重啟的前提：平台提供在執行點檢查的機制（例如 Bash 工具交出 argv，或允許 plugin 以 hook 包住特定命令）。屆時以 harness 的 stub 為藍本，閘門會比文字讀法簡單得多。
