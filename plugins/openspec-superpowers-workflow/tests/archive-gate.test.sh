@@ -101,6 +101,10 @@ contains "template mv → deny" "$out" "$DENY"
 # 引號與絕對路徑的 mv（Review Focus 1）
 out=$(run_gate "$(input_json s5 "$P" "mv \"$P/openspec/changes/foo/\" \"$P/openspec/changes/archive/2026-11-09-foo\"")" "$T" "$P")
 contains "quoted absolute mv → deny" "$out" "$DENY"
+# the mv OpenSpec 2.0's openspec-archive-change skill runs: both paths quoted and absolute, no trailing
+# slash, its mkdir a call of its own
+out=$(run_gate "$(input_json s5b "$P" "mv \"$P/openspec/changes/foo\" \"$P/openspec/changes/archive/2026-11-14-foo\"")" "$T" "$P")
+contains "OpenSpec 2.0 archive skill's mv → deny" "$out" "$DENY"
 
 # bulk：bar 已核查、foo 沒有 → deny 並點名 foo（Review Focus 5）
 P=$WORK/p3; T=$WORK/t3; mkdir -p "$T"; verified "$P" bar; make_change "$P" foo
@@ -325,7 +329,7 @@ out=$(run_gate "$(input_json s13 "$P" 'true # note; openspec archive foo --yes')
 contains "older readings: [true # note; openspec archive] → deny" "$out" "$DENY"
 
 # ---- summary ----
-MIN=124
+MIN=125
 if [ "$((PASS + FAIL))" -lt "$MIN" ]; then
   echo "FAIL: ran $((PASS + FAIL)) assertions, expected at least $MIN"; FAIL=$((FAIL+1))
 fi

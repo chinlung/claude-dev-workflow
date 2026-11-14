@@ -12,44 +12,46 @@ They NEVER overlap. Follow the phase sequence below for every feature.
 
 ## Prerequisites & Conventions
 
-### Tool availability — CLI vs slash command
+### Tool availability — CLI vs skills
 
 Two interfaces to OpenSpec exist, and the project may have either, both, or neither:
 
 - **`openspec` CLI** — installed globally via npm (`@fission-ai/openspec`). Commands: `openspec new change <name>`, `openspec status --change <name> --json`, `openspec instructions <artifact> --change <name> --json`, `openspec instructions apply --change <name> --json` (state, progress and task list of the implementation phase), `openspec validate`, `openspec archive <name>`, `openspec list`.
-- **`/opsx:*` slash commands** — project-local prompt expansions at `.claude/commands/opsx/*.md`. These are NOT built in; they ship with an OpenSpec init for Claude Code and wrap the CLI with a scripted workflow. Which ones exist depends on the profile chosen at `openspec init`: `core` ships `/opsx:propose`, `/opsx:explore`, `/opsx:apply`, `/opsx:update`, `/opsx:sync`, `/opsx:archive`; a custom profile can add `/opsx:new`, `/opsx:continue`, `/opsx:ff`, `/opsx:verify`, `/opsx:bulk-archive`, `/opsx:onboard`. The section "`/opsx:*` commands by phase" below says in which phase each may be used.
+- **OpenSpec skills (`/openspec-*`)** — project-local skills that `openspec init` installs in `.agents/skills/openspec-*/` (OpenSpec 2.0); Claude Code reads them through the links in `.claude/skills/`. They are NOT built in; each wraps the CLI with a scripted workflow and is invoked by name (`/openspec-propose`) or by asking for the work. Which ones exist depends on the profile chosen at `openspec init`: `core` ships `/openspec-propose`, `/openspec-explore`, `/openspec-apply-change`, `/openspec-update-change`, `/openspec-sync-specs`, `/openspec-archive-change`; a custom profile can add `/openspec-new-change`, `/openspec-continue-change`, `/openspec-ff-change`, `/openspec-verify-change`, `/openspec-bulk-archive-change`, `/openspec-onboard`. The section "OpenSpec skills by phase" below says in which phase each may be used.
+- **Left over from OpenSpec 1.x** — a project set up before 2.0 may still have `.claude/commands/opsx/` (the `/opsx:*` commands, which 2.0 removed; each became the skill of the same workflow). Run `openspec update` there: it installs the skills and removes the old command files it generated (ones someone edited are kept and listed). Commit the result.
 
 **How to tell which is available**:
 ```bash
-which openspec                        # CLI present?
-ls .claude/commands/opsx/ 2>/dev/null  # slash commands present?
-ls openspec/ 2>/dev/null               # project initialized?
+which openspec && openspec --version                # CLI present? 2.x?
+ls .claude/skills/ 2>/dev/null | grep '^openspec-'  # skills present?
+ls .claude/commands/opsx/ 2>/dev/null               # 1.x commands left? then openspec update
+ls openspec/ 2>/dev/null                            # project initialized?
 ```
 
 If the project is not initialized, run `openspec init .` first (note: no `--here` flag — use `.` or an explicit path).
 
-**Command substitution table** — when `/opsx:*` is unavailable, use the CLI equivalents:
+**Skill substitution table** — when the skills are unavailable, use the CLI equivalents:
 
-| Slash command | CLI equivalent |
+| Skill | CLI equivalent |
 |---|---|
-| `/opsx:propose <name>` | `openspec new change <name>` then loop through `openspec instructions <artifact-id> --change <name> --json` to fill each artifact |
-| `/opsx:apply` (or start implementation) | `openspec instructions apply --change <name> --json` returns `state` (`blocked` / `ready` / `all_done`), `progress` and the task list; then implement the tasks yourself (Phase 4) |
-| `/opsx:archive <name>` | `openspec archive <name> --yes` |
+| `/openspec-propose <name>` | `openspec new change <name>` then loop through `openspec instructions <artifact-id> --change <name> --json` to fill each artifact |
+| `/openspec-apply-change` (or start implementation) | `openspec instructions apply --change <name> --json` returns `state` (`blocked` / `ready` / `all_done`), `progress` and the task list; then implement the tasks yourself (Phase 4) |
+| `/openspec-archive-change <name>` | `openspec archive <name> --yes` |
 
-### `/opsx:*` commands by phase
+### OpenSpec skills by phase
 
-OpenSpec's slash commands are actions on a change, not phases. Use each one only in the phase shown:
+OpenSpec's skills are actions on a change, not phases. Use each one only in the phase shown:
 
-| Command | Phase | Rule |
+| Skill | Phase | Rule |
 |---|---|---|
-| `/opsx:propose`, `/opsx:new`, `/opsx:continue`, `/opsx:ff` | 1 | Creates proposal, specs, design and tasks. `ff` writes all four at once; treat design.md and tasks.md as drafts that Phases 2 and 3 overwrite |
-| `/opsx:update` | 1–3 | Patches existing planning artifacts in place. Not from Phase 4 on: tasks.md is then the execution record, Phase 5 forbids spec edits and Phase 6a is a clean rewrite |
-| `/opsx:explore` | 0–2 | Thinking before and during design. From Phase 4 on it must not edit any spec file |
-| `/opsx:apply` | 4 | Works through tasks.md and ticks boxes, consistent with the Phase 4 rules |
-| `/opsx:verify` | 5 entry, 6 input | Its findings go into review-notes.md with a tag. It lists unchecked tasks as CRITICAL; for lines that carry a `skip:` reason that is expected |
-| `/opsx:sync` | 6, after 6b5 | Merges delta specs into the main specs. Archiving already does this, so it is rarely needed. Never before Phase 6 |
-| `/opsx:archive`, `/opsx:bulk-archive` | 6c | The archive gate applies. In a bulk run every change needs a fresh `reconcile-check.cjs` pass (this plugin's `verify`, not `/opsx:verify`) |
-| `/opsx:onboard` | none | A tutorial, not part of the workflow |
+| `/openspec-propose`, `/openspec-new-change`, `/openspec-continue-change`, `/openspec-ff-change` | 1 | Creates proposal, specs, design and tasks. `ff` writes all four at once; treat design.md and tasks.md as drafts that Phases 2 and 3 overwrite |
+| `/openspec-update-change` | 1–3 | Patches existing planning artifacts in place. Not from Phase 4 on: tasks.md is then the execution record, Phase 5 forbids spec edits and Phase 6a is a clean rewrite |
+| `/openspec-explore` | 0–2 | Thinking before and during design. From Phase 4 on it must not edit any spec file |
+| `/openspec-apply-change` | 4 | Works through tasks.md and ticks boxes, consistent with the Phase 4 rules |
+| `/openspec-verify-change` | 5 entry, 6 input | Its findings go into review-notes.md with a tag. It lists unchecked tasks as CRITICAL; for lines that carry a `skip:` reason that is expected |
+| `/openspec-sync-specs` | 6, after 6b5 | Merges delta specs into the main specs. Archiving already does this, so it is rarely needed. Never before Phase 6 |
+| `/openspec-archive-change`, `/openspec-bulk-archive-change` | 6c | The archive gate applies. In a bulk run every change needs a fresh `reconcile-check.cjs` pass (this plugin's `verify`, not `/openspec-verify-change`) |
+| `/openspec-onboard` | none | A tutorial, not part of the workflow |
 
 ### Path convention
 
@@ -103,10 +105,10 @@ Text inside HTML comments and code fences does not count. Matching is deliberate
 
 ## Phase 1: Spec Definition (OpenSpec leads)
 
-**Trigger**: User says "new feature", "propose", "add feature", or runs `/opsx:propose`
+**Trigger**: User says "new feature", "propose", "add feature", or invokes `/openspec-propose`
 
 **Actions**:
-1. Run `/opsx:propose <feature-name>` (or `openspec new change <feature-name>` if the slash command is not installed — see Prerequisites) to create `openspec/changes/<feature-name>/`
+1. Run `/openspec-propose <feature-name>` (or `openspec new change <feature-name>` if the skill is not installed — see Prerequisites) to create `openspec/changes/<feature-name>/`
 2. Using `openspec instructions <artifact-id> --change <feature-name> --json`, generate each artifact in dependency order:
    - `proposal.md` — the "why" and capability list (**primary user-reviewed artifact**)
    - `specs/<capability>/spec.md` — requirements with SHALL/MUST + scenarios (**primary user-reviewed artifact**, one file per capability listed in proposal)
@@ -355,16 +357,16 @@ node ${CLAUDE_PLUGIN_ROOT}/skills/openspec-superpowers-workflow/validators/recon
 | `rejected` | 不得歸檔；向使用者報告具體問題並等待處置指示 |
 | `needs_user_decision` | 停止歸檔流程，向使用者提出具體問題並等待裁決 |
 
-**此 gate 不可跳過。** 未取得 `verified` 裁決，不得執行 `/opsx:archive`。歸檔閘門 hook 會在歸檔命令前執行 `reconcile-check.cjs verify`，沒有新鮮的 pass verdict 就擋下。
+**此 gate 不可跳過。** 未取得 `verified` 裁決，不得執行 `/openspec-archive-change`。歸檔閘門 hook 會在歸檔命令前執行 `reconcile-check.cjs verify`，沒有新鮮的 pass verdict 就擋下。
 
 ### Step 6c: Archive
 
-Run `/opsx:archive <feature-name>` (or `openspec archive <feature-name> --yes` if the slash command is not installed) to:
+Run `/openspec-archive-change <feature-name>` (or `openspec archive <feature-name> --yes` if the skill is not installed) to:
 - Merge final requirements into `openspec/specs/<capability>/spec.md` (OpenSpec source of truth)
 - Move the change folder to `openspec/changes/archive/<YYYY-MM-DD>-<feature-name>/` — the archive command auto-prefixes with the archive date, so the folder name is NOT just the feature name
 - `review-notes.md` is preserved inside the archive for historical reference
 - Note: archive warns when tasks.md has unchecked items (`Warning: N incomplete task(s) found`; it prints the count only, not the lines). After the snapshot every unchecked item carries a `skip:` reason, so the warning is expected; whether a line lacks a reason is decided by R6 in Step 6b5 and by the archive gate, not by this warning. When any `skip:` line is present, a non-interactive `openspec archive` exits 1 without `--yes` (it cannot read the confirmation), which is why the CLI fallback keeps `--yes`
-- The archive gate hook runs before both `openspec archive` and the OpenSpec 1.16 `/opsx:archive` template's `mkdir` + `mv` into `changes/archive/`, and denies either one without a fresh pass verdict from Step 6b5. Prefix the command with `OPENSPEC_ARCHIVE_OK=1` to bypass it, and only when the user explicitly asks
+- The archive gate hook runs before both `openspec archive` and the `mkdir` + `mv` into `changes/archive/` that the `/openspec-archive-change` and `/openspec-bulk-archive-change` skills run, and denies either one without a fresh pass verdict from Step 6b5. Prefix the command with `OPENSPEC_ARCHIVE_OK=1` to bypass it, and only when the user explicitly asks
 
 ### Step 6d: Constitution updates (if any)
 
@@ -420,7 +422,7 @@ Should I extract the reusable portions to shared-specs?
 | Situation | Tool | Action |
 |-----------|------|--------|
 | Project not initialized | OpenSpec | `openspec init .` (no `--here` flag) |
-| New feature/change | OpenSpec | `/opsx:propose <name>` or `openspec new change <name>` |
+| New feature/change | OpenSpec | `/openspec-propose <name>` or `openspec new change <name>` |
 | Refine requirements | OpenSpec | Edit `openspec/changes/<name>/proposal.md` and `specs/<capability>/spec.md` |
 | Deep design thinking | Superpowers | `/brainstorming` → OVERWRITE `openspec/changes/<name>/design.md` |
 | Task breakdown | Superpowers | `/writing-plans` → OVERWRITE `openspec/changes/<name>/tasks.md` |
@@ -428,7 +430,7 @@ Should I extract the reusable portions to shared-specs?
 | Code review feedback | Neither | Record in `openspec/changes/<name>/review-notes.md`, fix code only |
 | Before archive | OpenSpec | Reconcile specs (clean rewrite — NOT incremental patches) |
 | Validate during authoring | OpenSpec | `openspec validate <name> --strict` |
-| Archive completed work | OpenSpec | `/opsx:archive <name>` or `openspec archive <name> --yes` |
+| Archive completed work | OpenSpec | `/openspec-archive-change <name>` or `openspec archive <name> --yes` |
 | Cross-cutting constitution rules | OpenSpec | Update `openspec/config.yaml` `context:` / `rules:` (NOT the feature spec) |
 | Bug fix (small, no spec impact) | Superpowers | Direct fix with TDD, skip OpenSpec entirely |
 | Bug fix (behavioural, spec impact) | OpenSpec | `openspec new change <bugfix-name>`, then Superpowers for fix |

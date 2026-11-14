@@ -1,6 +1,7 @@
 'use strict';
-// What counts as a task in tasks.md: the same line pattern OpenSpec 1.16.1 uses (dist/utils/task-progress.js,
-// TASK_LINE_PATTERN), so reconcile-check R6 and openspec-archive-stats agree with `openspec instructions apply`.
+// What counts as a task in tasks.md: the same line pattern OpenSpec uses (dist/utils/task-progress.js,
+// TASK_LINE_PATTERN, the same in 1.16.1 and 2.0.0; 2.0 joins a wrapped task's lines into its text, which
+// leaves the count alone), so reconcile-check R6 and openspec-archive-stats agree with `openspec instructions apply`.
 // Bullets `-`, `*`, `+`, `1.`, `1)` all count, at any indentation; the box is done only when it holds x or X,
 // so `[~]`, `[]` and `[1]` are unfinished; a bracket followed by `(` or `[` is a Markdown link, not a task,
 // except a whitespace-only box which still counts. Unanchored at the end so CRLF lines match.

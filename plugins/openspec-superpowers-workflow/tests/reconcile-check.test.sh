@@ -141,7 +141,7 @@ done
 P=$WORK/p11u; D=$(make_change "$P" foo); printf -- '- [ ] 1.2 later — skip：...\n' >> "$D/tasks.md"; check "$D"
 status "R6: full-width colon with only punctuation fail" R6 fail
 
-# OpenSpec 1.16 的 task 定義（final review r1）：清單符號 - * + 1. 1) 都算，框內不是 x/X 的都算未完成，連結 bullet 不算
+# OpenSpec 的 task 定義（1.16 與 2.0 相同；final review r1）：清單符號 - * + 1. 1) 都算，框內不是 x/X 的都算未完成，連結 bullet 不算
 for form in '* [ ] 1.2 b' '+ [ ] 1.2 b' '1. [ ] 1.2 b' '1) [ ] 1.2 b' '- [~] 1.2 deferred' '- [] 1.2 b'; do
   P=$WORK/p11-$RANDOM; D=$(make_change "$P" foo); printf '%s\n' "$form" >> "$D/tasks.md"; check "$D"
   status "R6: unchecked form [$form] fail" R6 fail

@@ -16,7 +16,7 @@ const USAGE = 'Usage: openspec-archive-stats.cjs --root <dir> [--root <dir> …]
 // The task definition and the skip rule are shared with reconcile-check R6 (one module, same pattern as the OpenSpec CLI).
 const { parseTaskLines } = require('../skills/openspec-superpowers-workflow/validators/task-line.cjs');
 const DEFINITION =
-  'task = a line OpenSpec 1.16 counts as a task (bullet -, *, +, 1. or 1), then a [ ]-style box, at any indentation; ' +
+  'task = a line OpenSpec counts as a task (bullet -, *, +, 1. or 1), then a [ ]-style box, at any indentation; ' +
   'done only when the box holds x or X); ' +
   'incomplete = at least one unfinished task; incompletePct = incomplete / archived; ' +
   'incompleteNoReason = at least one unfinished task without the " — skip: <reason>" suffix (the reason needs a letter or digit); ' +

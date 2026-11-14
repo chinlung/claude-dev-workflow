@@ -4,7 +4,7 @@
 
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
-## [1.18.2] - 2026-11-14
+## [1.19.1] - 2026-11-14
 
 ### Fixed
 
@@ -14,6 +14,17 @@
   - 混合引號的 delimiter
   
   現在等不到收尾的 heredoc 會把它的行放回去，照常當命令讀。這條規則跟 merge 與 archive 閘門自 #48 起用的相同，一條就涵蓋這三種寫法。詳見該 plugin 的 CHANGELOG [1.1.1]。
+
+## [1.19.0] - 2026-11-14
+
+### Changed
+
+- **openspec-superpowers-workflow 3.2.1 → 4.0.0（BREAKING：需要 OpenSpec 2.x）**：
+  - OpenSpec 2.0 把 `/opsx:*` slash 指令換成同一組 workflow 的 skill，例如 `/opsx:propose` 改為 `/openspec-propose`、`/opsx:archive` 改為 `/openspec-archive-change`。plugin 文件與 skill 的觸發描述都改用 skill 名稱。
+  - 遇到 1.x 專案，會先提示跑 `openspec update`。
+  - 改名前，已拿每個 skill 跟 1.16.1 的版本逐一比對：兩版步驟相同，只有名稱改了。
+  - `tests/cli-claims.test.sh` 改以 OpenSpec 2.0.0 驗證文件，CI 也安裝同一版。
+  - 仍用 OpenSpec 1.x 的專案請留在 3.x。詳見該 plugin 的 CHANGELOG [4.0.0]。
 
 ## [1.18.1] - 2026-11-14
 

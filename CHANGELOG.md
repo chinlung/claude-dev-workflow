@@ -4,11 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-## [1.18.2] - 2026-11-14
+## [1.19.1] - 2026-11-14
 
 ### Fixed
 
 - **scope-ledger 1.1.0 → 1.1.1** — the Bash gate dropped every line after a `<<` until it saw a delimiter. A shift in `$(( ))`, a here-string `<<<` or a delimiter in mixed quotes never gets one, so a source write on a later line slipped past. A heredoc whose delimiter line never comes now gives its lines back to be read as commands. This is the rule the merge and archive gates use (#48), and one rule covers all three shapes. See that plugin's CHANGELOG [1.1.1].
+
+## [1.19.0] - 2026-11-14
+
+### Changed
+
+- **openspec-superpowers-workflow 3.2.1 → 4.0.0 (BREAKING: needs OpenSpec 2.x)** — OpenSpec 2.0 replaced the `/opsx:*` slash commands with skills of the same workflows (`/opsx:propose` is now `/openspec-propose`, `/opsx:archive` is `/openspec-archive-change`, and so on). The plugin's docs and the skill's trigger name the skills. A 1.x project is told to run `openspec update` first. The skills were checked against 1.16.1 before the rename: the steps are the same, so only the names changed. `tests/cli-claims.test.sh` checks the docs against OpenSpec 2.0.0, and CI installs that version. Stay on 3.x for OpenSpec 1.x. See that plugin's CHANGELOG [4.0.0].
 
 ## [1.18.1] - 2026-11-14
 

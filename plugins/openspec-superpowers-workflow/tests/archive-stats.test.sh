@@ -97,7 +97,7 @@ eq "skip with an empty, blank or punctuation-only reason, or skip: without the d
 eq "skip with a reason (plain, parenthesised, quoted, full-width colon) counts as withSkipReason" 4 "$(j .totals.withSkipReason)"
 eq "all eight are incomplete" 8 "$(j .totals.incomplete)"
 
-# OpenSpec 1.16 的 task 定義：其他清單符號與非 x 標記都是未完成的 task；連結 bullet 不是 task
+# OpenSpec 的 task 定義（1.16 與 2.0 相同）：其他清單符號與非 x 標記都是未完成的 task；連結 bullet 不是 task
 R7="$WORK/r7"
 mk_arch "$R7" forms 2026-10-01-star '* [ ] a\n* [x] b\n'
 mk_arch "$R7" forms 2026-10-02-numbered '1. [ ] a\n2) [X] b\n'
