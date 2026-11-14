@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.1] - 2026-11-14
+
+### Fixed
+
+- **The lexer reads on where it finds no closer** (archive-gate; the same bytes as pr-closeout 1.1.1's merge gate). A heredoc whose delimiter never comes, an arithmetic that never closes and an unclosed quote in a heredoc delimiter each ran to the end of the text, as they do in bash — unless bash drops that line as a syntax error, when the lines after it run. The lexer cannot tell which, so it reads the text after them as commands too (it already did after an unclosed quote), the later heredocs of the same line first.
+- A substitution leaves a mark in its word: `\x01` inside quotes and for arithmetic (exactly one word), `\x02` when unquoted (any number of words, none included). archive-gate reads names with the substitution taken as empty, as before, so nothing changes for it; the merge gate reads a marked value as unknown (see pr-closeout 1.1.1). `subs_of` moved into the lexer region, the lexer's `${…}` reading being one of its callers.
+
+### Not done: retiring the two older readings
+
+Tried on this branch and measured; see pr-closeout 1.1.1 and `docs/gate-lexer-design-2026-11-13.md` §11. They stay, and the suite now checks what they are for.
+
+### Tests
+
+- `tokenizer-differential.test.sh` (59 checks). **New invariant:** on generated commands, both gates report at least what they did at `b16fb23` (3.2.0) — every line it printed, or for the merge gate a line that denies the command outright — over the default grammar and a random-punctuation seed, 1500 cases each; two canaries show the lexer alone fails it. The harness: the `gh` stub records the repo and a merge counts as caught only with the repo and number bash used, a `-`, or a repo GitHub cannot have; one merge in four carries a substitution in its number or repo or a word that expands to nothing; three random-punctuation seeds instead of one; an empty line in the call log (a name with a newline in it) is not a call; `--superset-of … --judge` lists the cases where an earlier parser printed a line today's does not while bash ran nothing today's misses. Three lexer mutants left: with the fix above a mistake in those rules only makes the lexer read more, which bash cannot catch. Not compared: the head sha (the merge gate's suite has cases for it).
+- `archive-gate.test.sh` (138 checks): the 11 mutants break the lexer and run on a copy with the lexer alone, each pinned to the case that exists for its path; the suite checks that this copy fails only the one case the older readings exist for.
+- `shared-tokenizer.test.sh` (9 checks): two regions, the lexer (with `subs_of`) and the older readings.
+
 ## [3.2.0] - 2026-11-13
 
 ### Added

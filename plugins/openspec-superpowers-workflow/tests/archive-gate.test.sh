@@ -141,8 +141,12 @@ contains "archive after two redirects around a quoted word → deny" "$out" "$DE
 # 沒有收尾行的「heredoc」不是 heredoc（算術位移 $((1<<n)) 就長這樣）：其後的行仍是命令
 out=$(run_gate "$(input_json s11 "$P" $'echo $((1<<n))\nopenspec archive foo --yes')" "$T" "$P")
 contains "archive after an arithmetic shift → deny" "$out" "$DENY"
+# 等不到收尾行的 heredoc 吃掉其後所有行，bash 不執行它們——除非 heredoc 所在那行被 bash 當語法錯誤丟掉，
+# 那時其後的行照常執行（3.2 與 5.3）。hook 分不出是哪一種，所以其後的行也當命令讀
 out=$(run_gate "$(input_json s11 "$P" $'cat <<EOF\nopenspec archive foo --yes')" "$T" "$P")
 contains "archive in a heredoc that never closes → deny" "$out" "$DENY"
+out=$(run_gate "$(input_json s11 "$P" $'EOF=(:<<-a=a=\nopenspec archive foo --yes\ntrue')" "$T" "$P")
+contains "archive after a heredoc on a line bash drops → deny" "$out" "$DENY"
 # 真正的 heredoc 本體不是命令：delimiter 不加引號、加引號、加反斜線，以及 commit 訊息的 $(cat <<'EOF' 寫法
 out=$(run_gate "$(input_json s11 "$P" $'cat > n.md <<EOF\nopenspec archive foo --yes\nEOF')" "$T" "$P")
 empty "archive words in a heredoc body → allow" "$out"
@@ -182,7 +186,7 @@ contains "archive between lines that equal two shift operands → deny" "$out" "
 # 註解不是命令文字：裡面的落單引號不得延續到後面的行
 out=$(run_gate "$(input_json s11 "$P" $'# don\'t archive yet\ncat > n.md <<EOF\nit\'s\nopenspec archive foo --yes\nEOF')" "$T" "$P")
 empty "a lone quote in a comment before a heredoc → allow" "$out"
-# 重掃未收尾的 heredoc 時，引號與巢狀狀態要延續：opener 在 "$( 裡，重掃後的 ) 要回到外層的 "
+# ${…} 裡的 << 是文字、不開 heredoc；$( 在 "…" 裡，其後的 ) 回到外層的 "：archive 那一行 bash 照樣執行
 out=$(run_gate "$(input_json s11 "$P" $'x="$(echo ${u:-<<NEVER}\n) <<true #"\nopenspec archive foo --yes\ntrue')" "$T" "$P")
 contains "archive after an unclosed heredoc inside a quoted substitution → deny" "$out" "$DENY"
 # 行尾反斜線續行：命令行還沒結束，本體從續行之後才開始；偶數個反斜線不是續行
@@ -230,7 +234,6 @@ for c in $'# don\'t archive yet\nopenspec archive foo --yes' $'true # it\'s fine
          'echo `# don'"'"'t`; openspec archive foo --yes' 'echo ${x:-`openspec archive foo --yes`}' \
          "echo \${x:-'}'}; openspec archive foo --yes" 'echo ${x:-"}"}; openspec archive foo --yes' \
          'echo $(true)#; openspec archive foo --yes' 'echo `true`#; openspec archive foo --yes' \
-         'true # note; openspec archive foo --yes' \
          $'# isn\'t w\necho ${x:- #}; openspec archive foo --yes' $'# isn\'t s\necho ${x:-`openspec archive foo --yes`}' \
          $'# isn\'t q\necho ${x:-\'}\'}; openspec archive foo --yes'; do
   out=$(run_gate "$(input_json s13 "$P" "$c")" "$T" "$P")
@@ -238,9 +241,12 @@ for c in $'# don\'t archive yet\nopenspec archive foo --yes' $'true # it\'s fine
 done
 out=$(run_gate "$(input_json s13 "$P" '# openspec archive foo --yes')" "$T" "$P")
 empty "comment: archive words in a comment → allow" "$out"
+# ${…} 裡引號中的 } 不收尾：其後的引號字串是參數，bash 不執行（提早收尾的讀法會把它當命令）
+out=$(run_gate "$(input_json s13 "$P" "echo \${x:-'}'} '; openspec archive foo --yes'")" "$T" "$P")
+empty "brace: a quoted } does not close \${…}, the string after it is not a command → allow" "$out"
 out=$(run_gate "$(input_json s13 "$P" "echo \${x:-'\$(openspec archive foo --yes)'}")" "$T" "$P")
 empty "comment: a substitution in single quotes inside \${…} is text → allow" "$out"
-# 本體沒有自己的撇號：只有 heredoc pass 跳過註解，才不會讓註解裡的落單撇號把 << 藏起來
+# 本體沒有自己的撇號：只有把 # 讀成註解，才不會讓註解裡的落單撇號把 << 藏起來
 out=$(run_gate "$(input_json s13 "$P" $'# don\'t archive yet\ncat > n.md <<EOF\nopenspec archive foo --yes\nEOF')" "$T" "$P")
 empty "comment: a lone quote in a comment before a heredoc with a plain body → allow" "$out"
 # bash 不執行的：delimiter 加引號或反斜線的本體、單引號、跳脫的 \$
@@ -313,6 +319,10 @@ lexer_case "a delimiter in mixed quotes"            $'cat <<\'E\'"F"\nit\'s\nEF\
 lexer_case "double quotes in \$( … ) in double quotes" 'echo "x $(echo "a"; openspec archive foo --yes) y"'
 lexer_case "a substitution inside \$(( … ))"        'echo $(( $(openspec archive foo --yes) 0 ))'
 lexer_case "a shift inside \$[ … ]"                 $'echo $[1<<2]\nopenspec archive foo --yes'
+# 只有兩種舊讀法抓得到、bash 也不執行的一例：加入註解規則之前的讀法會把行尾註解裡的字樣當命令（保守）。
+# 它證明舊讀法還在。排在最後：下面的 mutant 跑在只留 lexer 的副本上，那裡這一例會失敗
+out=$(run_gate "$(input_json s13 "$P" 'true # note; openspec archive foo --yes')" "$T" "$P")
+contains "older readings: [true # note; openspec archive] → deny" "$out" "$DENY"
 
 # ---- summary ----
 MIN=124
@@ -325,16 +335,18 @@ fi
 # The copy sits in a tree shaped like the plugin, so it still finds the real reconcile-check: a copy that
 # cannot find it allows everything, and every deny case would go red for that reason instead. The first
 # failure has to be the named case for the same reason — any failure at all would count a broken copy.
-# These mutants break the two older readings, so they run on a copy that has only those two: with the
-# lexer in the loop it would catch most of what they break and the mutant would live. The lexer's own
-# mutants are in tokenizer-differential.test.sh, where bash is the judge.
-OLD="$WORK/old-readings.sh"
-perl -pe 's/^for my \$mode \(0, 1, 2\) \{$/for my \$mode (0, 1) {/' "$GATE" > "$OLD"
+# Each breaks one path of the lexer that one of the cases above exists for. They run on a copy with the
+# lexer alone: with the two older readings in the loop, those would catch most of what a broken lexer
+# misses and the mutant would live. The older readings are frozen code: tokenizer-differential.test.sh
+# checks that the gate never reports less than it did at b16fb23, and that it does without them. The
+# lexer has more mutants there, where bash is the judge.
+LEXONLY="$WORK/lexer-only.sh"
+perl -pe 's/^for my \$mode \(0, 1, 2\) \{$/for my \$mode (2) {/' "$GATE" > "$LEXONLY"
 mutant() {
   local d="$WORK/mutant-$1" log="$WORK/mutant-$1.log" first
   mkdir -p "$d/hooks"; ln -s "$SCRIPT_DIR/../skills" "$d/skills"
-  perl -pe "$3" "$OLD" > "$d/hooks/archive-gate.sh" || { FAIL=$((FAIL+1)); echo "FAIL: mutant [$1] perl failed"; return; }
-  if cmp -s "$d/hooks/archive-gate.sh" "$OLD"; then FAIL=$((FAIL+1)); echo "FAIL: mutant [$1] substitution did not apply"; return; fi
+  perl -pe "$3" "$LEXONLY" > "$d/hooks/archive-gate.sh" || { FAIL=$((FAIL+1)); echo "FAIL: mutant [$1] perl failed"; return; }
+  if cmp -s "$d/hooks/archive-gate.sh" "$LEXONLY"; then FAIL=$((FAIL+1)); echo "FAIL: mutant [$1] substitution did not apply"; return; fi
   # alarm: a mutant that makes the parser loop forever must fail, not hang CI
   if GATE="$d/hooks/archive-gate.sh" NO_MUTANTS=1 STOP_ON_FAIL=1 perl -e 'alarm 120; exec @ARGV' "$BASH_BIN" "$0" > "$log" 2>&1; then
     FAIL=$((FAIL+1)); echo "FAIL: mutant [$1] suite stayed green"; return
@@ -345,24 +357,24 @@ mutant() {
   else FAIL=$((FAIL+1)); echo "FAIL: mutant [$1] went red first on [${first:0:160}], expected [$2]"; fi
 }
 if [ "${NO_MUTANTS:-0}" != 1 ]; then
-  if cmp -s "$OLD" "$GATE"; then FAIL=$((FAIL+1)); echo "FAIL: the copy with the two older readings is the gate itself: the reading loop changed"; fi
-  mutant heredoc-subs  'substitution bash runs: [cat <<EOF'        's/ push \@queue, subs_of\(join "\\n", \@body\) unless \$hd\[0\]\[1\];//'
-  mutant comment       "comment: [# don't archive yet"           's/if \(!\$plain && \$ch eq .#. && !defined \$tok/if (0 \&\& !defined \$tok/'
-  mutant plain-reading 'comment: [true # note; openspec'       's/^for my \$mode \(0, 1\) \{$/for my \$mode (0) {/'
-  # the plain reading also catches what it always caught, so each mutant below is pinned to a case only
-  # the new rule can save: one behind a comment with an apostrophe, which the plain reading loses whole
-  mutant backtick-comment 'comment: [echo `# don'               's/^\s*if \(\$bq\) \{.*$//'
-  mutant brace-word    "comment: [# isn't w"                   's/^(\s*)if \(!\$d\) \{.*$/$1if (0) {}/'
-  mutant brace-subs    "comment: [# isn't s"                   's/push \@queue, subs_of\(\$w, 1\); //'
-  mutant brace-quote   "comment: [# isn't q"                   's/^\s*if \(\$x eq "\x27"\) \{ my \$k = index.*$//'
-  mutant brace-sq-text 'comment: a substitution in single quotes inside' 's/subs_of\(\$w, 1\)/subs_of(\$w)/'
-  mutant heredoc-comment 'a lone quote in a comment before a heredoc' 's/^.*# not-a-heredoc: comment$//'
-  mutant per-line-body 'substitution bash runs: [cat > m.md <<EOF'  's/subs_of\(join "\\n", \@body\)/map { subs_of(\$_) } \@body/'
-  mutant subs-backtick 'substitution bash runs: [cat > n.md <<EOF' 's/^.*index\(\$s, ..., \$i \+ 1\);.*$//'
-  mutant dq-subs       'substitution bash runs: [echo "$(openspec' 's/^\s*push \@queue, subs_of\(substr\(.*$//'
-  mutant quoted-delim  "substitution bash does not run: [cat <<'EOF'" 's/unless \$hd\[0\]\[1\]/unless 0/'
-  mutant backslash-delim 'substitution bash does not run: [cat <<\EOF' 's/\|\| \$3 ne ..\];/|| 0];/'
-  mutant dq-escape     'substitution bash does not run: [echo "\$(' 's/subs_of\(substr\(\$c, \$i \+ 1, \$j - \$i - 1\)\)/subs_of(substr(\$c, \$i + 1, \$j - \$i - 1) =~ s{\\\\}{}gr)/'
+  # the copy is the gate without its two older readings, and without them only the last case fails
+  if cmp -s "$LEXONLY" "$GATE"; then FAIL=$((FAIL+1)); echo "FAIL: the lexer-only copy is the gate itself: the reading loop changed"; fi
+  d="$WORK/lexer-only"; mkdir -p "$d/hooks"; ln -s "$SCRIPT_DIR/../skills" "$d/skills"; cp "$LEXONLY" "$d/hooks/archive-gate.sh"
+  first=$(GATE="$d/hooks/archive-gate.sh" NO_MUTANTS=1 perl -e 'alarm 120; exec @ARGV' "$BASH_BIN" "$0" 2>&1 | command grep -a -m1 '^FAIL')
+  if [[ $first == *"older readings: [true # note"* ]]; then PASS=$((PASS+1)); echo "PASS: the lexer alone fails only where the older readings are needed"
+  else FAIL=$((FAIL+1)); echo "FAIL: the lexer-only copy went red first on [${first:0:120}], expected [older readings: …]"; fi
+  mutant heredoc-subs 'substitution bash runs: [cat <<EOF'        's/lex_dq\(\\\$x, 0, \$segs, \$depth, 1\); \}   # an unquoted body/lex_dq(\\\$x, 0, [], \$depth, 1); }   # an unquoted body/'
+  mutant comment       'a lone quote in a comment before a heredoc' 's/if \(\$ch eq .#. && !defined \$tok && /if (0 \&\& /'
+  mutant brace-word    'comment: [echo ${x:- #}; openspec archive foo' 's/return undef unless defined \$j;/return undef;/'
+  mutant brace-subs    'comment: [echo ${x:-`openspec archive'  's/subs_of\(substr\(\$\$sr, \$i, \$j - \$i\), \$sq\)/subs_of("", \$sq)/'
+  mutant brace-quote   'brace: a quoted } does not close'      's/^\s*if \(\$x eq "\x27"\) \{ my \$k = index\(\$\$sr.*$//'
+  mutant brace-sq-text 'comment: a substitution in single quotes inside' 's/my \$j = lex_param\(\$sr, \$i, \$segs, \$depth, 1\);/my \$j = lex_param(\$sr, \$i, \$segs, \$depth, 0);/'
+  mutant subs-backtick 'substitution bash runs: [cat > n.md <<EOF' 's/\$i = lex_bq\(\$sr, \$i, \$segs, \$depth, 1\); \$t/\$i = lex_bq(\$sr, \$i, [], \$depth, 1); \$t/'
+  # "…" and an unquoted heredoc body are read by the same lex_dq: the heredoc case comes first
+  mutant dq-subs       'substitution bash runs: [cat <<EOF'     's/\$i = lex_cmd\(\$sr, \$i \+ 2, .\)., \$segs, \$depth \+ 1\); \$t/\$i = lex_cmd(\$sr, \$i + 2, ")", [], \$depth + 1); \$t/'
+  mutant quoted-delim  "substitution bash does not run: [cat <<'EOF'" 's/unless \(\$quoted\) \{ my \$x = substr\(\$\$sr, \$i, \$stop - \$i\)/unless (0) { my \$x = substr(\$\$sr, \$i, \$stop - \$i)/'
+  mutant backslash-delim 'substitution bash does not run: [cat <<\EOF' 's/\$d \.= substr\(\$\$sr, \$j \+ 1, 1\); \$quoted = 1; \}/\$d .= substr(\$\$sr, \$j + 1, 1); }/'
+  mutant dq-escape     'substitution bash does not run: [echo "\$(' 's/^\s*if \(\$ch eq "\\\\"\) \{ my \$e = substr\(\$\$sr, \$i \+ 1, 1\); \$t \.= .*$//'
 fi
 
 echo "archive-gate: $PASS passed, $FAIL failed"

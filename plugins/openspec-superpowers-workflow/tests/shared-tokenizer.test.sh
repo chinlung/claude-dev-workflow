@@ -1,5 +1,5 @@
 #!/bin/bash
-# The shell tokenizer that archive-gate and pr-closeout's merge gate each carry must stay the same.
+# The shell lexer that archive-gate and pr-closeout's merge gate each carry must stay the same.
 # The two plugins install apart, so neither can source the other at runtime: each keeps a copy, and
 # this suite compares the copies between `# >>> shared-tokenizer: <name>` and `# <<< shared-tokenizer: <name>`
 # (indentation aside). A fix made in one copy only turns this red.
@@ -13,7 +13,7 @@ A=${A:-"$SCRIPT_DIR/../hooks/archive-gate.sh"}
 B=${B:-"$SCRIPT_DIR/../../pr-closeout/hooks/pr-merge-gate.sh"}
 # name and the fewest lines its region may hold: the floor is set here, not read from the files, so
 # two regions that both came out empty can never compare as the same
-REGIONS=('subs_of:14' 'heredoc pass and tokenizer:60' 'lexer:140')
+REGIONS=('lexer:160' 'heredoc pass and tokenizer:60')
 
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/shared-tokenizer-test.XXXXXX") || exit 1
 trap 'rm -rf "$WORK"' EXIT
@@ -58,28 +58,24 @@ done
 
 # ---- canaries: the comparison itself must be able to fail ----
 first=${REGIONS[0]%:*}; ffloor=${REGIONS[0]##*:}
-second=${REGIONS[1]%:*}; sfloor=${REGIONS[1]##*:}
-third=${REGIONS[2]%:*}; tfloor=${REGIONS[2]##*:}
 expect_rc() {  # <label> <want rc> <file a> <file b> <name> <floor>
   same_regions "$3" "$4" "$5" "$6"; local rc=$?
   if [ "$rc" = "$2" ]; then ok "canary: $1"; else bad "canary: $1 — rc $rc, wanted $2"; fi
 }
-# one changed character inside a region, in each region
+# one changed character inside the region, in code and in a comment
 perl -pe 's/\$i \+= 2; next; \}/\$i += 3; next; }/ if /if \(\$ch eq "\\\\"\) \{ \$i \+= 2; next; \}/ && !$done++' "$B" > "$WORK/b-sub.sh"
-expect_rc "an edit inside [$first] is caught" 1 "$A" "$WORK/b-sub.sh" "$first" "$ffloor"
-perl -pe 's/# not-a-heredoc: here-string/# not-a-heredoc: here string/' "$B" > "$WORK/b-hd.sh"
-expect_rc "an edit inside [$second] is caught" 1 "$A" "$WORK/b-hd.sh" "$second" "$sfloor"
-perl -pe 's/# here-string: the word after it is data/# here string: the word after it is data/' "$B" > "$WORK/b-lex.sh"
-expect_rc "an edit inside [$third] is caught" 1 "$A" "$WORK/b-lex.sh" "$third" "$tfloor"
+expect_rc "an edit to code inside [$first] is caught" 1 "$A" "$WORK/b-sub.sh" "$first" "$ffloor"
+perl -pe 's/# heredoc: the delimiter is the whole word/# heredoc: the delimiter is the entire word/' "$B" > "$WORK/b-lex.sh"
+expect_rc "an edit to a comment inside [$first] is caught" 1 "$A" "$WORK/b-lex.sh" "$first" "$ffloor"
 # indentation and lines outside the markers are not compared
 perl -pe 's/^/  /' "$B" > "$WORK/b-indent.sh"
-expect_rc "indentation alone is not a difference" 0 "$A" "$WORK/b-indent.sh" "$second" "$sfloor"
+expect_rc "indentation alone is not a difference" 0 "$A" "$WORK/b-indent.sh" "$first" "$ffloor"
 printf '# an extra line outside every region\n' | cat - "$B" > "$WORK/b-outside.sh"
 expect_rc "a line outside the regions is not a difference" 0 "$A" "$WORK/b-outside.sh" "$first" "$ffloor"
 # a missing or repeated marker is a marker problem, not a pass
-perl -ne 'print unless /# <<< shared-tokenizer: subs_of/' "$B" > "$WORK/b-nomark.sh"
+perl -ne 'print unless /# <<< shared-tokenizer: lexer/' "$B" > "$WORK/b-nomark.sh"
 expect_rc "a missing end marker is reported" 3 "$A" "$WORK/b-nomark.sh" "$first" "$ffloor"
-perl -pe 'print $_ if /# >>> shared-tokenizer: subs_of/' "$B" > "$WORK/b-twice.sh"
+perl -pe 'print $_ if /# >>> shared-tokenizer: lexer/' "$B" > "$WORK/b-twice.sh"
 expect_rc "a repeated start marker is reported" 3 "$A" "$WORK/b-twice.sh" "$first" "$ffloor"
 # two regions that are equal but empty stay below the floor
 printf '# >>> shared-tokenizer: %s\n# <<< shared-tokenizer: %s\n' "$first" "$first" > "$WORK/empty.sh"
@@ -87,7 +83,7 @@ expect_rc "two empty regions are below the floor" 2 "$WORK/empty.sh" "$WORK/empt
 
 # ---- summary ----
 # written out, not counted as the canaries run: a canary that is skipped must lower the count
-MIN=$(( ${#REGIONS[@]} + 8 ))
+MIN=$(( ${#REGIONS[@]} + 7 ))   # the region, and seven canaries
 if [ "$((PASS + FAIL))" -lt "$MIN" ]; then bad "ran $((PASS + FAIL)) assertions, expected at least $MIN"; fi
 echo "shared-tokenizer: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]

@@ -2,6 +2,22 @@
 
 All notable changes to the `pr-closeout` plugin will be documented in this file.
 
+## [1.1.1] - 2026-11-14
+
+### Fixed
+
+- **A PR number, PR URL or repo with a substitution in it is a merge the hook cannot pin.** `gh pr merge 3$(echo 0)` merges PR 30 and `--repo "o/r$(echo x)"` merges in `o/rx`, but the lexer added in 1.1.0 kept only the literal part, `3` and `o/r`. In most places the two older readings denied such a command anyway (a `- - -`, or a repo like `o/r$` that `ready` cannot find); where only the lexer can read the command — a `$( … )` holding double quotes inside double quotes — nothing did, and the gate ran `ready` for PR 3 while PR 30 would merge. A substitution now leaves a mark in its word. As a command or option name the word is read without it (`` `x`gh `` is still `gh`). As a value it is unknown: a number, URL or repo with one is `-` (denied, "讀不出是哪個 repo 的哪個 PR"), a head sha with one is not a literal sha, an option whose name holds one makes the merge unreadable, and so does a `gh api` endpoint with one (a substitution in a field's value does not).
+- **An unquoted substitution is any number of words, none included.** `gh $(true) pr merge 3` is a merge, and in `gh pr merge --subject $(x) 3` the `3` may be the subject, leaving gh to merge the current branch's PR. The command is told with such words left out, and with one anywhere after `gh` the merge is unreadable. Inside quotes a substitution is exactly one word and keeps its place (`--subject "$(git log -1 --format=%s)" 3` checks PR 3) — except in a string handed to `bash -c`, `sh -c` or `eval`, which that shell splits into words again: there it is any number of words (`bash -c "gh $(true) pr merge 3"` is a merge, and the gate at 1.1.0 read it as one).
+- **The lexer reads on where it finds no closer.** A heredoc whose delimiter never comes, an arithmetic that never closes and an unclosed quote in a heredoc delimiter each ran to the end of the text, as they do in bash — unless bash drops that line as a syntax error, when the lines after it run. The lexer cannot tell which, so it now reads the text after them as commands too (it already did after an unclosed quote), the later heredocs of the same line first.
+
+### Not done: retiring the two older readings
+
+The second step of W5-8 was tried on this branch and measured (`docs/gate-lexer-design-2026-11-13.md` §11). With the lexer alone, a sample of 190,000 generated commands, run after two fixes for exactly this, still turned up two new shapes that bash runs, the gate at 1.1.0 caught and the lexer let through, both on a line after one bash drops as a syntax error; and three regressions found by review (the head sha, the `gh api` endpoint, words that vanish) were harmless only while the older readings were there. They stay: with them, a mistake in the lexer can add to what is denied and never take away, and that is now a check (below).
+
+### Tests
+
+- `pr-merge-gate.test.sh` (233 checks, 40 mutants): cases for each fix above, each checked in bash 3.2 and 5.3 where it says what bash runs. The mutants run on a copy with the lexer alone, since the older readings would catch most of what a broken lexer misses; the suite also checks that this copy fails only the one case the older readings exist for. Mutants on the older readings themselves are gone: they are frozen, and guarded by the superset check in openspec-superpowers-workflow's `tokenizer-differential.test.sh`.
+
 ## [1.1.0] - 2026-11-13
 
 ### Added
