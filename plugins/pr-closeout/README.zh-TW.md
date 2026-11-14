@@ -68,7 +68,7 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/pr-closeout.mjs ready <owner/repo> <pr> \
 }
 ```
 
-- **名單上的 check 沒出現**（被 paths-ignore 略過、workflow 被跳過）：回 4。
+- **名單上的 check 沒出現**（被 paths-ignore 略過、workflow 被跳過）：回 4。要讓某些 PR（例如純文件）略過必跑 check，就讓 workflow 每個 PR 都觸發，改用 job 的 `if:` 略過：被略過的 job 會回報 SKIPPED，算通過。本 repo 的 `.github/workflows/security-review.yml` 以讀 diff 的 `changes` job 這樣做。
 - **check 跑完的時間低於 `minSeconds`**：列在 `suspectedSkip`，因為綠勾不證明真的有跑。
 - **沒有這個檔**：不檢查必跑項。**檔案讀不懂**：回 7。
 

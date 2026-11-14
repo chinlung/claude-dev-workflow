@@ -1,6 +1,7 @@
 # Security review on every pull request — claude-code-action with a Claude Code OAuth token.
 #
-# Source: ~/.claude/templates/github-security-review.yml (copied in by /security-ci-setup).
+# Source: ~/.claude/templates/github-security-review.yml (copied in by /security-ci-setup), since
+#   diverged: no paths-ignore, docs-only PRs are told by the changes job instead (see `on:`).
 # Auth: repository secret CLAUDE_CODE_OAUTH_TOKEN, generated locally with `claude setup-token`
 #       (Pro/Max). The token is a full account credential: keep this workflow on trusted PRs only
 #       and enable "Require approval for all external contributors" in the repo's Actions settings.
@@ -22,27 +23,63 @@ on:
     # ready_for_review: a PR opened as draft is skipped by the job `if` below, so the
     # draft→ready transition must itself start a run.
     types: [opened, synchronize, reopened, ready_for_review]
-    # Docs-only PRs never start a run (a run costs up to 25 min of OAuth-token time).
-    paths-ignore:
-      - '**/*.md'
-      - '**/*.txt'
-      - 'docs/**'
+    # No paths-ignore: a workflow a path filter never starts reports no check at all, and a
+    # required check that is missing blocks the merge (branch protection and pr-closeout's ready
+    # alike). Docs-only PRs start the run and skip the review job below, which reports SKIPPED.
 
 concurrency:
   group: security-review-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
+  # Whether the PR changes only docs (*.md, *.txt, docs/), read from the diff itself. No secrets.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      docs_only: ${{ steps.files.outputs.docs_only }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - id: files
+        shell: bash
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          # the list goes to a file first: a failed git diff stops the step here (-e), where a
+          # process substitution would read as an empty list, that is, docs only
+          git diff -z --name-only "$BASE...$HEAD" > "$RUNNER_TEMP/files"
+          docs_only=true
+          [ -s "$RUNNER_TEMP/files" ] || docs_only=false   # no files: review, do not guess
+          while IFS= read -r -d '' f; do
+            case "$f" in
+              *.md | *.txt | docs/*) ;;
+              *) docs_only=false; break ;;
+            esac
+          done < "$RUNNER_TEMP/files"
+          echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
+          echo "docs only: $docs_only"
+
   security-review:
-    # Drafts are skipped (docs filtering is the paths-ignore above). Fork PRs are skipped
-    # too: they run with empty secrets, so the action would fail red instead of reviewing —
-    # the OAuth token must never be exposed to a fork anyway. Review those by hand.
+    needs: changes
+    # Docs-only PRs are skipped. If the changes job failed its output is empty and the review
+    # runs: !cancelled() stands in for the implied success(), which would skip it instead.
+    # Drafts are skipped. Fork PRs are skipped too: they run with empty secrets, so the action
+    # would fail red instead of reviewing — the OAuth token must never be exposed to a fork
+    # anyway. Review those by hand.
     # Dependabot PRs are skipped for the same reason: they get Dependabot secrets, not Actions
     # secrets, and the action rejects bot actors by default, so the run would fail red.
     if: >-
+      ${{ !cancelled() &&
+      needs.changes.outputs.docs_only != 'true' &&
       github.event.pull_request.draft == false &&
       github.event.pull_request.head.repo.full_name == github.repository &&
-      github.event.pull_request.user.login != 'dependabot[bot]'
+      github.event.pull_request.user.login != 'dependabot[bot]' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:

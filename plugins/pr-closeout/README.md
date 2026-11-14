@@ -68,7 +68,7 @@ A per-user file, not part of this plugin. The script reads `$PR_CLOSEOUT_CONFIG`
 }
 ```
 
-- **A required check that never ran** (paths-ignore, a skipped workflow) is exit 4.
+- **A required check that never ran** (paths-ignore, a skipped workflow) is exit 4. To skip a required check on some PRs, such as docs-only ones, start the workflow on every PR and skip the job with an `if:`: a skipped job reports SKIPPED, which counts as passed. This repository's `.github/workflows/security-review.yml` does it with a `changes` job that reads the diff.
 - **A check that finished faster than its `minSeconds`** is listed in `suspectedSkip`; a green check is not proof that the work ran.
 - **No file** means nothing is required. **An unreadable file** is exit 7.
 
