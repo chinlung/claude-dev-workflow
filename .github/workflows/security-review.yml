@@ -1,7 +1,6 @@
 # Security review on every pull request — claude-code-action with a Claude Code OAuth token.
 #
-# Source: ~/.claude/templates/github-security-review.yml (copied in by /security-ci-setup), since
-#   diverged: no paths-ignore, docs-only PRs are told by the changes job instead (see `on:`).
+# Source: ~/.claude/templates/github-security-review.yml (copied in by /security-ci-setup).
 # Auth: repository secret CLAUDE_CODE_OAUTH_TOKEN, generated locally with `claude setup-token`
 #       (Pro/Max). The token is a full account credential: keep this workflow on trusted PRs only
 #       and enable "Require approval for all external contributors" in the repo's Actions settings.
@@ -52,8 +51,9 @@ jobs:
           HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
           # the list goes to a file first: a failed git diff stops the step here (-e), where a
-          # process substitution would read as an empty list, that is, docs only
-          git diff -z --name-only "$BASE...$HEAD" > "$RUNNER_TEMP/files"
+          # process substitution would read as an empty list, that is, docs only. --no-renames
+          # lists both paths of a rename: hooks/x.sh renamed to hooks/x.md is not docs only.
+          git diff -z --no-renames --name-only "$BASE...$HEAD" > "$RUNNER_TEMP/files"
           docs_only=true
           [ -s "$RUNNER_TEMP/files" ] || docs_only=false   # no files: review, do not guess
           while IFS= read -r -d '' f; do
