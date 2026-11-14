@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Tests
 
-- `tokenizer-differential.test.sh` §7 (68 checks): the two older readings, on a copy with only them, read 8000 unclosed `${` and 20,000 unclosed heredocs in under 3 s, and a line 4× as long in under 8× the CPU time, for both gates; the commands are read from a file inside one perl, since Linux refuses an environment variable over 128 KB. Three canaries each put one quadratic loop back and turn the check red.
+- `tokenizer-differential.test.sh` §7 (68 checks): the two older readings, on a copy with only them, read 8000 unclosed `${` and 20,000 unclosed heredocs in under 3 s, and a line 4× as long (150,000 → 600,000 characters) in under 6× the CPU time, for both gates; the commands are read from a file inside one perl, since Linux refuses an environment variable over 128 KB. Three canaries each put one quadratic loop back and turn the check red. The 6× sits between the 4.0× the linear parsers measure and the 12.7× the copying canary does; a first version with 75,000 → 300,000 and 8× passed the canary locally at 10× and missed it on CI at 7.5×.
 
 ## [4.0.0] - 2026-11-14
 

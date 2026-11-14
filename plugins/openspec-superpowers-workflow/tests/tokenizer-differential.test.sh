@@ -232,10 +232,12 @@ inproc() {   # <seconds> <parser file> <env var> <command file> [<cpu file>]: th
     if ($cpu) { open my $o, ">", $cpu or die; printf $o "%.4f\n", (times)[0] - $t; }' "$@"
 }
 fast() { RUN=inproc timed "$@"; }   # <label> <want rc> <want text, or ""> <inproc args…>
-linear() {   # <label> <want 0 linear | 1 not> <parser> <env var> <file n> <file 4n>: 4n under 10 s and under 8× the time of n
+linear() {   # <label> <want 0 linear | 1 not> <parser> <env var> <file n> <file 4n>: 4n under 10 s and under 6× the time of n
+  # (measured on 150,000 → 600,000 characters: the linear parsers take 4.0×, the substr canary 12.7×; at
+  # 75,000 → 300,000 a slower CI machine measured the canary at 7.5× and a threshold of 8 let it through)
   local label=$1 want=$2 p=$3 v=$4 got t1 t4
   inproc 10 "$p" "$v" "$5" "$WORK/cpu1" > /dev/null 2>&1 && inproc 10 "$p" "$v" "$6" "$WORK/cpu4" > /dev/null 2>&1 \
-    && t1=$(cat "$WORK/cpu1") && t4=$(cat "$WORK/cpu4") && perl -e 'exit !($ARGV[1] < 8 * ($ARGV[0] > 0.05 ? $ARGV[0] : 0.05))' "$t1" "$t4"
+    && t1=$(cat "$WORK/cpu1") && t4=$(cat "$WORK/cpu4") && perl -e 'exit !($ARGV[1] < 6 * ($ARGV[0] > 0.05 ? $ARGV[0] : 0.05))' "$t1" "$t4"
   got=$?; [ "$got" = 0 ] || got=1
   if [ "$got" = "$want" ]; then ok "$label"; else bad "$label — n ${t1:-?} s, 4n ${t4:-?} s"; fi
   rm -f "$WORK/cpu1" "$WORK/cpu4"
@@ -245,7 +247,7 @@ perl -e 'print "openspec archive foo; echo ", q[${a:-] x 8000' > "$WORK/ag-brace
 printf '%s' "$WIDE_PARAM" > "$WORK/pmg-brace"
 perl -e 'print "openspec archive foo\n", map { "echo <<EOF$_\n" } 1 .. 20000' > "$WORK/ag-here"
 perl -e 'print "gh pr merge 3 --repo o/r\n", map { "echo <<EOF$_\n" } 1 .. 20000' > "$WORK/pmg-here"
-for n in 75000 300000 1200000; do
+for n in 150000 600000; do
   perl -e 'print "openspec archive foo; echo ", "x" x $ARGV[0]' $n > "$WORK/ag-long-$n"
   perl -e 'print "gh pr merge 3 --repo o/r; echo ", "x" x $ARGV[0]' $n > "$WORK/pmg-long-$n"
 done
@@ -253,15 +255,15 @@ fast   "archive-gate's older readings: 8000 unclosed \${ in under 3 s" 0 foo 3 "
 fast   "pr-merge-gate's older readings: 8000 unclosed \${ in under 3 s" 0 "o/r 3 -" 3 "$WORK/pmg-older.pl" PMG_CMD "$WORK/pmg-brace"
 fast   "archive-gate's older readings: 20000 heredocs that never close in under 3 s" 0 foo 3 "$WORK/ag-older.pl" AG_CMD "$WORK/ag-here"
 fast   "pr-merge-gate's older readings: 20000 heredocs that never close in under 3 s" 0 "o/r 3 -" 3 "$WORK/pmg-older.pl" PMG_CMD "$WORK/pmg-here"
-linear "archive-gate's older readings: a line 4× as long takes under 8× the time" 0 "$WORK/ag-older.pl" AG_CMD "$WORK/ag-long-300000" "$WORK/ag-long-1200000"
-linear "pr-merge-gate's older readings: a line 4× as long takes under 8× the time" 0 "$WORK/pmg-older.pl" PMG_CMD "$WORK/pmg-long-300000" "$WORK/pmg-long-1200000"
+linear "archive-gate's older readings: a line 4× as long takes under 6× the time" 0 "$WORK/ag-older.pl" AG_CMD "$WORK/ag-long-150000" "$WORK/ag-long-600000"
+linear "pr-merge-gate's older readings: a line 4× as long takes under 6× the time" 0 "$WORK/pmg-older.pl" PMG_CMD "$WORK/pmg-long-150000" "$WORK/pmg-long-600000"
 perl -pe 's/if \(!exists \$brace\{\$i\}\) \{/if (1) {/' "$WORK/pmg-older.pl" > "$WORK/q-brace.pl"
 perl -pe 's{!\$left\{\$hd\[0\]\[0\]\}}{!grep { s/^\\t+//r eq \$hd[0][0] } \@todo}' "$WORK/pmg-older.pl" > "$WORK/q-here.pl"
 perl -ne 'next if /^\s*pos\(\$l\) = \$i;/; s/\$l =~ \/\\G<</substr(\$l, \$i) =~ \/^<</; print' "$WORK/pmg-older.pl" > "$WORK/q-pos.pl"
 for c in brace here pos; do cmp -s "$WORK/pmg-older.pl" "$WORK/q-$c.pl" && bad "canary [quadratic $c]: what it puts back is not in the parser"; done
 fast   "canary [quadratic brace]: scanning each \${ again runs out of time" 142 "" 3 "$WORK/q-brace.pl" PMG_CMD "$WORK/pmg-brace"
 fast   "canary [quadratic here]: looking through the lines left for each heredoc runs out of time" 142 "" 3 "$WORK/q-here.pl" PMG_CMD "$WORK/pmg-here"
-linear "canary [quadratic pos]: copying the rest of the line at each character is not linear" 1 "$WORK/q-pos.pl" PMG_CMD "$WORK/pmg-long-75000" "$WORK/pmg-long-300000"
+linear "canary [quadratic pos]: copying the rest of the line at each character is not linear" 1 "$WORK/q-pos.pl" PMG_CMD "$WORK/pmg-long-150000" "$WORK/pmg-long-600000"
 
 wait
 for i in $(seq 1 "$N"); do
