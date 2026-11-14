@@ -4,6 +4,17 @@
 
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
+## [1.19.1] - 2026-11-14
+
+### Fixed
+
+- **scope-ledger 1.1.0 → 1.1.1**：Bash 閘門遇到 `<<` 後，會一路略過後面的行，直到看見收尾的 delimiter 為止。以下三種寫法永遠等不到收尾，所以之後的行裡就算有寫入原始碼，閘門也看不到：
+  - `$(( ))` 裡的位移
+  - here-string `<<<`
+  - 混合引號的 delimiter
+  
+  現在等不到收尾的 heredoc 會把它的行放回去，照常當命令讀。這條規則跟 merge 與 archive 閘門自 #48 起用的相同，一條就涵蓋這三種寫法。詳見該 plugin 的 CHANGELOG [1.1.1]。
+
 ## [1.19.0] - 2026-11-14
 
 ### Changed

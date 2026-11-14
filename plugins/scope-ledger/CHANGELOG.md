@@ -2,6 +2,21 @@
 
 All notable changes to the `scope-ledger` plugin will be documented in this file.
 
+## [1.1.1] - 2026-11-14
+
+### Fixed
+
+- **A write after a `<<` that is no heredoc was not seen** (`scope-gate-bash.sh`). The Bash gate dropped every line after a `<<` until it saw the delimiter. These three never get one:
+  - a shift in `$(( ))`: `x=$((1<<n))`, then `sed -i … src/a.php`
+  - a here-string: `cat <<<hello`
+  - a delimiter in mixed quotes: `<<'E'"F"` closes on `EF`
+  
+  In each case the lines after it run in bash, so a source write on them slipped past the gate. Now a heredoc whose delimiter line never comes gives its lines back, to be read as commands. This is the rule the merge and archive gates have used since #48. One rule covers all three shapes, rather than a patch per shape in this third copy of the stripping. It can only add write targets, never hide one. The README lists the three misreads that remain. Two of them count a `> file` as a write: in a single-quoted string that spans lines, and in a real heredoc's body that comes after a `<<` that never closed (the lines given back are not scanned for heredocs again). The third is a write in a script fed to `bash <<EOF`, which is not seen.
+
+### Tests
+
+- `scope-hooks.test.sh`: B12, B12b and B12c (one per shape, each red before the fix), plus B12d (a heredoc that closes still hides its body). A mutant that drops the put-back fails the three B12 cases. A mutant that puts every body back fails the existing B4 and B10c.
+
 ## [1.1.0] - 2026-10-18
 
 ### Added

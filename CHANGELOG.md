@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.19.1] - 2026-11-14
+
+### Fixed
+
+- **scope-ledger 1.1.0 → 1.1.1** — the Bash gate dropped every line after a `<<` until it saw a delimiter. A shift in `$(( ))`, a here-string `<<<` or a delimiter in mixed quotes never gets one, so a source write on a later line slipped past. A heredoc whose delimiter line never comes now gives its lines back to be read as commands. This is the rule the merge and archive gates use (#48), and one rule covers all three shapes. See that plugin's CHANGELOG [1.1.1].
+
 ## [1.19.0] - 2026-11-14
 
 ### Changed
