@@ -37,16 +37,21 @@ proj="${proj%/}"
 # Only the `<<DELIM` token and the body are removed; the rest of the command line is kept, so
 # `cat <<'EOF' > src/new.ts` (redirect after the delimiter — valid bash, and the form a
 # cross-vendor review found slipping through) still yields its target.
+# A << whose delimiter line never comes is no heredoc to bash: a shift in $(( )), a here-string <<<,
+# or a delimiter in mixed quotes (<<'E'"F" closes on EF, which this reading cannot spell). Its lines
+# are put back at the end and read as commands, so a write after it is still found; the same rule
+# the merge and archive gates use (#48). Reading a body as commands can only add targets.
 stripped=$(printf '%s\n' "$cmd" | awk -v q="'" -v dq='"' '
-  BEGIN { skip = 0; re = "<<-?[ \t]*[" dq q "]?[A-Za-z_][A-Za-z0-9_]*[" dq q "]?" }
+  BEGIN { skip = 0; nb = 0; re = "<<-?[ \t]*[" dq q "]?[A-Za-z_][A-Za-z0-9_]*[" dq q "]?" }
   {
-    if (skip) { if ($0 == delim) skip = 0; next }
+    if (skip) { if ($0 == delim) { skip = 0; nb = 0 } else body[++nb] = $0; next }
     if (match($0, re)) {
       d = substr($0, RSTART, RLENGTH); sub(/<<-?[ \t]*/, "", d); gsub("[" dq q "]", "", d)
-      delim = d; skip = 1; print substr($0, 1, RSTART - 1) " " substr($0, RSTART + RLENGTH); next
+      delim = d; skip = 1; nb = 0; print substr($0, 1, RSTART - 1) " " substr($0, RSTART + RLENGTH); next
     }
     print
-  }' 2>/dev/null | sed -E "s/'[^']*'//g; s/\"//g" 2>/dev/null) || allow
+  }
+  END { if (skip) for (i = 1; i <= nb; i++) print body[i] }' 2>/dev/null | sed -E "s/'[^']*'//g; s/\"//g" 2>/dev/null) || allow
 
 # ── 2. Collect write targets per segment, resolved to absolute paths ─────────────────────────
 # A segment is one command between ; | && || or a newline. A leading `cd <dir>` moves the base

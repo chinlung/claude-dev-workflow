@@ -340,6 +340,25 @@ tt=$WORK/bt10c; mkdir -p "$tt"
 check_empty "B10c heredoc 內文的 > 仍不算（標記後無重導向）" "$(run_hook scope-gate-bash.sh "$(bash_json b10c "$p" "cat <<'EOF'
 node build.js > dist/app.js
 EOF")" "$tt" "$p")"
+# B12 a << whose delimiter line never comes is no heredoc to bash (a shift in $(( )), a here-string <<<,
+# a delimiter written in mixed quotes whose closing line is the joined word): the lines after it run, so a
+# write on them is still a write. The same rule the merge and archive gates have (#48).
+tt=$WORK/bt12; mkdir -p "$tt"
+check "B12 shift in \$(( )), then sed -i → deny" "$(run_hook scope-gate-bash.sh "$(bash_json b12 "$p" "x=\$((1<<n))
+sed -i 's/a/b/' src/a.php")" "$tt" "$p")" 'Bash 寫入 src/a.php'
+tt=$WORK/bt12b; mkdir -p "$tt"
+check "B12b here-string, then sed -i → deny" "$(run_hook scope-gate-bash.sh "$(bash_json b12b "$p" "cat <<<hello
+sed -i 's/a/b/' src/a.php")" "$tt" "$p")" 'Bash 寫入 src/a.php'
+tt=$WORK/bt12c; mkdir -p "$tt"
+check "B12c mixed-quote delimiter, then sed -i → deny" "$(run_hook scope-gate-bash.sh "$(bash_json b12c "$p" "cat <<'E'\"F\" > notes.md
+body
+EF
+sed -i 's/a/b/' src/a.php")" "$tt" "$p")" 'Bash 寫入 src/a.php'
+tt=$WORK/bt12d; mkdir -p "$tt"
+check_empty "B12d a heredoc that closes still hides its body" "$(run_hook scope-gate-bash.sh "$(bash_json b12d "$p" "cat <<EOF > notes.md
+node build.js > dist/app.js
+EOF
+echo done")" "$tt" "$p")"
 
 # ===== scope-prompt-reminder.sh =====
 prompt_json() { printf '{"session_id":"%s","cwd":"%s","hook_event_name":"UserPromptSubmit","prompt":"fix it","source":"%s"}' "$1" "$2" "$3"; }
