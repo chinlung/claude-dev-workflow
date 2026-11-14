@@ -135,12 +135,19 @@ gate deny "endpoint with a fragment" "$(bash_in "gh api 'repos/o/r/pulls/3/merge
 called "" "fragment: ready not called"
 FAKE_RC=0 gate allow "gh api without merge" "$(bash_in 'gh api repos/o/r/pulls/3 --jq .merged')"
 called "" "api no merge: ready not called"
+# A heredoc whose delimiter never comes takes every line after it, and bash runs none of them — unless
+# it dropped the heredoc's own line as a syntax error, when they run (bash 3.2 and 5.3). The hook cannot
+# tell which, so the lines are read as commands too. The same for an arithmetic that never closes.
 FAKE_RC=0 gate allow "a heredoc that never closes" "$(bash_in $'cat <<EOF\ngh pr merge 3 --repo o/r')"
 called "ready o/r 3" "open heredoc: args"
-# rescanning an unclosed heredoc keeps the quote and nesting state: opened inside "$(, the ) after it
-# returns to the outer "
+FAKE_RC=0 gate allow "a heredoc on a line bash drops, never closed" "$(bash_in $'EOF=(:<<-a=a=\ngh pr merge 7 --repo o/r\ntrue')"
+called "ready o/r 7" "dropped heredoc line: args"
+FAKE_RC=0 gate allow "an arithmetic on a line bash drops, never closed" "$(bash_in $'a=(-( $((1 +\ngh pr merge 12 --repo o/r\ntrue')"
+called "ready o/r 12" "open arithmetic: args"
+# the << inside ${…} is text, opening no heredoc; the $( is inside "…", and the ) after it returns to the
+# outer ": the merge line runs
 FAKE_RC=0 gate allow "merge after an unclosed heredoc inside a quoted substitution" "$(bash_in $'x="$(echo ${u:-<<NEVER}\n) <<true #"\ngh pr merge 8 --repo o/r\ntrue')"
-called "ready o/r 8" "rescan keeps state: args"
+called "ready o/r 8" "<< inside \${…} is text: args"
 
 # command substitution runs inside double quotes and unquoted heredocs: what it runs counts
 FAKE_RC=0 gate allow "substitution in double quotes" "$(bash_in 'echo "merged: $(gh pr merge 3 --repo o/r --squash)"')"
@@ -158,14 +165,11 @@ FAKE_RC=0 gate allow "merge after a comment with an apostrophe" "$(bash_in $'# d
 called "ready o/r 3" "comment apostrophe: args"
 FAKE_RC=0 gate allow "merge after a trailing comment" "$(bash_in $'true # it\'s\ngh pr merge 4 --repo o/r')"
 called "ready o/r 4" "trailing comment: args"
-# the plain reading has no comment rule and takes gh anywhere in a segment, as before 1.0.5: the safe side
-FAKE_RC=0 gate allow "merge words in a comment are still checked" "$(bash_in '# gh pr merge 3 --repo o/r')"
-called "ready o/r 3" "comment text: args"
 FAKE_RC=0 gate allow "merge after a comment with an apostrophe inside backticks" "$(bash_in 'echo `# don'"'"'t`; gh pr merge 8 --repo o/r')"
 called "ready o/r 8" "backtick comment apostrophe: args"
 FAKE_RC=0 gate allow "a merge inside \${…} still runs" "$(bash_in 'echo ${x:-`gh pr merge 9 --repo o/r`}')"
 called "ready o/r 9" "brace substitution: args"
-# behind a comment with an apostrophe the plain reading sees nothing, so these rest on the ${…} rules alone
+# behind a comment with an apostrophe, so a misread comment could hide them too: these rest on the ${…} rules
 FAKE_RC=0 gate allow "behind a comment: # inside \${…}" "$(bash_in $'# isn\'t\necho ${x:- #}; gh pr merge 21 --repo o/r')"
 called "ready o/r 21" "behind a comment, brace word: args"
 FAKE_RC=0 gate allow "behind a comment: a merge inside \${…}" "$(bash_in $'# isn\'t\necho ${x:-`gh pr merge 22 --repo o/r`}')"
@@ -236,7 +240,7 @@ called "" "pending heredoc: ready not called"
 gate allow "an escaped quote before a quoted delimiter" "$(bash_in $'grep -c \\\' f <<\'EOF\'\ngh pr merge 3 --repo o/r\nEOF')"
 called "" "escaped quote: ready not called"
 gate allow "a real heredoc after a shift outside \$(( ))" "$(bash_in $'let x=1<<n\ncat > n.md <<EOF\ngh pr merge 3 --repo o/r\nEOF')"
-called "" "rescan after open heredoc: ready not called"
+called "" "heredoc after a shift: ready not called"
 # DELIM) is not a closing line: taking it would drop the commands after it on that line, or the ones
 # between an arithmetic shift and a case branch
 FAKE_RC=0 gate allow "merge after EOF) on the same line" "$(bash_in $'x=$(cat <<EOF\ntext\nEOF); gh pr merge 9 --repo o/r')"
@@ -245,8 +249,7 @@ FAKE_RC=0 gate allow "merge between an arithmetic shift and a case branch" "$(ba
 called "ready o/r 9" "case branch: args"
 gate allow "a lone quote in a comment before a heredoc" "$(bash_in $'# don\'t merge yet\ncat > n.md <<EOF\nit\'s\ngh pr merge 3 --repo o/r\nEOF')"
 called "" "comment quote: ready not called"
-# the body has no quote of its own: only the heredoc pass skipping the comment keeps its lone quote
-# from hiding the << (the tokenizer's own comment rule cannot save this one)
+# the body has no quote of its own: only reading the # as a comment keeps its lone quote from hiding the <<
 gate allow "a lone quote in a comment before a heredoc with a plain body" "$(bash_in $'# don\'t merge yet\ncat > n.md <<EOF\ngh pr merge 3 --repo o/r\nEOF')"
 called "" "comment before a plain heredoc: ready not called"
 gate allow "an escaped backslash at the end of the opener line" "$(bash_in $'cat <<EOF \\\\\ngh pr merge 3 --repo o/r\nEOF')"
@@ -272,9 +275,49 @@ gate deny "MCP merge with a pull number that is not a number" "$(mcp_in '{"owner
 called "" "MCP odd number: ready not called"
 reason_has "MCP odd number" "讀不出是哪個 repo"
 
-# W5-8: merges the lexer (the third reading) reads the way bash does; bash runs every one of them.
-# Keep these last: the mutants below run on a copy with only the two older readings, which miss some of
-# these, so they must come after every mutant's own case.
+# a number or repo with a substitution in it: bash merges what it expands to (30, o/rx), which the hook
+# cannot know — never the literal part (3, o/r), which would check one PR and let another merge
+# (in quotes: one word whatever it expands to, so only the mark in that word says it is unknown)
+gate deny "a substitution in the number" "$(bash_in 'gh pr merge "https://github.com/o/r/pull/3$(echo 0)"')"
+gate deny "a substitution in the repo" "$(bash_in 'gh pr merge 3 --repo "o/r$(echo x)"')"
+called "" "a substitution in the repo: ready not called"
+reason_has "a substitution in the repo" "讀不出是哪個 repo"
+# a value that is a substitution alone is still a word in its place: a head sha written as
+# "$(git rev-parse HEAD)" is not a literal one, and a --subject from one still takes it as its value
+gate deny "a head sha from a substitution" "$(bash_in 'gh pr merge 3 --repo o/r --match-head-commit "$(git rev-parse HEAD)"')"
+called "" "head sha from a substitution: ready not called"
+reason_has "a head sha from a substitution" "不是字面的 40 碼 commit sha"
+FAKE_RC=0 gate allow "a subject from a substitution before the number" "$(bash_in 'gh pr merge --subject "$(git log -1 --format=%s)" 3 --repo o/r')"
+called "ready o/r 3" "subject from a substitution: args"
+# an api endpoint with a substitution in it may be a merge; a substitution in a field's value is not one
+gate deny "an api endpoint from a substitution" "$(bash_in 'gh api -X PUT "$(echo repos/o/r/pulls/5/merge)"')"
+called "" "api endpoint from a substitution: ready not called"
+gate allow "an api field from a substitution" "$(bash_in 'gh api repos/o/r/issues/5/comments -f body="$(cat merge-notes.md)"')"
+called "" "api field from a substitution: ready not called"
+# an unquoted substitution is any number of words, none included: bash runs `gh pr merge 3` here, and in
+# the second the 3 is the subject, so gh merges the current branch's PR
+gate deny "a word that may vanish" "$(bash_in 'gh $(true) pr merge 3 --repo o/r')"
+called "" "a word that may vanish: ready not called"
+gate deny "a value that may vanish" "$(bash_in 'gh pr merge --subject $(true) 3 --repo o/r')"
+called "" "a value that may vanish: ready not called"
+# a string handed to a shell is split into words again there: a substitution that is one word inside the
+# quotes here is any number of words to that shell (bash runs `gh pr merge 3` in each of these)
+gate deny "a substitution in a bash -c string" "$(bash_in 'bash -c "gh $(true) pr merge 3 --repo o/r"')"
+called "" "substitution in a bash -c string: ready not called"
+gate deny "a substitution in an eval string" "$(bash_in 'eval "gh pr `true` merge 3 --repo o/r"')"
+called "" "substitution in an eval string: ready not called"
+gate deny "an option name from a substitution" "$(bash_in 'gh pr merge 3 --repo o/r "--$(echo repo=e/x)"')"
+
+# a shift in an arithmetic command is no heredoc: the merge on the next line runs (bash 3.2 and 5.3)
+FAKE_RC=0 gate allow "a merge after an arithmetic command with a shift" "$(bash_in $'((x = 1 << y))\ngh pr merge 8 --repo o/r\ny')"
+called "ready o/r 8" "arithmetic command: args"
+# strings that only hold merge words, which a misread quote would turn into a command; bash runs neither
+gate allow "an ANSI-C string with \\' in it" "$(bash_in "echo \$'it\\'s; gh pr merge 3 --repo o/r'")"
+called "" "ansi-c string: ready not called"
+gate allow "a quoted } in \${…}, then a quoted string" "$(bash_in "echo \${x:-'}'} '; gh pr merge 3 --repo o/r'")"
+called "" "quoted brace: ready not called"
+
+# W5-8: merges the scanners before the lexer missed; bash runs every one of them.
 lexer_case() { FAKE_RC=0 gate allow "lexer: $1" "$(bash_in "$2")"; called "ready o/r 3" "lexer: $1: args"; }
 lexer_case "line continuation before the command"    $'true && \\\ngh pr merge 3 --repo o/r'
 lexer_case "a quote inside backticks"                $'echo `\'-#`\ngh pr merge 3 --repo o/r'
@@ -285,20 +328,28 @@ lexer_case "double quotes in \$( … ) in double quotes" 'echo "x $(echo "a"; gh
 lexer_case "a substitution inside \$(( … ))"         'echo $(( $(gh pr merge 3 --repo o/r) 0 ))'
 lexer_case "a shift inside \$[ … ]"                  $'echo $[1<<2]\ngh pr merge 3 --repo o/r'
 
-MIN_PASS=205
+# Only the two older readings find this one, and bash runs none of it: the reading from before the
+# comment rules takes merge words in a comment as a merge (the safe side). It shows that reading is
+# still there. Keep it last: the mutants below run on a copy with the lexer alone, where it fails.
+FAKE_RC=0 gate allow "merge words in a comment are still checked" "$(bash_in '# gh pr merge 3 --repo o/r')"
+called "ready o/r 3" "comment text: args"
+
+MIN_PASS=237
 if [ "$pass" -lt "$MIN_PASS" ] && [ "${STOP_ON_FAIL:-0}" != 1 ]; then failed "only $pass checks passed, expected at least $MIN_PASS"; fi
 echo "pr-merge-gate: $pass passed, $fail failed"
 
 mut_bad=0; mut_n=0
-# The tokenizer mutants break the two older readings, so every mutant runs on a copy that has only
-# those two: with the lexer in the loop it would catch most of what they break and the mutant would
-# live. The lexer's own mutants are in openspec's tokenizer-differential.test.sh, where bash judges.
-old="$tmp/old-readings.sh"
-perl -pe 's/^for my \$mode \(0, 1, 2\) \{$/for my \$mode (0, 1) {/' "$HOOK" > "$old"
+# Each breaks one path of the hook — its own logic, or the lexer's reading that a case above exists for.
+# They run on a copy with the lexer alone: with the two older readings in the loop, those would catch
+# most of what a broken lexer misses and the mutant would live. The older readings are frozen code:
+# openspec's tokenizer-differential.test.sh checks that the hook never reports less than it did at
+# b16fb23, and that it does without them. The lexer has more mutants there, where bash judges.
+lexonly="$tmp/lexer-only.sh"
+perl -pe 's/^for my \$mode \(0, 1, 2\) \{$/for my \$mode (2) {/' "$HOOK" > "$lexonly"
 mutant() {   # <label> <substring of the case that must kill it> <perl substitution>
   local label=$1 want=$2 m="$tmp/mutant-$1.sh" log="$tmp/mutant-$1.log" rc first
-  perl -pe "$3" "$old" > "$m" || { echo "MUTANT [$label] perl failed"; mut_bad=1; return; }
-  if cmp -s "$m" "$old"; then echo "MUTANT [$label] substitution did not apply"; mut_bad=1; return; fi
+  perl -pe "$3" "$lexonly" > "$m" || { echo "MUTANT [$label] perl failed"; mut_bad=1; return; }
+  if cmp -s "$m" "$lexonly"; then echo "MUTANT [$label] substitution did not apply"; mut_bad=1; return; fi
   HOOK="$m" NO_MUTANTS=1 STOP_ON_FAIL=1 perl -e 'alarm 120; exec @ARGV' bash "$0" > "$log" 2>&1; rc=$?
   mut_n=$((mut_n + 1))
   first=$(command grep -a -m1 '^FAIL' "$log")   # -a: a truncated multibyte char must not make GNU grep call the log binary
@@ -308,54 +359,58 @@ mutant() {   # <label> <substring of the case that must kill it> <perl substitut
   else echo "mutant [$label]: suite red as required (by [$want])"; fi
 }
 if [ "${NO_MUTANTS:-0}" != 1 ]; then
-  if cmp -s "$old" "$HOOK"; then echo "FAIL: the copy with the two older readings is the hook itself: the reading loop changed"; mut_bad=1; fi
+  # the copy is the hook without its two older readings, and without them only the last case fails
+  if cmp -s "$lexonly" "$HOOK"; then echo "FAIL: the lexer-only copy is the hook itself: the reading loop changed"; mut_bad=1; fi
+  first=$(HOOK="$lexonly" NO_MUTANTS=1 perl -e 'alarm 120; exec @ARGV' bash "$0" 2>&1 | command grep -a -m1 '^FAIL')
+  if [[ $first == *"[comment text: args]"* ]]; then echo "the lexer alone fails only where the older readings are needed (by [comment text: args])"
+  else echo "FAIL: the lexer-only copy went red first on [${first:0:90}], expected [comment text: args]"; mut_bad=1; fi
+  # the hook's own logic
   mutant bypass       "[bypass]"                     's/^  case \$cmd in \*PR_CLOSEOUT_OK=1\*\) allow ;; esac$/  :/'
-  mutant here-string   "[here-string: args]"          's/^.*# not-a-heredoc: here-string$//'
-  mutant rc-check      "[ready says unresolved threads]" 's/\[ "\$rc" = 0 \] && continue/continue/'
+  mutant rc-check     "[ready says unresolved threads]" 's/\[ "\$rc" = 0 \] && continue/continue/'
   mutant need-target   "[no --repo]"                  's/if \[ "\$repo" = - \] \|\| \[ "\$num" = - \]; then/if false; then/'
   mutant expect-head   "[head: args]"                 's/\[ "\$sha" = - \] \|\| args\+=/true || args+=/'
   mutant literal-head  "[match-head-commit is a variable]" 's/^  if \[ "\$sha" != - \] && \[\[ ! \$sha =~ .*$/  if false; then/'
-  mutant api-parse     "[gh api merge]"               's/if \(\$x =~ m\{\^\/\?repos/if (0 && \$x =~ m{^\/?repos/'
+  mutant api-parse     "[gh api merge]"               's/\$x =~ m\{\^\/\?repos/0 && \$x =~ m{^\/?repos/'
   mutant mcp           "[MCP: args]"                  's/elif \[\[ \$tool == mcp__\*merge_pull_request \]\]/elif false/'
-  mutant wrappers      "[command gh: args]"           's/shift \@t while \@t && !\(\(\$t\[0\] =~ m\{\(\[\^\/\]\+\)\$\}\)\[0\] eq '"'"'gh'"'"'\);/shift \@t while \@t && \$t[0] =~ \/^[A-Za-z_]\\w*=\/;/'
-  mutant backticks     "[backticks: args]"            's/\[;&\|\(\)`\\n\]/[;&|()\\n]/'
-  mutant open-heredoc  "[open heredoc: args]"         's/^    if \(\@hd\) \{ shift \@hd; \@todo = \@body; \}.*$//'
-  mutant no-rescan     "[rescan after open heredoc"   's/^    if \(\@hd\) \{ shift \@hd; \@todo = \@body; \}.*$/    if (\@hd) { push \@keep, \@body; \@hd = (); }/'
-  mutant no-carry      "[multi-line close: args]"     's/^      push \@keep, \$l; my \$cont = 0;$/      push \@keep, \$l; my \$cont = 0; \$q = "";/'
-  mutant no-pending    "[pending heredoc"             's/if \(\@pend && \$q eq '"''"' && !\$cont\)/if (\@pend \&\& !\$cont)/'
-  mutant no-cont       "[continuation: args]"         's/\$cont = 1 if \$i == length\(\$l\) - 1; //'
-  mutant no-escape     "[escaped quote"               's/(\$cont = 1 if \$i == length\(\$l\) - 1;) \$i\+\+;/$1/'
-  mutant first-only    "[same-line shift"             's/^        push \@pend, \[/        \@pend or push \@pend, [/'
-  mutant no-subst      "[dq substitution heredoc: args]" 's/^.*# not-a-heredoc: substitution$//'
-  mutant no-arith      "[two shifts: args]"           's/^.*# not-a-heredoc: arithmetic$//'
-  mutant no-comment    "[comment quote"               's/^.*# not-a-heredoc: comment$//'
-  mutant ansi-tok      "[ansi-c: args]"               's/^.*# ansi-c: tokenizer$//'
-  mutant ansi-scan     "[ansi-c heredoc: args]"       's/^.*# not-a-heredoc: ansi-c$//'
-  mutant ansi-strip    "[PR number written with an ANSI-C escape]" 's/\$tok \.= "\\\\" unless \$e =~ \/\[\\\\\x27"\]\/; //'
-  mutant reset-state   "[rescan keeps state: args]"   's/^    my \(\@pend, \@body\);$/    my (\@pend, \@body); (\$q, \$ar, \@st) = ("", 0);/'
+  mutant wrappers      "[command gh: args]"           's/\$g\+\+ while \$g < \@n && \(\(\$n\[\$g\] =~ m\{\(\[\^\/\]\+\)\$\}\)\[0\] \/\/ ..\) ne .gh.;/\$g++ while \$g < \@n \&\& \$n[\$g] =~ \/^[A-Za-z_]\\w*=\/;/'
   mutant api-unread    "[graphql mergePullRequest]"   's/out\("- - -\\n"\) if !\$found/out("") if 0 \&\& !\$found/'
   mutant prefilter-case "[graphql auto-merge]"        's/\*\[Mm\]\[Ee\]\[Rr\]\[Gg\]\[Ee\]\*/*merge*/'
-  mutant dq-subs       "[dq substitution: args]"      's/^      push \@queue, subs_of\(substr\(.*$//'
-  mutant heredoc-subs  "[heredoc substitution: args]" 's/push \@queue, subs_of\(join "\\n", \@body\) unless \$hd\[0\]\[1\]; //'
-  mutant comment       "[comment apostrophe: args]"   's/if \(!\$plain && \$ch eq .#. && !defined \$tok/if (0 \&\& !defined \$tok/'
-  mutant plain-reading "[comment text: args]"         's/^for my \$mode \(0, 1\) \{$/for my \$mode (0) {/'
   mutant field-blank   "[newline in the repo] reason"  's/^  \[\[ \$num =~ \^\[0-9\]\+\$ \]\] \|\| num=-$/  :/'
-  mutant backtick-comment "[backtick comment"         's/^\s*if \(\$bq\) \{.*$//'
-  # the plain reading catches what it always caught, so these are pinned to cases only the new rule
-  # can save: ones behind a comment with an apostrophe, which the plain reading loses whole
-  mutant brace-word    "[behind a comment, brace word: args]"   's/^(\s*)if \(!\$d\) \{.*$/$1if (0) {}/'
-  mutant brace-subs    "[behind a comment, brace subs: args]"   's/push \@queue, subs_of\(\$w, 1\); //'
-  mutant brace-quote   "[behind a comment, brace quote: args]"  's/^\s*if \(\$x eq "\x27"\) \{ my \$k = index.*$//'
-  mutant brace-sq-text "[brace quoted substitution"   's/subs_of\(\$w, 1\)/subs_of(\$w)/'
-  mutant per-line-body "[multi-line heredoc substitution: args]" 's/subs_of\(join "\\n", \@body\)/map { subs_of(\$_) } \@body/'
-  mutant quoted-hd     "[quoted heredoc: ready not called]" 's/ unless \$hd\[0\]\[1\];/;/'
-  mutant takes-value   "[--subject takes a value]"   's/if \(\$takes\{\$x\}\) \{ \$k\+\+; next; \}//'
+  mutant value-mark    "[a substitution in the number"  's/if \(\$x =~ \$M && \$x !~ \/\^-\/\) \{ \$two = 1; next; \}//'
+  mutant repo-mark     "[a substitution in the repo"    's/\$repo = .-. if \$repo =~ \$M; //'
+  mutant loose-drop    "[a word that may vanish]"       's/grep \{ \$s->\[\$_\] !~ \/\^\\x02\+\$\/ \} \$g/grep { 1 } \$g/'
+  mutant loose-word    "[a word that may vanish]"       's/= \(.-., .-., .-., \$loose\);/= ("-", "-", "-", 0);/'
+  mutant api-dyn       "[an api endpoint from a substitution]" 's/my \$dyn = .*$/my \$dyn = 0;/'
+  mutant opt-mark      "[an option name from a substitution" 's/^\s*if \(\$x =~ \/\^-\/ && \(split .*$//'
+  mutant sub-word      "[a head sha from a substitution" 's/if \(defined \$tok\) \{ if \(\$skip\)/if (defined \$tok \&\& \$tok =~ \/[^\\x01]\/) { if (\$skip)/'
+  # the lexer's reading, each where a case above exists for it
+  # A quote misread is healed by reading the text after an unclosed quote as commands too, so a mutant on
+  # quote handling only adds merges: it is caught by a case that must not call ready.
+  mutant backticks    "[backticks: args]"            's/\$i = lex_bq\(\$sr, \$i, \$segs, \$depth, 0\);/\$i = lex_bq(\$sr, \$i, [], \$depth, 0);/'
+  mutant open-heredoc  "[open heredoc: args]"         's/^          next;$/          return \$n;/'
+  mutant open-arith    "[open arithmetic: args]"      's/^\s*lex_rest\(\$sr, \$from, \$segs, \$depth\);   # it never closed.*$//'
+  mutant no-cont       "[lexer: line continuation before the command: args]" 's/ unless \$e eq "\\n"; \$i \+= 2; next; \}/; \$i += 2; next; }/'
+  mutant no-escape     "[continuation: args]"         's/ unless \$e eq "\\n"; \$i \+= 2; next; \}/ unless \$e eq "\\n"; \$i += 1; next; }/'
+  mutant first-only    "[same-line shift: ready not called]" 's/push \@pend, \[\$d, \$quoted, \$strip\] if length \$d;/push \@pend, [\$d, \$quoted, \$strip] if length \$d \&\& !\@pend;/'
+  mutant no-arith      "[arithmetic command: args]"   's/^(  my \$from = \$i \+ 1;)/$1 return undef;/'
+  mutant no-comment    "[comment quote" 's/if \(\$ch eq .#. && !defined \$tok && /if (0 \&\& /'
+  mutant ansi-tok      "[ansi-c string: ready not called]" 's/^\s*if \(\$ch eq .\$. && substr\(\$\$sr, \$i \+ 1, 1\) eq "\x27"\) \{.*$//'
+  mutant ansi-strip    "[PR number written with an ANSI-C escape]" 's/\$tok \.= "\\\\" unless \$e =~ \/\[\\\\\x27"\]\/; //'
+  mutant dq-subs       "[dq substitution: args]"      's/\$i = lex_cmd\(\$sr, \$i \+ 2, .\)., \$segs, \$depth \+ 1\); \$t/\$i = lex_cmd(\$sr, \$i + 2, ")", [], \$depth + 1); \$t/'
+  mutant heredoc-subs  "[heredoc substitution: args]" 's/lex_dq\(\\\$x, 0, \$segs, \$depth, 1\); \}   # an unquoted body/lex_dq(\\\$x, 0, [], \$depth, 1); }   # an unquoted body/'
+  mutant brace-word    "[behind a comment, brace word: args]"                 's/return undef unless defined \$j;/return undef;/'
+  mutant brace-subs    "[brace substitution: args]"   's/subs_of\(substr\(\$\$sr, \$i, \$j - \$i\), \$sq\)/subs_of("", \$sq)/'
+  mutant brace-quote   "[quoted brace: ready not called]"  's/^\s*if \(\$x eq "\x27"\) \{ my \$k = index\(\$\$sr.*$//'
+  mutant brace-sq-text "[brace quoted substitution"   's/my \$j = lex_param\(\$sr, \$i, \$segs, \$depth, 1\);/my \$j = lex_param(\$sr, \$i, \$segs, \$depth, 0);/'
+  mutant quoted-hd     "[quoted heredoc: ready not called]" 's/unless \(\$quoted\) \{ my \$x = substr\(\$\$sr, \$i, \$stop - \$i\)/unless (0) { my \$x = substr(\$\$sr, \$i, \$stop - \$i)/'
+  mutant takes-value  "[--subject takes a value]"   's/if \(\$takes\{\$o\}\) \{ \$k\+\+; next; \}//'
   mutant two-numbers   "[two PR numbers]"             's/\$num = '"'"'-'"'"' if \$two;//'
-  mutant shell-c       "[bash -c: args]"              's/if \(\$s->\[\$m\] =~ \/\^-\[A-Za-z\]\*c\[A-Za-z\]\*\$\/\) \{ push \@queue, \$s->\[\$m \+ 1\] if defined \$s->\[\$m \+ 1\]; last; \}//'
+  mutant shell-c       "[bash -c: args]"              's/if \(\$n\[\$m\] =~ \/\^-\[A-Za-z\]\*c\[A-Za-z\]\*\$\/\) \{ push \@queue, \$s->\[\$m \+ 1\] =~ tr\/\\x01\/\\x02\/r if defined \$s->\[\$m \+ 1\]; last; \}//'
   mutant eval          "[eval: args]"                 's/elsif \(\$w eq '"'"'eval'"'"'\)/elsif (0)/'
+  mutant shell-c-mark  "[a substitution in a bash -c string]" 's/push \@queue, \$s->\[\$m \+ 1\] =~ tr\/\\x01\/\\x02\/r if/push \@queue, \$s->[\$m + 1] if/'
+  mutant eval-mark     "[a substitution in an eval string]"   's/push \@queue, join\(.*\) =~ tr\/\\x01\/\\x02\/r; last;/push \@queue, join(" ", \@\$s[\$k + 1 .. \$#\$s]); last;/'
   mutant budget        "[two merges, budget spent]"   's/if \[ "\$left" -lt 1000 \]; then/if false; then/'
-  mutant quoted-lt     "[dq <<: args]"                's/^.*# not-a-heredoc: quoted$//'
-  MUT_WANT_N=44
+  MUT_WANT_N=42
   if [ "$mut_n" != "$MUT_WANT_N" ]; then echo "FAIL: $mut_n of $MUT_WANT_N mutants ran"; mut_bad=1; fi
   [ "$mut_bad" = 0 ] || fail=$((fail + 1))
 fi

@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.18.1] - 2026-11-14
+
+### Fixed
+
+- **pr-closeout 1.1.0 → 1.1.1, openspec-superpowers-workflow 3.2.0 → 3.2.1** — the merge gate no longer reads a PR number, URL or repo with a substitution in it as its literal part (`gh pr merge 3$(echo 0)` merges PR 30, and where only the lexer could read the command the gate checked PR 3); such a value, a head sha, an option name or a `gh api` endpoint with one, and an unquoted substitution that may expand to no word at all, make the merge unreadable (denied); in a string handed to `bash -c` or `eval`, which that shell splits again, a quoted substitution counts as unquoted. The lexer in both gates reads the text after a heredoc, an arithmetic or a delimiter quote that never closes as commands too. The second step of W5-8, retiring the two older readings, was tried, measured and not done: with the lexer alone every large sample found commands bash runs that 1.18.0 caught. They stay, and `tokenizer-differential.test.sh` now checks that both gates report at least what they did at 1.18.0. See the two plugins' CHANGELOGs and `docs/gate-lexer-design-2026-11-13.md` §11.
+
 ## [1.18.0] - 2026-11-13
 
 ### Added

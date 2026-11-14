@@ -10,8 +10,9 @@
 # Which PR: `gh pr merge <n|url> --repo|-R <owner/repo> [--match-head-commit <sha>]` (the sha
 # becomes --expect-head), `gh api repos/<owner>/<repo>/pulls/<n>/merge`, or the MCP tool's owner,
 # repo, pullNumber and sha. A merge whose repo or number cannot be read is denied: write them out.
-# Only command position counts (a shell-word tokenizer; quoted text and heredoc bodies never match,
-# except the $( … ) and backticks the shell still runs inside double quotes or an unquoted heredoc body).
+# Only command position counts (the command text is read three ways, a lexer that reads it the way
+# bash does and two older scanners; quoted text and heredoc bodies never match, except the $( … ) and
+# backticks the shell still runs inside double quotes or an unquoted heredoc body).
 # Bypass for one command: PR_CLOSEOUT_OK=1 in it (the MCP tool has no bypass; use gh).
 #
 # A gate, so it fails closed: no jq, no node or no ready script denies a merge (and says how to
@@ -41,14 +42,12 @@ if [ "$tool" = Bash ]; then
   cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null) || deny "讀不懂 hook 的輸入。"
   case $cmd in *PR_CLOSEOUT_OK=1*) allow ;; esac
   command -v perl >/dev/null 2>&1 || deny "需要 perl 才能判斷這是不是 merge。"
-  # Merges in command position, one per line. Same tokenizer as openspec's archive-gate: quoted
-  # words never count and heredoc bodies are dropped, except the $( … ) and backticks the shell still
-  # runs inside double quotes or an unquoted heredoc body (the heredoc pass is described where it runs).
+  # Merges in command position, one per line `repo number sha` (what is read: see the top of this file).
   IFS= read -r -d '' parser <<'PERL' || true
 use strict; use warnings;
-# >>> shared-tokenizer: subs_of (same bytes in openspec's archive-gate.sh; tests/shared-tokenizer.test.sh compares them)
-# Text the shell still runs although it sits inside a string: $( … ) and backticks within double
-# quotes or an unquoted heredoc body. Each is scanned again as a command.
+# >>> shared-tokenizer: lexer (same bytes in openspec's archive-gate.sh; tests/shared-tokenizer.test.sh compares them)
+# The $( … ) and backticks inside the text of a ${…}, each to be read as commands (lex_param); with
+# $sq, those inside its '…' are text.
 sub subs_of {
   my ($s, $sq) = @_; my @out; my $i = 0; my $n = length $s;   # $sq: '…' at this level is text (not so inside "…")
   while ($i < $n) {
@@ -65,8 +64,6 @@ sub subs_of {
   }
   return @out;
 }
-# <<< shared-tokenizer: subs_of
-# >>> shared-tokenizer: lexer (same bytes in openspec's archive-gate.sh; tests/shared-tokenizer.test.sh compares them)
 # The command read the way bash reads it, in one pass with a context for each quote and substitution
 # (docs/gate-lexer-design-2026-11-13.md). lex_segs returns the commands it holds, those inside every
 # $( … ), `…` and ${…} included, as lists of words. A heredoc body is read where bash reads it, at the
@@ -127,6 +124,7 @@ sub lex_arith {   # a $((, (( or $[ at $i: the index past its close, or undef wh
     }
     $i++;
   }
+  lex_rest($sr, $from, $segs, $depth);   # it never closed: bash fails there, or drops only that line (as for a quote)
   return $n;
 }
 sub param_end {   # the index past the } that closes a ${ at $i, a quoted } not counting; undef when it never comes
@@ -160,26 +158,32 @@ sub lex_param {   # a ${…} at $i ($sq: its '…' is text): the index past it, 
   }
   return $j;
 }
-# The value of a substitution is bash's to know: a word keeps only its literal parts, and a word made
-# of substitutions alone is left out (`` `x`openspec `` is the command openspec; `$(echo foo)` names nothing).
-sub lex_dq {   # the inside of "…" from $i: the index past its closing ", its literal text, whether it held a substitution
-  my ($sr, $i, $segs, $depth, $body) = @_; my $n = length $$sr; my ($t, $sub, $from) = ('', 0, $i);   # $body: an unquoted heredoc body, where " is text
+# The value of a substitution is bash's to know, so a mark stands where it goes. Inside "…", and for
+# arithmetic, it is \x01: part of exactly one word (`--match-head-commit "$(git rev-parse HEAD)"` is a
+# word in its place). Unquoted, a $( … ), `…` or ${…} is \x02: any number of words, none included
+# (`gh $(true) pr merge 3` is a merge; in `--subject $(x) 3` the 3 may be the subject). As a name a word
+# is read without its marks (lex_kw: `` `x`openspec `` is openspec); a value with one is the gate's to
+# read: the merge gate takes it as unknown (`gh pr merge 3$(echo 0)` merges 30, not 3), archive-gate
+# as empty.
+sub lex_kw { (my $w = $_[0] // '') =~ tr/\x01\x02//d; return $w; }
+sub lex_dq {   # the inside of "…" from $i: the index past its closing ", its text (\x01 where a substitution is)
+  my ($sr, $i, $segs, $depth, $body) = @_; my $n = length $$sr; my ($t, $from) = ('', $i);   # $body: an unquoted heredoc body, where " is text
   while ($i < $n) {
     lex_tick();
     my $ch = substr($$sr, $i, 1);
-    return ($i + 1, $t, $sub) if $ch eq '"' && !$body;
+    return ($i + 1, $t) if $ch eq '"' && !$body;
     if ($ch eq "\\") { my $e = substr($$sr, $i + 1, 1); $t .= $e eq "\n" ? '' : $e =~ ($body ? qr/[\$`\\]/ : qr/[\$`"\\]/) ? $e : "\\$e"; $i += 2; next; }
-    if (substr($$sr, $i, 3) eq '$((' || substr($$sr, $i, 2) eq '$[') { my $j = lex_arith($sr, $i, $segs, $depth); if (defined $j) { $i = $j; $sub = 1; next; } }
-    if (substr($$sr, $i, 2) eq '$(') { $i = lex_cmd($sr, $i + 2, ')', $segs, $depth + 1); $sub = 1; next; }
-    if ($ch eq '`') { $i = lex_bq($sr, $i, $segs, $depth, 1); $sub = 1; next; }
+    if (substr($$sr, $i, 3) eq '$((' || substr($$sr, $i, 2) eq '$[') { my $j = lex_arith($sr, $i, $segs, $depth); if (defined $j) { $i = $j; $t .= "\x01"; next; } }
+    if (substr($$sr, $i, 2) eq '$(') { $i = lex_cmd($sr, $i + 2, ')', $segs, $depth + 1); $t .= "\x01"; next; }
+    if ($ch eq '`') { $i = lex_bq($sr, $i, $segs, $depth, 1); $t .= "\x01"; next; }
     if (substr($$sr, $i, 2) eq '${') {   # inside "…" a ' in ${…} is a plain character, so what it holds runs
       my $j = lex_param($sr, $i, $segs, $depth, 0);
-      if (defined $j) { $i = $j; $sub = 1; next; }
+      if (defined $j) { $i = $j; $t .= "\x01"; next; }
     }
     $t .= $ch; $i++;
   }
   lex_rest($sr, $from, $segs, $depth) unless $body;   # the " never closed
-  return ($n, $t, $sub);
+  return ($n, $t);
 }
 # lex_cmd: commands from $i up to the $end that closes this level (')' for $( … ), '' for the whole
 # text); returns the index past it. Each command is a new list in @$segs, nested ones included.
@@ -187,8 +191,8 @@ sub lex_cmd {
   my ($sr, $i, $end, $segs, $depth) = @_; my $n = length $$sr;
   if ($depth > 50) { $LEX_UNREAD = 1; return $n; }
   my $cur = []; push @$segs, $cur;
-  my ($tok, $sub, $skip, $par, @pend) = (undef, 0, 0, 0);   # $sub: the word held a substitution; $skip: the next word is a redirection's target; @pend: [delimiter, quoted, strip tabs]
-  my $word = sub { if (defined $tok && ($tok ne '' || !$sub)) { if ($skip) { $skip = 0 } else { push @$cur, $tok } } undef $tok; $sub = 0; };
+  my ($tok, $skip, $par, @pend) = (undef, 0, 0);   # $skip: the next word is a redirection's target; @pend: [delimiter, quoted, strip tabs]
+  my $word = sub { if (defined $tok) { if ($skip) { $skip = 0 } else { push @$cur, $tok } } undef $tok; };
   my $seg = sub { $word->(); $skip = 0; $cur = []; push @$segs, $cur; };
   while ($i < $n) {
     lex_tick();
@@ -197,13 +201,13 @@ sub lex_cmd {
     if ($ch eq "'") { my $j = index($$sr, "'", $i + 1); if ($j < 0) { $j = $n; lex_rest($sr, $i + 1, $segs, $depth); } $tok .= substr($$sr, $i + 1, $j - $i - 1); $i = $j + 1; next; }
     # $'…': \' \" and \\ are decoded; any other escape keeps its backslash, so a word built with one is never read as other text
     if ($ch eq '$' && substr($$sr, $i + 1, 1) eq "'") { my $j = $i + 2; $tok .= ''; while ($j < $n && substr($$sr, $j, 1) ne "'") { if (substr($$sr, $j, 1) eq "\\") { my $e = substr($$sr, $j + 1, 1); $tok .= "\\" unless $e =~ /[\\'"]/; $j++; } $tok .= substr($$sr, $j, 1); $j++; } lex_tick($j - $i); lex_rest($sr, $i + 2, $segs, $depth) if $j >= $n; $i = $j + 1; next; }
-    if ($ch eq '"') { my ($j, $t, $s) = lex_dq($sr, $i + 1, $segs, $depth); $tok .= $t; $sub ||= $s; $i = $j; next; }
-    if (substr($$sr, $i, 3) eq '$((' || substr($$sr, $i, 2) eq '$[') { my $j = lex_arith($sr, $i, $segs, $depth); if (defined $j) { $i = $j; $tok .= ''; $sub = 1; next; } }
-    if (substr($$sr, $i, 2) eq '$(') { $i = lex_cmd($sr, $i + 2, ')', $segs, $depth + 1); $tok .= ''; $sub = 1; next; }
-    if ($ch eq '`') { $i = lex_bq($sr, $i, $segs, $depth, 0); $tok .= ''; $sub = 1; next; }
+    if ($ch eq '"') { my ($j, $t) = lex_dq($sr, $i + 1, $segs, $depth); $tok .= $t; $i = $j; next; }
+    if (substr($$sr, $i, 3) eq '$((' || substr($$sr, $i, 2) eq '$[') { my $j = lex_arith($sr, $i, $segs, $depth); if (defined $j) { $i = $j; $tok .= "\x01"; next; } }
+    if (substr($$sr, $i, 2) eq '$(') { $i = lex_cmd($sr, $i + 2, ')', $segs, $depth + 1); $tok .= "\x02"; next; }
+    if ($ch eq '`') { $i = lex_bq($sr, $i, $segs, $depth, 0); $tok .= "\x02"; next; }
     if (substr($$sr, $i, 2) eq '${') {   # one word to bash; what runs in it is read as commands, except inside its own '…'
       my $j = lex_param($sr, $i, $segs, $depth, 1);
-      if (defined $j) { $i = $j; $tok .= ''; $sub = 1; next; }
+      if (defined $j) { $i = $j; $tok .= "\x02"; next; }
     }
     # a # that starts a word comments out the rest of the line (inside `…`, its text is a line of its own)
     if ($ch eq '#' && !defined $tok && ($i == 0 || substr($$sr, $i - 1, 1) =~ /[ \t\n;&|(]/)) { my $j = index($$sr, "\n", $i); $i = $j < 0 ? $n : $j; next; }
@@ -221,7 +225,7 @@ sub lex_cmd {
         # a ${…} or `…` in it is part of the word, and a quote or \ inside one does not make the body literal
         if (substr($$sr, $j, 2) eq '${') { my $k = param_end($sr, $j); if (defined $k) { $d .= substr($$sr, $j, $k - $j); $j = $k; next; } }
         if ($x eq '`') { my $k = index($$sr, '`', $j + 1); $k = $n - 1 if $k < 0; $d .= substr($$sr, $j, $k + 1 - $j); $j = $k + 1; next; }
-        if ($x eq "'" || $x eq '"') { my $k = index($$sr, $x, $j + 1); $k = $n if $k < 0; $d .= substr($$sr, $j + 1, $k - $j - 1); $quoted = 1; $j = $k + 1; next; }
+        if ($x eq "'" || $x eq '"') { my $k = index($$sr, $x, $j + 1); if ($k < 0) { $k = $n; lex_rest($sr, $j + 1, $segs, $depth); } $d .= substr($$sr, $j + 1, $k - $j - 1); $quoted = 1; $j = $k + 1; next; }
         if ($x eq "\\") { if (substr($$sr, $j + 1, 1) ne "\n") { $d .= substr($$sr, $j + 1, 1); $quoted = 1; } $j += 2; next; }   # \⏎ joins lines
         $d .= $x; $j++;
       }
@@ -249,9 +253,13 @@ sub lex_cmd {
           if ($end eq ')' && substr($l, 0, length($d) + 1) eq "$d)") { ($stop, $next) = ($p, $p + length($raw) - length($l) + length $d); last; }
           last if $e >= $n; $p = $e + 1;
         }
-        if (!defined $stop) {   # its delimiter never comes: the rest of the text is its body, and no line of it runs
+        if (!defined $stop) {
+          # Its delimiter never comes. To bash the rest of the text is its body and no line of it runs —
+          # unless this was no heredoc (a shift: `let x=1<<n`), or bash dropped its line as a syntax
+          # error: then the lines run. So it is read both ways: the rest as a body, for what an unquoted
+          # one expands, and then as if there were no heredoc, the lines after it as commands.
           unless ($quoted) { my $x = substr($$sr, $i); lex_dq(\$x, 0, $segs, $depth, 1); }
-          return $n;
+          next;
         }
         unless ($quoted) { my $x = substr($$sr, $i, $stop - $i); lex_dq(\$x, 0, $segs, $depth, 1); }   # an unquoted body is expanded as in "…"
         $i = $next;
@@ -266,6 +274,7 @@ sub lex_cmd {
 }
 # <<< shared-tokenizer: lexer
 my %takes = map { $_ => 1 } qw(--subject -t --body -b --body-file -F --author-email -A);   # gh pr merge options with a value
+my %apitakes = map { $_ => 1 } qw(-X --method -H --header -f --raw-field -F --field -q --jq -t --template --input --hostname -p --preview --cache);   # gh api options with a value
 my %printed;
 sub out { print $_[0] unless $printed{$_[0]}++ }   # the three readings below often find the same merge
 # The command is read three times and what any reading finds counts. The first knows comments and
@@ -376,39 +385,58 @@ while (@queue && $rounds++ < 50) {
   }
   # <<< shared-tokenizer: heredoc pass and tokenizer
   for my $s (@segs) {
-    # a command string handed to a shell runs too: `bash -c '…'`, `sh -lc '…'`, `eval …`
-    for (my $k = 0; $k < @$s; $k++) {
-      my $w = ($s->[$k] =~ m{([^/]+)$})[0] // '';
+    # Each word as a name (@n: a substitution in it read as empty) and as a value (@$s: a mark where a
+    # substitution's value goes, which this hook cannot know — such a number or repo is `-`, denied,
+    # and such a sha is not a literal one).
+    my $M = qr/[\x01\x02]/;
+    my @n = map { lex_kw($_) } @$s;
+    # a command string handed to a shell runs too: `bash -c '…'`, `sh -lc '…'`, `eval …`. That shell
+    # splits the string into words again, so a substitution that is one word here (\x01, inside the
+    # quotes) is any number of words there (\x02): `bash -c "gh $(true) pr merge 3"` runs a merge.
+    for (my $k = 0; $k < @n; $k++) {
+      my $w = ($n[$k] =~ m{([^/]+)$})[0] // '';
       if ($w =~ /^(?:ba|z|da|k)?sh$/) {
-        for (my $m = $k + 1; $m < @$s; $m++) { if ($s->[$m] =~ /^-[A-Za-z]*c[A-Za-z]*$/) { push @queue, $s->[$m + 1] if defined $s->[$m + 1]; last; } }
-      } elsif ($w eq 'eval') { push @queue, join ' ', @$s[$k + 1 .. $#$s]; last; }
+        for (my $m = $k + 1; $m < @n; $m++) { if ($n[$m] =~ /^-[A-Za-z]*c[A-Za-z]*$/) { push @queue, $s->[$m + 1] =~ tr/\x01/\x02/r if defined $s->[$m + 1]; last; } }
+      } elsif ($w eq 'eval') { push @queue, join(' ', @$s[$k + 1 .. $#$s]) =~ tr/\x01/\x02/r; last; }
     }
     # gh anywhere in the segment, by basename: wrappers (command, env, time, sudo, xargs…) and a full
     # path to gh still reach it; a stray `echo gh pr merge` is read as a merge too (the safe side)
-    my @t = @$s; shift @t while @t && !(($t[0] =~ m{([^/]+)$})[0] eq 'gh');
+    my $g = 0; $g++ while $g < @n && (($n[$g] =~ m{([^/]+)$})[0] // '') ne 'gh';
+    # An unquoted substitution (\x02) is any number of words, none included. The command is told with
+    # the words that are nothing else left out (`gh $(true) pr merge 3` is a merge); with one anywhere
+    # after gh, which word is the number or a value is not this parser's guess.
+    my @keep = grep { $s->[$_] !~ /^\x02+$/ } $g .. $#$s;
+    my @t = @$s[@keep]; my @tn = @n[@keep];
+    my $loose = grep { /\x02/ } @$s[$g .. $#$s];
     next unless @t >= 2;
-    my ($repo, $num, $sha, $two) = ('-', '-', '-', 0);
-    if ($t[1] eq 'pr' && @t > 2 && $t[2] eq 'merge') {
-      my @a = @t[3 .. $#t];
-      for (my $k = 0; $k < @a; $k++) {
-        my $x = $a[$k];
-        if ($takes{$x}) { $k++; next; }
-        if ($x eq '--repo' || $x eq '-R') { $repo = $a[++$k] // '-'; next; }
+    my ($repo, $num, $sha, $two) = ('-', '-', '-', $loose);
+    if ($tn[1] eq 'pr' && @t > 2 && $tn[2] eq 'merge') {
+      for (my $k = 3; $k < @t; $k++) {
+        my ($x, $o) = ($t[$k], $tn[$k]);
+        if ($x =~ /^-/ && (split /=/, $x, 2)[0] =~ $M) { $two = 1; next; }   # an option whose name holds a substitution
+        if ($takes{$o}) { $k++; next; }
+        if ($o eq '--repo' || $o eq '-R') { $repo = $t[++$k] // '-'; next; }
         if ($x =~ /^--repo=(.+)$/) { $repo = $1; next; }
-        if ($x eq '--match-head-commit') { $sha = $a[++$k] // '-'; next; }
+        if ($o eq '--match-head-commit') { $sha = $t[++$k] // '-'; next; }
         if ($x =~ /^--match-head-commit=(.+)$/) { $sha = $1; next; }
+        if ($x =~ $M && $x !~ /^-/) { $two = 1; next; }   # a number or PR URL with a substitution in it
         if ($x =~ m{^https://github\.com/([^/]+/[^/]+)/pull/(\d+)}) { $two = 1 if $num ne '-'; $repo = $1; $num = $2; next; }
         if ($x =~ /^\d+$/) { $two = 1 if $num ne '-'; $num = $x; next; }
       }
-      $num = '-' if $two;   # two PR numbers: which one gh merges is not this parser's guess
+      $num = '-' if $two;   # two PR numbers, or one with a substitution in it: not this parser's guess
+      $repo = '-' if $repo =~ $M; $sha =~ tr/\x01\x02/\$/;
       out("$repo $num $sha\n");
-    } elsif ($t[1] eq 'api') {
-      my $found = 0;
+    } elsif ($tn[1] eq 'api') {
+      # The endpoint is the first word that is neither an option nor an option's value. With a
+      # substitution in it, or with words that may or may not be there, it may be a merge: unreadable.
+      my ($found, $ep) = (0);
+      for (my $k = 2; $k < @t; $k++) { if ($apitakes{$tn[$k]}) { $k++; next; } next if $t[$k] =~ /^-/; $ep = $t[$k]; last; }
+      my $dyn = @keep < $#$s - $g + 1 || (defined $ep && $ep =~ $M);
       for my $x (@t[2 .. $#t]) {
-        if ($x =~ m{^/?repos/([^/]+/[^/]+)/pulls/(\d+)/merge/?(?:\?.*)?$}) { out("$1 $2 -\n"); $found = 1; last; }
+        if (!$dyn && $x =~ m{^/?repos/([^/]+/[^/]+)/pulls/(\d+)/merge/?(?:\?.*)?$}) { out("$1 $2 -\n"); $found = 1; last; }
       }
       # a merge this parser cannot pin to a PR (a GraphQL mergePullRequest, an odd endpoint): unreadable
-      out("- - -\n") if !$found && grep { /mergePullRequest|AutoMerge|\/merge/i } @t[2 .. $#t];
+      out("- - -\n") if !$found && ($dyn || grep { /mergePullRequest|AutoMerge|\/merge/i } @t[2 .. $#t]);
     }
   }
 }

@@ -11,7 +11,7 @@
 #
 # Usage: perl tokenizer-differential.pl --kind ag|pmg --source <hook.sh|parser.pl>
 #             [--seed N] [--n N] [--min-exercised N] [--show N] [--known-gaps | --gap I …]
-#             [--fixed-by <hook.sh|parser.pl>] [--chars]
+#             [--fixed-by <hook.sh|parser.pl> | --superset-of <hook.sh|parser.pl> [--judge]] [--chars]
 # --chars: noise is built from shell punctuation at random (quotes, #, \, <<, $(, ((, ${, `, ; and
 #   newlines) instead of the hand-written list, to find kinds of input nobody wrote down yet. Most such
 #   commands are syntax errors bash refuses; those run nothing and are not counted as exercised.
@@ -21,6 +21,11 @@
 #   parser catches — proof that this harness sees what a real fix changed. Exit 1 when found.
 # --superset-of <earlier parser>: instead of asking bash, require that every line the earlier parser
 #   prints for a generated command is printed by the source too — the gate never sees less than it did.
+#   For the merge gate a line today that denies the command outright covers every earlier line.
+#   With --judge, bash decides each case where a line was lost: it is a counterexample only when bash ran
+#   something the source does not report — the same test as without --superset-of, on those cases, so
+#   this is a listing tool, not a further check. The rest are counted and shown apart: lines only the
+#   earlier parser printed, while the source still covers everything bash ran.
 # Exit: 0 no counterexample, 1 counterexamples (printed), 2 the harness could not judge
 #       (the parser did not compile, a tool is missing, or too few cases reached bash's payload).
 use strict; use warnings;
@@ -29,11 +34,12 @@ use Getopt::Long;
 use List::Util qw(min);
 use POSIX ();
 
-my ($kind, $source, $seed, $n, $min_ex, $show, $gaps, $fixed_by, $superset, $chars, @gap_ids) = ('', '', 20261111, 400, 0, 5, 0, '', '', 0);
+my ($kind, $source, $seed, $n, $min_ex, $show, $gaps, $fixed_by, $superset, $chars, $judge, @gap_ids) = ('', '', 20261111, 400, 0, 5, 0, '', '', 0, 0);
 GetOptions('kind=s' => \$kind, 'source=s' => \$source, 'seed=i' => \$seed, 'n=i' => \$n,
            'min-exercised=i' => \$min_ex, 'show=i' => \$show, 'known-gaps' => \$gaps,
            'gap=i' => \@gap_ids, 'fixed-by=s' => \$fixed_by, 'superset-of=s' => \$superset,
-           'chars' => \$chars) or exit 2;
+           'chars' => \$chars, 'judge' => \$judge) or exit 2;
+$judge && !$superset and do { print STDERR "--judge goes with --superset-of\n"; exit 2 };
 $kind =~ /^(ag|pmg)$/ or do { print STDERR "--kind must be ag or pmg\n"; exit 2 };
 -f $source or do { print STDERR "no such source: $source\n"; exit 2 };
 $fixed_by && $superset and do { print STDERR "--fixed-by and --superset-of do not combine\n"; exit 2 };
@@ -99,7 +105,18 @@ SH
 #!/bin/sh
 [ "$1" = pr ] && [ "$2" = merge ] || exit 0
 shift 2
-for a in "$@"; do case $a in ''|*[!0-9]*) ;; *) printf '%s\n' "$a" >> "$LOG"; exit 0 ;; esac; done
+repo=- num=
+while [ $# -gt 0 ]; do
+  case $1 in
+    --repo|-R) repo=${2-}; [ $# -gt 1 ] && shift ;;
+    --repo=*) repo=${1#--repo=} ;;
+    ''|*[!0-9]*) ;;
+    *) [ -n "$num" ] || num=$1 ;;
+  esac
+  shift
+done
+[ -n "$num" ] && printf '%s %s\n' "$repo" "$num" >> "$LOG"
+exit 0
 SH
 );
 for my $s (keys %stubs) { open my $f, '>', "$stub/$s" or die; print $f $stubs{$s}; close $f; chmod 0755, "$stub/$s"; }
@@ -124,7 +141,8 @@ sub run_bash {
   select undef, undef, undef, 0.02 while kill(0, -$pid) && time < $until;
   kill 'KILL', -$pid;
   my @calls;
-  if (open my $f, '<', $log) { @calls = map { chomp; $_ } <$f>; close $f; }
+  # a name with a newline in it would log as two lines, one of them empty: an empty line is not a call
+  if (open my $f, '<', $log) { @calls = grep { length } map { chomp; $_ } <$f>; close $f; }
   return @calls;
 }
 
@@ -132,9 +150,17 @@ sub run_bash {
 srand $seed;
 sub pick { $_[int rand @_] }
 my @names = qw(foo bar);
+# A merge's number or repo with a substitution in it: bash merges what it expands to, which the hook
+# cannot know, so the gate must report it as unreadable (`-`), never as its literal part.
+my @nums = (3, 7, 12, '3$(echo 0)', '1${x:-2}', '"7$(true)"');
+my @repos = ('o/r', 'o/r$(echo x)', '"o/r$(true)"', '`echo o`/r', 'o/${x:-r}');
 sub payload {
-  return $kind eq 'ag' ? 'openspec archive ' . pick('', '--yes ') . pick(@names)
-                       : 'gh pr merge ' . pick(3, 7, 12) . ' --repo o/r';
+  return 'openspec archive ' . pick('', '--yes ') . pick(@names) if $kind eq 'ag';
+  my $r = rand();
+  return 'gh pr merge ' . pick(3, 7, 12) . ' --repo o/r' if $r < 0.75;
+  # an unquoted substitution that expands to nothing is no word at all: bash still runs the merge
+  return pick('gh $(true) pr merge ', 'gh pr $(true) merge ', 'gh pr merge $(true) ') . pick(3, 7, 12) . ' --repo o/r' if $r < 0.8;
+  return 'gh pr merge ' . pick(@nums) . ' --repo ' . pick(@repos);
 }
 # Each wrapper puts a command where bash still runs it; undef when the inner text cannot go there.
 my @wrap = (
@@ -237,22 +263,35 @@ sub missed {   # what bash ran (change names, or PR numbers) that this parser ou
   for my $v (@calls) {
     if ($kind eq 'ag') { push @m, $v unless grep { $_ eq $v } @seen; }
     # read as pr-merge-gate reads it: `read -r repo num sha` (blanks run together), and a number that is
-    # not all digits is a merge it cannot pin (`-`, denied)
-    else { push @m, $v unless grep { my $num = (split ' ')[1] // ''; $num = '-' unless $num =~ /^\d+$/; $num eq $v || $num eq '-' } @seen; }
+    # not all digits is a merge it cannot pin (`-`, denied). bash's call is `repo num`: the gate covers it
+    # with that same repo and number (ready checks the PR that merges), with a `-` in either (denied), or
+    # with a repo no GitHub repository can have (`o/r$`, `/r`: ready fails, denied). A well-formed repo or
+    # number other than bash's is the gate checking one PR and letting another merge.
+    else {
+      my ($vr, $vn) = split ' ', $v;
+      push @m, $v unless grep { my ($r, $num) = (split ' ')[0, 1]; $r //= ''; $num //= ''; $num = '-' unless $num =~ /^\d+$/;
+                                $num eq '-' || $r eq '-' || $r !~ m{^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$} || ($num eq $vn && $r eq $vr) } @seen;
+    }
   }
   return @m;
 }
 binmode STDOUT, ':utf8';
 sub oneline { (my $s = $_[0]) =~ s/\n/\x{23ce}/g; return $s }
 (my $flat = $source) =~ s{.*/}{};
-my ($exercised, @bad) = (0);
+my ($exercised, @bad, @loose) = (0);
 for my $i (1 .. $n) {
   my $cmd = gen();
   if ($superset) {
-    my %now = map { $_ => 1 } split /\n/, parse($texts[0], $cmd);
+    my $out = parse($texts[0], $cmd); my %now = map { $_ => 1 } split /\n/, $out;
     my @lost = grep { !$now{$_} } split /\n/, parse($texts[1], $cmd);
+    # the merge gate denies the whole command on one line it cannot pin (a `-` for the repo, or a number
+    # that is not all digits): with such a line today, no line of the earlier parser is lost
+    @lost = () if $kind eq 'pmg' && grep { my ($r, $num) = (split ' ')[0, 1]; ($r // '-') eq '-' || ($num // '') !~ /^\d+$/ } keys %now;
     $exercised++;
-    push @bad, [$i, $cmd, join(',', @lost), join("\n", sort keys %now)] if @lost;
+    next unless @lost;
+    my @m = $judge ? missed($out, run_bash($cmd)) : @lost;
+    if (@m) { push @bad, [$i, $cmd, join(',', @m), join("\n", sort keys %now)]; }
+    else { push @loose, [$i, $cmd, join(',', @lost), join("\n", sort keys %now)]; }
     next;
   }
   my @calls = run_bash($cmd);
@@ -270,10 +309,15 @@ for my $i (1 .. $n) {
 }
 if ($fixed_by && !$superset) { print "$kind $flat: no case in $n separates it from the fix ($exercised exercised)\n"; exit 0; }
 
-print "$kind $flat: seed=$seed cases=$n exercised=$exercised counterexamples=" . scalar(@bad) . "\n";
+print "$kind $flat: seed=$seed cases=$n exercised=$exercised counterexamples=" . scalar(@bad)
+  . ($judge ? " earlier-only=" . scalar(@loose) : '') . "\n";
 for my $b (@bad[0 .. min($show, scalar @bad) - 1]) {   # bounded: a slice past the end, aliased by for, grows @bad
   (my $o = $b->[3]) =~ s/\n/ | /g;
   print "  case $b->[0]: bash ran [$b->[2]], parser saw [$o]\n    " . oneline($b->[1]) . "\n";
+}
+for my $b (@loose[0 .. min($show, scalar @loose) - 1]) {
+  (my $o = $b->[3]) =~ s/\n/ | /g;
+  print "  earlier only, what bash ran still covered: case $b->[0]: lost [$b->[2]], parser saw [$o]\n    " . oneline($b->[1]) . "\n";
 }
 if ($exercised < $min_ex) { print STDERR "only $exercised cases reached the payload, expected at least $min_ex\n"; exit 2; }
 exit(@bad ? 1 : 0);

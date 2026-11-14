@@ -4,6 +4,16 @@
 
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
+## [1.18.1] - 2026-11-14
+
+### Fixed
+
+- **pr-closeout 1.1.0 → 1.1.1、openspec-superpowers-workflow 3.2.0 → 3.2.1**：
+  - merge gate 不再把夾著替換的 PR 號碼、網址或 repo 讀成它的字面部分。`gh pr merge 3$(echo 0)` 實際合併 PR 30，而在只有 lexer 讀得懂的寫法裡，閘門檢查的是 PR 3。這類值、head sha、選項名稱、`gh api` 端點，以及可能展開成零個詞的未加引號替換，現在都讓整個 merge 視為讀不出而拒絕；交給 `bash -c`／`eval` 的字串裡，引號內的替換也算詞數不定（那個 shell 會重新切詞）。
+  - 兩支閘門的 lexer：等不到收尾的 heredoc、算術、delimiter 裡的引號，其後的文字也當命令讀。
+  - W5-8 的第二步（退役兩種舊讀法）試做並量測後不做：只剩 lexer 時，每次大樣本都找得到 bash 會執行、1.18.0 擋得住的命令。舊讀法留著，`tokenizer-differential.test.sh` 新增檢查：兩支閘門回報的不得少於 1.18.0。
+  - 詳見兩個 plugin 的 CHANGELOG 與 `docs/gate-lexer-design-2026-11-13.md` §11。
+
 ## [1.18.0] - 2026-11-13
 
 ### Added
