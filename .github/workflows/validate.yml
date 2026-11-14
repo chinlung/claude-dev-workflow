@@ -28,7 +28,7 @@ jobs:
       # Zero-dependency Node CLIs — no install step needed.
       - name: Run fixture / mutation / consistency suite
         run: node scripts/validate-fixtures.cjs
-      # OpenSpec 1.16 needs Node >= 22.12 (its npm engines field), hence node-version 22 above. The CLI is installed
+      # OpenSpec 2.0 needs Node >= 22.12 (its npm engines field), hence node-version 22 above. The CLI is installed
       # for plugins/openspec-superpowers-workflow/tests/cli-claims.test.sh, which checks the plugin docs against the real
       # CLI and fails when CI=true and the CLI is missing. The version lives in one file; --ignore-scripts skips the
       # package's install scripts.

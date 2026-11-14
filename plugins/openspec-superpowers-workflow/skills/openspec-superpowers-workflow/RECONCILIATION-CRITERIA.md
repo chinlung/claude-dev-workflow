@@ -1,6 +1,6 @@
 # RECONCILIATION-CRITERIA.md
 
-> **用途**：Phase 6 歸檔前的獨立核查門檻。在執行 `/opsx:archive` 之前，先跑 `reconcile-check.cjs check`（見 `phases.md` 6b5），再依此文件處理需要判斷的項目，取得 `verified` 裁決後才能歸檔。歸檔閘門 hook 會驗證 `check` 留下的 pass verdict。
+> **用途**：Phase 6 歸檔前的獨立核查門檻。在執行 `/openspec-archive-change` 之前，先跑 `reconcile-check.cjs check`（見 `phases.md` 6b5），再依此文件處理需要判斷的項目，取得 `verified` 裁決後才能歸檔。歸檔閘門 hook 會驗證 `check` 留下的 pass verdict。
 
 ## 與 `reconcile-check.cjs` 的對應
 
@@ -100,7 +100,7 @@ grep -A 2 "### Requirement:" openspec/changes/<feature-name>/specs/<capability>/
 
 | 裁決 | 意義 | 後續動作 |
 |------|------|---------|
-| `verified` | 所有核查項目通過，可以歸檔 | 執行 `/opsx:archive <feature-name>` |
+| `verified` | 所有核查項目通過，可以歸檔 | 執行 `/openspec-archive-change <feature-name>` |
 | `corrected` | 發現可自行修正的問題（例如遺漏某個 Y 項目的 spec 更新） | 修正後**重新執行所有核查**，不得直接升級為 verified |
 | `rejected` | 發現不可自行修正的問題（例如 constitution 項目已寫入 feature spec，需使用者確認如何處理） | 不得歸檔；向使用者報告具體問題 |
 | `needs_user_decision` | 核查者無法確定某項決定是否正確（例如某 Y 項目的 artifact 對應方式有歧義） | 停止歸檔流程，向使用者提出具體問題並等待裁決 |

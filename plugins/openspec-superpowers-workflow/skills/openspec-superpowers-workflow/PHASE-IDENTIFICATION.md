@@ -9,7 +9,7 @@
 ```
 使用者說的是什麼？
 │
-├─ "新功能"、"加功能"、"提議"、/opsx:propose、openspec new change
+├─ "新功能"、"加功能"、"提議"、/openspec-propose、openspec new change
 │   └─ → Phase 1（Spec Definition）
 │
 ├─ "腦力激盪"、"設計思考"、"refinement"、"refine design"

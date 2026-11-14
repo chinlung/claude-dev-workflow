@@ -4,9 +4,9 @@
 #
 # Denies archiving an OpenSpec change until `reconcile-check.cjs check` has recorded a pass verdict
 # and none of the files that verdict hashed changed since (`reconcile-check.cjs verify`). Both ways
-# of archiving are covered: `openspec archive <name>` and the OpenSpec 1.16 /opsx:archive template,
-# which syncs specs itself and then runs `mv <changes>/<name> <changes>/archive/<date-name>`
-# (bulk-archive runs one mv per change; every change in the command must pass).
+# of archiving are covered: `openspec archive <name>` and OpenSpec 2.0's openspec-archive-change skill,
+# which syncs specs itself and then runs `mv "<changes>/<name>" "<changes>/archive/<date-name>"`
+# (openspec-bulk-archive-change runs one mv per change; every change in the command must pass).
 # On allow it leaves ${TMPDIR}/claude-openspec-archived-<session>, which skip-gate reads.
 # Bypass for one command: OPENSPEC_ARCHIVE_OK=1 in the command.
 # Fail-open: missing jq/perl/node, malformed input, no change name, a change dir that does not

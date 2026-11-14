@@ -4,7 +4,8 @@
 
 ## 前置需求
 
-- **[OpenSpec CLI](https://github.com/Fission-AI/OpenSpec)**（`npm i -g @fission-ai/openspec`，需要 Node 22.12 以上）— 規格生命週期管理。文件裡的 CLI 與 `/opsx:*` 敘述以 `tests/openspec-version` 記的版本為準，由 `tests/cli-claims.test.sh` 對照真實 CLI 檢查
+- **[OpenSpec CLI](https://github.com/Fission-AI/OpenSpec) 2.x**（`npm i -g @fission-ai/openspec`，需要 Node 22.12 以上）— 規格生命週期管理。文件裡的 CLI 與 skill（`/openspec-*`）敘述以 `tests/openspec-version` 記的版本為準，由 `tests/cli-claims.test.sh` 對照真實 CLI 檢查
+  - **從 OpenSpec 1.x 升級（本 plugin 4.0 起）**：2.0 移除了 `/opsx:*` slash 指令，每個都改成同一個 workflow 的 skill：propose 是 `/openspec-propose`、apply 是 `/openspec-apply-change`、archive 是 `/openspec-archive-change`，其餘見 `phases.md` 的「OpenSpec skills by phase」。升級 CLI 後在每個專案跑一次 `openspec update` 並 commit；它會裝上 skill、移除舊的指令檔（改過的會保留並列出）。仍用 OpenSpec 1.x 的專案請留在本 plugin 3.x
 - **[Superpowers](https://github.com/anthropic-experimental/claude-code-plugins/tree/main/superpowers)** — 開發紀律 skills（`brainstorming`、`writing-plans`、`subagent-driven-development`、`test-driven-development` 等）
 - 專案需先跑過 `openspec init .`（無 `--here` flag）
 
@@ -82,7 +83,7 @@ SKIP 的唯一依據是上述契約面判定，沒有其他豁免類別（例如
 /skill openspec-superpowers-workflow
 ```
 
-進入 skill 後它會先讀取當前專案狀態（`which openspec`、`ls openspec/`、`ls .claude/commands/opsx/`），依結果引導你走正確的 Phase。
+進入 skill 後它會先讀取當前專案狀態（`which openspec`、`ls openspec/`、`.claude/skills/` 裡的 `openspec-*`，以及 1.x 留下的 `.claude/commands/opsx/`），依結果引導你走正確的 Phase。
 
 ## Gates：什麼時候停下來等你（3.0）
 
@@ -122,7 +123,7 @@ SKIP 判定曾在真實 session 中被「憑摘要句自由心證」繞過（變
 
 Phase 6 的歸檔前核查原本只寫在文字裡；兩個月內 9 個實際歸檔的 session，對核查清單的讀取次數是 0，另有 4 個 session 在 review 收斂前就先歸檔。archive-gate 讓歸檔必須先有一份新鮮的核查結果：
 
-- **攔哪些命令**：`openspec archive <name>`，以及 OpenSpec 1.16 `/opsx:archive` 範本的 `mkdir` + `mv <changes>/<name> <changes>/archive/<date-name>`（bulk 時命令裡每個 change 都要通過）。`hooks.json` 以 `if` 只在 `openspec archive *` 與 `mv *` 時啟動
+- **攔哪些命令**：`openspec archive <name>`，以及 `/openspec-archive-change`、`/openspec-bulk-archive-change` 兩個 skill 執行的 `mkdir` + `mv <changes>/<name> <changes>/archive/<date-name>`（bulk 時命令裡每個 change 都要通過）。`hooks.json` 以 `if` 只在 `openspec archive *` 與 `mv *` 時啟動
 - **放行條件**：`validators/reconcile-check.cjs check` 對該 change 記下的 pass verdict 存在、是現行核查規則版本寫的（plugin 升級讓規則變嚴時，舊結果回報 `stale:rules`，要重跑 check），且之後 proposal、design、tasks、review-notes、specs 都沒有再改（`verify` 比對雜湊）
 - **核查內容**：R1–R9，對應 `RECONCILIATION-CRITERIA.md` 的 C1–C5；其中 R4 要求 review 最後一輪標了 `final`，而 `final` 只能在使用者明說 review 已收斂後才加
 - **繞過**：命令前加 `OPENSPEC_ARCHIVE_OK=1`，只在使用者明確要求時使用

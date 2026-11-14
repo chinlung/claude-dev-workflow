@@ -1,8 +1,9 @@
 #!/bin/bash
-# The plugin's documents make claims about the OpenSpec CLI and its /opsx:* slash commands. This test
+# The plugin's documents make claims about the OpenSpec CLI and its skills (/openspec-*). This test
 # checks them against the real CLI so they cannot drift again: every `openspec <sub>` is a real
-# subcommand, every flag exists, the docs name every upstream /opsx command, two known-wrong sentences
-# stay gone, and the tasks.md format claim holds (OpenSpec counts one task per checkbox).
+# subcommand, every flag exists, the docs name every upstream skill and no other, none of the /opsx:*
+# commands OpenSpec 2.0 removed is left, two known-wrong sentences stay gone, and the tasks.md format
+# claim holds (OpenSpec counts one task per checkbox).
 # 用法:bash plugins/openspec-superpowers-workflow/tests/cli-claims.test.sh
 #   DOCS_DIR=<路徑> 測副本;OPENSPEC_BIN=<路徑> 指定 CLI。版本以 tests/openspec-version 為準(CI 安裝同一個字串)
 # 缺 openspec:CI=true 時失敗(條件式 skip 會讓 CI 綠得不真實),本機只印 SKIP 後 exit 0
@@ -55,7 +56,13 @@ for (const f of files) {
   const rel = path.relative(root, f);
   let fence = false;
   fs.readFileSync(f, 'utf8').split('\n').forEach((line, i) => {
+    // OpenSpec 2.0 removed the /opsx:* commands: any left in the docs is a claim about something gone
     for (const m of line.matchAll(/\/opsx:([a-z][a-z-]*)/g)) console.log(['OPSX', m[1], `${rel}:${i + 1}`].join('\x1f'));
+    // a skill invoked by name, /openspec-<name>: not a path segment (skills/openspec-…), not this plugin's
+    // own name, not a prefix of a longer word or of a plugin:skill pair
+    for (const m of line.matchAll(/(?<![\w/.-])\/(openspec-[a-z][a-z-]*)(?![\w/:-])/g)) {
+      if (m[1] !== 'openspec-superpowers-workflow') console.log(['SKILL', m[1], `${rel}:${i + 1}`].join('\x1f'));
+    }
     if (/^\s*```/.test(line)) { fence = !fence; return; }
     const segs = fence ? [line] : [...line.matchAll(/`([^`]+)`/g)].map((m) => m[1]);
     for (const s of segs) {
@@ -104,27 +111,36 @@ done < "$WORK/claims.tsv"
 eq "every documented openspec subcommand exists" "" "$sub_bad"
 eq "every documented openspec flag exists" "" "$flag_bad"
 
-# ---- /opsx:* 名稱:由完整 profile 的 init 產生,不手抄 ----
-# 十二個名稱是 OpenSpec 1.16 的 ALL_WORKFLOWS;profile 只能這樣非互動地選(config profile 只認 core)
+# ---- skill 名稱:由完整 profile 的 init 產生,不手抄 ----
+# 十二個 workflow 是 OpenSpec 的 ALL_WORKFLOWS;profile 只能這樣非互動地選(config profile 只認 core)。
+# 2.0 把 skill 裝在 .agents/skills/,Claude Code 從 .claude/skills/ 的連結讀;連結要解析得到才算
 ox config set profile custom > /dev/null 2>&1
 ox config set workflows '["propose","explore","new","continue","apply","update","ff","sync","archive","bulk-archive","verify","onboard"]' > /dev/null 2>&1
 mkdir -p "$WORK/full"
 (cd "$WORK/full" && git init -q . && ox init . --tools claude < /dev/null > /dev/null 2>&1)
-ls "$WORK/full/.claude/commands/opsx" 2>/dev/null | sed 's/\.md$//' | sort > "$WORK/opsx.names"
-eq "a full-profile init generates 12 command templates" 12 "$(wc -l < "$WORK/opsx.names" | tr -d ' ')"
+for d in "$WORK/full/.claude/skills"/openspec-*; do
+  [ -f "$d/SKILL.md" ] && basename "$d"
+done | sort > "$WORK/skill.names"
+eq "a full-profile init installs 12 skills Claude Code can read" 12 "$(wc -l < "$WORK/skill.names" | tr -d ' ')"
+# the docs say 2.0 removed the /opsx:* commands (and tell a 1.x project to run openspec update): 1.16 still
+# made them beside the skills of the same names, so this is what tells the two versions apart locally too
+eq "a full-profile init makes no /opsx:* command files" 0 "$(ls "$WORK/full/.claude/commands/opsx" 2>/dev/null | wc -l | tr -d ' ')"
 PH="$DOCS_DIR/skills/openspec-superpowers-workflow/phases.md"
 missing=""
 while IFS= read -r name; do
   [ -n "$name" ] || continue
-  command grep -qF -- "/opsx:$name" "$PH" || missing+=" $name"
-done < "$WORK/opsx.names"
-eq "phases.md names every upstream /opsx command" "" "$missing"
-unknown=""
+  command grep -qF -- "/$name" "$PH" || missing+=" $name"
+done < "$WORK/skill.names"
+eq "phases.md names every upstream skill" "" "$missing"
+unknown=""; legacy=""
 while IFS=$'\x1f' read -r kind name where; do
-  [ "$kind" = OPSX ] || continue
-  command grep -qx -- "$name" "$WORK/opsx.names" || unknown+=" $where(/opsx:$name)"
+  case $kind in
+    SKILL) command grep -qx -- "$name" "$WORK/skill.names" || unknown+=" $where(/$name)" ;;
+    OPSX) legacy+=" $where(/opsx:$name)" ;;
+  esac
 done < "$WORK/claims.tsv"
-eq "every /opsx name in the docs is an upstream command" "" "$unknown"
+eq "every /openspec-* name in the docs is an upstream skill" "" "$unknown"
+eq "no /opsx:* command (removed in OpenSpec 2.0) is left in the docs" "" "$legacy"
 
 # ---- 已知錯誤的敘述不能回來 ----
 eq "phases.md no longer says apply has no CLI equivalent" 0 "$(command grep -cF 'no direct CLI equivalent' "$PH")"
@@ -161,7 +177,7 @@ eq "local without openspec exits 0" 0 "$rc"
 eq "local without openspec says SKIP" yes "$(case "$out" in SKIP:*) echo yes;; *) echo no;; esac)"
 
 # ---- summary ----
-MIN=14
+MIN=16
 if [ "$((PASS + FAIL))" -lt "$MIN" ]; then echo "FAIL: ran $((PASS + FAIL)) assertions, expected at least $MIN"; FAIL=$((FAIL+1)); fi
 echo "cli-claims: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]

@@ -1,5 +1,5 @@
 {
-  "description": "skip-gate:openspec 專案內無 active change 時,程式碼編輯須先有八面契約聲明檔(.claude/openspec-skip.<session>.local.md),任一面為「是」即擋並要求啟動 workflow;文件類路徑不擋;聲明須比本 session 的歸檔、也比 openspec/changes/archive/ 的最後變動新。archive-gate:openspec archive 與 /opsx:archive 範本的 mv 歸檔,須有 reconcile-check 的新鮮 pass verdict 才放行(OPENSPEC_ARCHIVE_OK=1 可繞過)。兩者全面 fail-open",
+  "description": "skip-gate:openspec 專案內無 active change 時,程式碼編輯須先有八面契約聲明檔(.claude/openspec-skip.<session>.local.md),任一面為「是」即擋並要求啟動 workflow;文件類路徑不擋;聲明須比本 session 的歸檔、也比 openspec/changes/archive/ 的最後變動新。archive-gate:openspec archive 與 OpenSpec 2.0 archive skill 的 mv 歸檔,須有 reconcile-check 的新鮮 pass verdict 才放行(OPENSPEC_ARCHIVE_OK=1 可繞過)。兩者全面 fail-open",
   "hooks": {
     "PreToolUse": [
       {
