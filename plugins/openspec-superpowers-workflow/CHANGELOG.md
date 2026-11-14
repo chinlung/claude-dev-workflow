@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.0] - 2026-11-14
+
+### Changed (BREAKING)
+
+- **Follows OpenSpec 2.0.** OpenSpec 2.0 removed the `/opsx:*` slash commands; each became the skill of the same workflow, installed in `.agents/skills/` and read by Claude Code through links in `.claude/skills/`. The skill, `phases.md`, `PHASE-IDENTIFICATION.md`, `RECONCILIATION-CRITERIA.md`, `SUPERPOWERS-HANDOFF.md` and the README now name the skills: `/openspec-propose`, `/openspec-explore`, `/openspec-new-change`, `/openspec-continue-change`, `/openspec-ff-change`, `/openspec-apply-change`, `/openspec-update-change`, `/openspec-verify-change`, `/openspec-sync-specs`, `/openspec-archive-change`, `/openspec-bulk-archive-change`, `/openspec-onboard`. The skill's trigger names them too. The phase each one belongs to is unchanged.
+- **What was checked before the rename.** Both versions were initialised with the same twelve workflows, and each 1.16.1 skill was compared with its 2.0.0 counterpart. Once the new names and "command" → "skill" are applied, nothing else differs: the steps are the same, so every sentence about what a command does still holds. `TASK_LINE_PATTERN` is identical in both versions; 2.0 only joins a wrapped task's lines into its text, so `task-line.cjs` still counts tasks as OpenSpec does.
+- **A project made with OpenSpec 1.x** may still have `.claude/commands/opsx/`. The prerequisites check now spots it and says to run `openspec update` first: it installs the skills and removes the old command files it generated (edited ones are kept and listed). A project that stays on OpenSpec 1.x stays on this plugin's 3.x.
+- **archive-gate** is unchanged in what it does: `openspec archive` is still there, and the archive skills still run `mkdir -p` and `mv "<change>" "<changes>/archive/<date-name>"`. Its comments and the hooks.json description now name the skills.
+
+### Tests
+
+- `cli-claims.test.sh` (16 checks) checks the docs against OpenSpec 2.0.0 (`tests/openspec-version`; CI installs the same string).
+  - The skill names come from a full-profile `init` through `.claude/skills/`, and a link must resolve.
+  - A `/openspec-*` name in the docs must be one of them. This plugin's own name and paths are not names.
+  - No `/opsx:*` command may be left.
+  - A full-profile `init` must make no `/opsx:*` command files. That check is what fails under 1.16.1, locally as well as in CI.
+  - Mutants on a copy of the docs (a made-up name, a leftover `/opsx:`, a skill dropped from `phases.md`) each turn it red.
+- `archive-gate.test.sh`: one case with the exact `mv` the 2.0 archive skill runs (both paths quoted and absolute, no trailing slash).
+
 ## [3.2.1] - 2026-11-14
 
 ### Fixed

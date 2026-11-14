@@ -1,6 +1,6 @@
 ---
 name: openspec-superpowers-workflow
-description: "MUST use whenever the user proposes / adds / refines a feature, runs any /opsx:* or openspec CLI command, mentions OpenSpec changes, asks to brainstorm design / plan tasks / implement a spec'd feature, handles PR review feedback on a spec'd feature, or asks to reconcile / archive a completed change — also trigger whenever an `openspec/changes/<name>/` folder is present in the current conversation. SKIP this skill only when the change is single-module with clear acceptance criteria and touches none of: public API / data contract / schema / migration / backward compatibility / security or permission boundaries / concurrency or consistency / cross-module behavior — use bare superpowers skills there; judge by contract risk, not LOC or file count. A SKIP decision is valid only when the reply enumerates all eight surfaces with per-surface verdicts — an unstated skip is a workflow violation; behavior already covered by `openspec/specs/` almost always has spec impact (hooks enforce both: skip-gate wants the verdict in a declaration file; archive-gate wants a fresh reconcile-check pass). Enforces strict role separation between OpenSpec (spec lifecycle, the WHAT) and Superpowers (dev discipline, the HOW) across six phases. Forbids modifying spec files during code review (Phase 5), forbids sidecar design/plan files outside OpenSpec, forbids incremental spec patching (Phase 6 must be a clean rewrite), and forbids putting [CONSTITUTION] items into a feature's spec. Read phases.md before acting."
+description: "MUST use whenever the user proposes / adds / refines a feature, invokes an /openspec-* skill or runs any openspec CLI command, mentions OpenSpec changes, asks to brainstorm design / plan tasks / implement a spec'd feature, handles PR review feedback on a spec'd feature, or asks to reconcile / archive a completed change — also trigger whenever an `openspec/changes/<name>/` folder is present in the current conversation. SKIP this skill only when the change is single-module with clear acceptance criteria and touches none of: public API / data contract / schema / migration / backward compatibility / security or permission boundaries / concurrency or consistency / cross-module behavior — use bare superpowers skills there; judge by contract risk, not LOC or file count. A SKIP decision is valid only when the reply enumerates all eight surfaces with per-surface verdicts — an unstated skip is a workflow violation; behavior already covered by `openspec/specs/` almost always has spec impact (hooks enforce both: skip-gate wants the verdict in a declaration file; archive-gate wants a fresh reconcile-check pass). Enforces strict role separation between OpenSpec (spec lifecycle, the WHAT) and Superpowers (dev discipline, the HOW) across six phases. Forbids modifying spec files during code review (Phase 5), forbids sidecar design/plan files outside OpenSpec, forbids incremental spec patching (Phase 6 must be a clean rewrite), and forbids putting [CONSTITUTION] items into a feature's spec. Read phases.md before acting."
 ---
 
 # OpenSpec + Superpowers Integration
@@ -14,7 +14,7 @@ Two tools, **never overlapping**:
 ## When this skill applies
 
 Trigger on any of:
-- "new feature", "propose", "add feature", `/opsx:propose`, `/opsx:archive`, `openspec new change`, `openspec archive`
+- "new feature", "propose", "add feature", `/openspec-propose`, `/openspec-archive-change`, `openspec new change`, `openspec archive`
 - "brainstorm", "refine design", "plan tasks", "break down work"
 - "implement", "start coding", "execute" — when an `openspec/changes/<name>/` folder exists
 - PR review feedback on a feature that has an `openspec/changes/<name>/` folder
@@ -25,11 +25,12 @@ If none of these apply (e.g. a one-off bug fix with no spec impact), this skill 
 ## Prerequisites
 
 Before acting, verify OpenSpec availability and project state:
-- `which openspec` — is the CLI installed?
-- `ls .claude/commands/opsx/ 2>/dev/null` — are the `/opsx:*` slash commands installed?
+- `which openspec && openspec --version` — is the CLI installed, and is it 2.x? (This plugin follows OpenSpec 2.0.)
+- `ls .claude/skills/ 2>/dev/null | grep '^openspec-'` — are the OpenSpec skills (`/openspec-*`) installed?
+- `ls .claude/commands/opsx/ 2>/dev/null` — left over from OpenSpec 1.x? Then run `openspec update` first (2.0 replaced the `/opsx:*` commands with the skills)
 - `ls openspec/ 2>/dev/null` — is the project initialized?
 
-If the project is not initialized, run `openspec init .` (note: use `.` for the current directory — no `--here` flag exists). See `phases.md` → "Prerequisites & Conventions" for the CLI ↔ slash-command substitution table.
+If the project is not initialized, run `openspec init .` (note: use `.` for the current directory — no `--here` flag exists). See `phases.md` → "Prerequisites & Conventions" for the CLI ↔ skill substitution table.
 
 ## Phase map (quick reference)
 
@@ -40,7 +41,7 @@ If the project is not initialized, run `openspec init .` (note: use `.` for the 
 | 3. Task planning | Superpowers `writing-plans` | OVERWRITES `tasks.md` |
 | 4. Implementation | Superpowers `executing-plans` (or `subagent-driven-development` when the tasks are independent) + TDD | code |
 | 5. Review & fix | neither — record in `review-notes.md`, fix code only | `review-notes.md` entries |
-| 6. Reconcile & archive | OpenSpec | clean-rewritten specs, reconciliation criteria gate, `/opsx:archive` |
+| 6. Reconcile & archive | OpenSpec | clean-rewritten specs, reconciliation criteria gate, `/openspec-archive-change` |
 
 ## Non-negotiable rules
 

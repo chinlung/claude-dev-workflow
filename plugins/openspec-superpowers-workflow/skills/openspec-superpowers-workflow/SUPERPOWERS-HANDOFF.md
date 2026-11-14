@@ -108,7 +108,7 @@ Write(path: "plan.md", content: <tasks output>)  # 計畫沒有放在 OpenSpec �
 
 **症狀：** brainstorming 輸出被寫入 `design-v2.md`、`design-refined.md`、`superpowers-design.md` 等獨立檔案，而不是覆寫 OpenSpec 的 `design.md`。
 
-**為什麼失敗：** OpenSpec 的工作流程假設 `design.md` 是唯一的設計真相來源。如果有多個設計文件，Phase 6 reconcile 時不知道以哪個為準，且 `/opsx:archive` 不會知道 sidecar 檔案的存在。
+**為什麼失敗：** OpenSpec 的工作流程假設 `design.md` 是唯一的設計真相來源。如果有多個設計文件，Phase 6 reconcile 時不知道以哪個為準，且 `/openspec-archive-change` 不會知道 sidecar 檔案的存在。
 
 **Recovery：**
 1. 立即確認哪個是最新的設計輸出
