@@ -32,7 +32,15 @@ eq() { if [ "$2" = "$3" ]; then PASS=$((PASS+1)); echo "PASS: $1"; else FAIL=$((
 # 隔離 OpenSpec 的全域設定,不吃這台機器的 profile
 mkdir -p "$WORK/xdg" "$WORK/home"
 # OPENSPEC_TELEMETRY=0: the isolated HOME would otherwise discard a contributor's telemetry opt-out and mint a new anonymous id per run
-ox() { OPENSPEC_TELEMETRY=0 XDG_CONFIG_HOME="$WORK/xdg" HOME="$WORK/home" "$OPENSPEC" "$@"; }
+# 2.1 installs skills through Vercel's skills package, which reads more than HOME: CLAUDE_CONFIG_DIR names the Claude home
+# it links skills into (a contributor's would get links into $WORK, left dangling when the trap deletes it), XDG_STATE_HOME
+# holds its lock file, OPENSPEC_SKILLS_SCOPE overrides the default scope the checks below rely on, and its own telemetry
+# only honours DO_NOT_TRACK / DISABLE_TELEMETRY. All of them are pinned or cleared here.
+ox() {
+  env -u OPENSPEC_SKILLS_SCOPE OPENSPEC_TELEMETRY=0 DO_NOT_TRACK=1 \
+    XDG_CONFIG_HOME="$WORK/xdg" XDG_STATE_HOME="$WORK/xdg-state" XDG_DATA_HOME="$WORK/xdg-data" XDG_CACHE_HOME="$WORK/xdg-cache" \
+    HOME="$WORK/home" CLAUDE_CONFIG_DIR="$WORK/home/.claude" "$OPENSPEC" "$@"
+}
 
 ver=$(ox --version 2>/dev/null | tr -d '[:space:]')
 if [ "$ver" != "$PINNED" ]; then
@@ -113,15 +121,22 @@ eq "every documented openspec flag exists" "" "$flag_bad"
 
 # ---- skill 名稱:由完整 profile 的 init 產生,不手抄 ----
 # 十二個 workflow 是 OpenSpec 的 ALL_WORKFLOWS;profile 只能這樣非互動地選(config profile 只認 core)。
-# 2.0 把 skill 裝在 .agents/skills/,Claude Code 從 .claude/skills/ 的連結讀;連結要解析得到才算
+# 2.1 起,新 repo 的 init 預設把 skill 裝在使用者層 ~/.agents/skills/,Claude Code 從 ~/.claude/skills/ 的連結讀;
+# --scope project 才裝進 repo(2.0 的唯一做法)。兩處都是「連結要解析得到 SKILL.md 才算」。
+# 安裝由 Vercel 的 skills 套件執行,需要 git 與連得到 GitHub。
 ox config set profile custom > /dev/null 2>&1
 ox config set workflows '["propose","explore","new","continue","apply","update","ff","sync","archive","bulk-archive","verify","onboard"]' > /dev/null 2>&1
+skills_in() { local d; for d in "$1"/openspec-*; do [ -f "$d/SKILL.md" ] && basename "$d"; done | sort; }
 mkdir -p "$WORK/full"
 (cd "$WORK/full" && git init -q . && ox init . --tools claude < /dev/null > /dev/null 2>&1)
-for d in "$WORK/full/.claude/skills"/openspec-*; do
-  [ -f "$d/SKILL.md" ] && basename "$d"
-done | sort > "$WORK/skill.names"
-eq "a full-profile init installs 12 skills Claude Code can read" 12 "$(wc -l < "$WORK/skill.names" | tr -d ' ')"
+skills_in "$WORK/home/.claude/skills" > "$WORK/skill.names"
+eq "a full-profile init installs 12 skills Claude Code can read at user level" 12 "$(wc -l < "$WORK/skill.names" | tr -d ' ')"
+eq "that init puts no skills in the repo" 0 "$(skills_in "$WORK/full/.claude/skills" | wc -l | tr -d ' ')"
+# the docs tell a team that wants the skills in the repo to pass --scope project
+mkdir -p "$WORK/scoped"
+(cd "$WORK/scoped" && git init -q . && ox init . --scope project --tools claude < /dev/null > /dev/null 2>&1)
+skills_in "$WORK/scoped/.claude/skills" > "$WORK/skill.names.project"
+eq "init --scope project installs the same 12 skills in the repo" "$(cat "$WORK/skill.names")" "$(cat "$WORK/skill.names.project")"
 # the docs say 2.0 removed the /opsx:* commands (and tell a 1.x project to run openspec update): 1.16 still
 # made them beside the skills of the same names, so this is what tells the two versions apart locally too
 eq "a full-profile init makes no /opsx:* command files" 0 "$(ls "$WORK/full/.claude/commands/opsx" 2>/dev/null | wc -l | tr -d ' ')"

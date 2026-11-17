@@ -25,8 +25,8 @@ If none of these apply (e.g. a one-off bug fix with no spec impact), this skill 
 ## Prerequisites
 
 Before acting, verify OpenSpec availability and project state:
-- `which openspec && openspec --version` — is the CLI installed, and is it 2.x? (This plugin follows OpenSpec 2.0.)
-- `ls .claude/skills/ 2>/dev/null | grep '^openspec-'` — are the OpenSpec skills (`/openspec-*`) installed?
+- `which openspec && openspec --version` — is the CLI installed, and is it 2.x? (This plugin follows OpenSpec 2.x and is checked against 2.1.)
+- `ls .claude/skills/ ~/.claude/skills/ 2>/dev/null | grep '^openspec-'` — are the OpenSpec skills (`/openspec-*`) installed? (2.1 installs them at user level unless the repo keeps its own)
 - `ls .claude/commands/opsx/ 2>/dev/null` — left over from OpenSpec 1.x? Then run `openspec update` first (2.0 replaced the `/opsx:*` commands with the skills)
 - `ls openspec/ 2>/dev/null` — is the project initialized?
 

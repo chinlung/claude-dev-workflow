@@ -4,7 +4,8 @@
 
 ## 前置需求
 
-- **[OpenSpec CLI](https://github.com/Fission-AI/OpenSpec) 2.x**（`npm i -g @fission-ai/openspec`，需要 Node 22.12 以上）— 規格生命週期管理。文件裡的 CLI 與 skill（`/openspec-*`）敘述以 `tests/openspec-version` 記的版本為準，由 `tests/cli-claims.test.sh` 對照真實 CLI 檢查
+- **[OpenSpec CLI](https://github.com/Fission-AI/OpenSpec) 2.x**（`npm i -g @fission-ai/openspec`，2.1 需要 Node 22.20 以上）— 規格生命週期管理。文件裡的 CLI 與 skill（`/openspec-*`）敘述以 `tests/openspec-version` 記的版本為準，由 `tests/cli-claims.test.sh` 對照真實 CLI 檢查
+  - **skill 裝在哪裡（OpenSpec 2.1 起，本 plugin 4.2 起對照 2.1）**：2.1 在新 repo 跑 `openspec init --tools claude` 時，預設把 skill 裝在使用者層（`~/.agents/skills/`，Claude Code 從 `~/.claude/skills/` 的連結讀），這台機器的每個專案共用；要像 2.0 一樣裝進 repo，加 `--scope project`。已經把 skill 放在 repo 裡的專案，`openspec update` 會問一次要留在 repo 還是改成全域，選擇記在 `openspec/config.yaml`；在 CI 或由 agent 執行時不會問，skill 留在原處。安裝與更新 skill 需要 git 並連得到 GitHub。十二個 workflow 與 skill 名稱沒有變
   - **從 OpenSpec 1.x 升級（本 plugin 4.0 起）**：2.0 移除了 `/opsx:*` slash 指令，每個都改成同一個 workflow 的 skill：propose 是 `/openspec-propose`、apply 是 `/openspec-apply-change`、archive 是 `/openspec-archive-change`，其餘見 `phases.md` 的「OpenSpec skills by phase」。升級 CLI 後在每個專案跑一次 `openspec update` 並 commit；它會裝上 skill、移除舊的指令檔（改過的會保留並列出）。仍用 OpenSpec 1.x 的專案請留在本 plugin 3.x
 - **[Superpowers](https://github.com/anthropic-experimental/claude-code-plugins/tree/main/superpowers)** — 開發紀律 skills（`brainstorming`、`writing-plans`、`subagent-driven-development`、`test-driven-development` 等）
 - 專案需先跑過 `openspec init .`（無 `--here` flag）
@@ -83,7 +84,7 @@ SKIP 的唯一依據是上述契約面判定，沒有其他豁免類別（例如
 /skill openspec-superpowers-workflow
 ```
 
-進入 skill 後它會先讀取當前專案狀態（`which openspec`、`ls openspec/`、`.claude/skills/` 裡的 `openspec-*`，以及 1.x 留下的 `.claude/commands/opsx/`），依結果引導你走正確的 Phase。
+進入 skill 後它會先讀取當前專案狀態（`which openspec`、`ls openspec/`、專案 `.claude/skills/` 與使用者層 `~/.claude/skills/` 裡的 `openspec-*`，以及 1.x 留下的 `.claude/commands/opsx/`），依結果引導你走正確的 Phase。
 
 ## Gates：什麼時候停下來等你（3.0）
 

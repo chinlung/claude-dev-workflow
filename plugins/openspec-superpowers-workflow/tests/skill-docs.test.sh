@@ -72,10 +72,11 @@ eq "phases.md runs gate-check p2" yes "$(yn command grep -qF 'gate-check.cjs p2'
 eq "phases.md no longer hard-stops every Phase 1" no "$(yn command grep -qF 'Do NOT proceed to Phase 2 until user explicitly approves' "$PH")"
 eq "a stop asks every [needs user] item in one numbered round" yes "$(yn command grep -qF 'as one numbered round' "$PH")"
 eq "each question is worded so that yes accepts the recommendation" yes "$(yn command grep -qF '"yes" accepts the recommendation' "$PH")"
+eq "the example puts the answer inside the question" yes "$(yn command grep -qF 'state the answer inside the question' "$PH")"
 eq "the approval is the round's last item, so answering the others is not an approval" yes "$(yn command grep -qF 'Make the approval the last numbered item of the round' "$PH")"
 
 # ---- summary ----
-MIN=30
+MIN=31
 if [ "$((PASS + FAIL))" -lt "$MIN" ]; then
   echo "FAIL: ran $((PASS + FAIL)) assertions, expected at least $MIN"; FAIL=$((FAIL+1))
 fi

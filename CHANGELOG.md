@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.21.0] - 2026-11-18
+
+### Changed
+
+- **openspec-superpowers-workflow 4.1.0 → 4.2.0** — checked against OpenSpec 2.1.0, which installs its skills at user level by default (`--scope project` keeps them in the repo); the prerequisite check, the README and the CI note say so, and `cli-claims.test.sh` checks both locations. The round wording gets an example of a question "yes" can accept. Eval numbers are in the plugin's changelog.
+
 ## [1.20.0] - 2026-11-18
 
 ### Changed
