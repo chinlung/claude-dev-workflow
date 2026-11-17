@@ -47,6 +47,8 @@ Claude 在寫 pull request 描述時會觸發 `pr` skill，例如你說「寫 PR
 
 - `skills/pr/SKILL.md`：Claude 載入的版本（繁體中文）。
 - `skills/pr/SKILL.en.md`：英文對照版，模型不會讀它。改規則時兩份要一起改。
+- `skills/pr/CREDITS.md`：skill 的來源與上游的授權聲明。
+- `tests/`：檢查來源標示沒有被拿掉。
 - `evals/`：行為回歸測試，見下一節。
 
 ## 行為驗證（eval）
@@ -61,4 +63,4 @@ judge 不可與 agent 同一個模型。結果寫在 `evals/results/`，不進�
 
 ## 來源與致謝
 
-移植自一個獨立的 `pr` skill。1.0.0 只改了一行（`GLOSSARY.md` 那句改成 repo 有該檔才適用）；1.1.0 加了上面標 1.1.0 的三條規則與 skill 結尾的「交付 body」段（見「它不做什麼」）；1.2.0 加了語言規則，並把 skill 改寫成繁體中文，英文原文保留為 `SKILL.en.md`。原 skill 只給 Codex 用的 `agents/openai.yaml` 沒有搬過來，因為 Claude Code 不讀它。Summary 的視覺化選單取自 Humanlayer Dex Horthy 的 `show-me` skill，見 [`skills/pr/CREDITS.md`](skills/pr/CREDITS.md)。
+移植自 [mattpocock/skills](https://github.com/mattpocock/skills) 的 `pr` skill（`skills/engineering/pr/SKILL.md`；MIT License，Copyright (c) 2026 Matt Pocock，授權聲明在 [`skills/pr/CREDITS.md`](skills/pr/CREDITS.md)）。1.0.0 只改了一行（`GLOSSARY.md` 那句改成 repo 有該檔才適用）；1.1.0 加了上面標 1.1.0 的三條規則與 skill 結尾的「交付 body」段（見「它不做什麼」）；1.2.0 加了語言規則，並把 skill 改寫成繁體中文，英文原文保留為 `SKILL.en.md`。原 skill 只給 Codex 用的 `agents/openai.yaml` 沒有搬過來，因為 Claude Code 不讀它。Summary 的視覺化選單取自 Humanlayer Dex Horthy 的 `show-me` skill，見 [`skills/pr/CREDITS.md`](skills/pr/CREDITS.md)。

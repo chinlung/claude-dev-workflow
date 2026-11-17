@@ -19,13 +19,20 @@ eq() {
 yn() { if "$@"; then echo yes; else echo no; fi; }
 
 # ---- description:Claude Code 對 skill description 有 1536 字上限 ----
-desc_len=$(node -e '
+# One parse, two facts: the length, and whether the text restates the body's rules ("unparsed" is neither yes nor no).
+read -r desc_len desc_rules < <(node -e '
   const t = require("fs").readFileSync(process.argv[1], "utf8");
   const m = t.match(/^description:\s*"((?:[^"\\]|\\.)*)"\s*$/m);
-  console.log(m ? JSON.parse("\"" + m[1] + "\"").length : -1);
+  if (!m) { console.log("-1 unparsed"); process.exit(0); }
+  const d = JSON.parse("\"" + m[1] + "\"");
+  console.log(d.length, /forbids|enforces strict role separation/i.test(d) ? "yes" : "no");
 ' "$SKILL_DIR/SKILL.md" 2>/dev/null)
 eq "description parsed from the front matter" yes "$(yn test "${desc_len:--1}" -gt 100)"
 eq "description within 1536 chars" yes "$(yn test "${desc_len:-9999}" -le 1536 -a "${desc_len:--1}" -gt 0)"
+# The description is loaded in every session; it carries the trigger and the SKIP clause, and leaves the rules to the body.
+eq "description does not restate the non-negotiable rules" no "${desc_rules:-unparsed}"
+eq "description still carries the SKIP clause" yes "$(yn command grep -qE '^description:.*SKIP this skill only when' "$SKILL_DIR/SKILL.md")"
+eq "the body still states the rules the description dropped" yes "$(yn command grep -qF '## Non-negotiable rules' "$SKILL_DIR/SKILL.md")"
 
 # ---- SKILL.md 提到的參考文件都存在(大寫連字號檔名與 phases.md 是 skill 自己的文件,小寫的是 change 的產物) ----
 refs=$(node -e '
@@ -63,9 +70,13 @@ done <<< "$cjs"
 eq "phases.md runs gate-check p1" yes "$(yn command grep -qF 'gate-check.cjs p1' "$PH")"
 eq "phases.md runs gate-check p2" yes "$(yn command grep -qF 'gate-check.cjs p2' "$PH")"
 eq "phases.md no longer hard-stops every Phase 1" no "$(yn command grep -qF 'Do NOT proceed to Phase 2 until user explicitly approves' "$PH")"
+eq "a stop asks every [needs user] item in one numbered round" yes "$(yn command grep -qF 'as one numbered round' "$PH")"
+eq "each question is worded so that yes accepts the recommendation" yes "$(yn command grep -qF '"yes" accepts the recommendation' "$PH")"
+eq "the example puts the answer inside the question" yes "$(yn command grep -qF 'state the answer inside the question' "$PH")"
+eq "the approval is the round's last item, so answering the others is not an approval" yes "$(yn command grep -qF 'Make the approval the last numbered item of the round' "$PH")"
 
 # ---- summary ----
-MIN=24
+MIN=31
 if [ "$((PASS + FAIL))" -lt "$MIN" ]; then
   echo "FAIL: ran $((PASS + FAIL)) assertions, expected at least $MIN"; FAIL=$((FAIL+1))
 fi

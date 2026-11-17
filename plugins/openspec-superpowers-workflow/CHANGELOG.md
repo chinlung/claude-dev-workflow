@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.2.0] - 2026-11-18
+
+### Changed
+
+- **Checked against OpenSpec 2.1.0** (`tests/openspec-version`; CI installs the same string). 2.1 changed where skills go: `openspec init --tools claude` in a new repo installs the twelve skills at user level (`~/.agents/skills/`, read by Claude Code through `~/.claude/skills/`); `--scope project` puts them in the repo, which is all 2.0 did. phases.md, SKILL.md and the README now say both, and the prerequisite check looks in both places. The skill names, the `mkdir`/`mv` the archive skills run (so archive-gate), and the task-line pattern are the same in 2.0.0 and 2.1.0 (compared file by file); the skills' own wording changed in places (they no longer name each other, since another skill may not be installed), and nothing the plugin's documents say about a skill's behaviour stopped being true. Installing or refreshing the skills needs git and access to GitHub, and the npm install needs Node 22.20 or newer.
+- **The round wording gets an example.** A first run of the 4.1.0 text showed a reply that asked "How long should points last? I suggest 12 months." — a question with a suggestion added, not one that "yes" can accept. phases.md now says to state the answer inside the question ("Points last 12 months from the day they are earned — yes?"), and that an item only someone else can answer (a go-live date, a legal conclusion) has no recommendation to state: say who supplies it and keep it out of the "yes".
+
+### Tests
+
+- `cli-claims.test.sh` (18 checks): a full-profile init puts the 12 skills at user level and none in the repo, and `init --scope project` puts the same 12 in the repo. Three mutations (look in the repo for the default install, drop `--scope project`, name a flag that does not exist) each turn it red. Its OpenSpec runs are now isolated from the environment 2.1 reads beyond HOME: `CLAUDE_CONFIG_DIR` (the skills installer links into it, so a contributor who had it set got 12 links in their own Claude home, all dangling once the test deleted its temp dir — reproduced against a fake home, 0 after the fix), `XDG_STATE_HOME` (the installer's lock file), `OPENSPEC_SKILLS_SCOPE` (overrides the default scope the checks rely on) and the installer's own telemetry switch. 2.0.0 and 2.1.0 differ here, which is why the two local failures that looked unexplained were this and not the sandbox.
+- `skill-docs.test.sh`: 31 checks (one new: the example is in phases.md).
+
+### Evals (local suites, not committed)
+
+- **`evals-trigger` on 4.1.0**: `02` and `03` 1.00 with the plugin, 0.00 without; `01` 0.78 vs 0.33 (still the text-layer limit it was, the judge fails `eight-surfaces-listed`). Description trimmed from 1,533 to 1,146 characters; the trigger cases did not move.
+- **`evals-design`, new case `07-points-expiry`** (a feature whose details are undecided; two graders for the 4.1.0 round format). On 4.0.1: 0.43 with and without, both new graders 0/3. On 4.1.0: 0.71 vs 0.43 — "approval is the last item" 3/3, "asks in one round" 0/3. On 4.2.0: 0.90 vs 0.43 — approval 3/3, one round 2/3; the failing run asked "which of these four?" and left it to marketing. The case's grader was changed once after seeing the 4.1.0 reply (a fact only someone else can supply is exempt from needing a recommendation; the yes-form example was added); on 4.0.1 the same reworded grader still fails 3/3.
+- **Not fixed here**: `04-add-report-archive-open` ("at most two questions") fails 3/3 on 4.0.1, 4.1.0 and 4.2.0 alike — when a Phase 2 gate stops, the reply asks four decisions, more than the Phase 2 budget of two. It predates this release (it was also 2 of 3 failing on 2.2.1) and is left as it is. The other design cases (01, 02, 03, 05, 06) were run on 4.1.0 only: 1.00 with the plugin, no regression; they were not re-run after the 4.2.0 wording change.
+
+## [4.1.0] - 2026-11-18
+
+### Changed
+
+- **A gate stop asks every `[needs user]` item in one numbered round.** On exit 10 the items go to the user all at once, each with the recommended answer and one line of reasoning, worded so that "yes" accepts the recommendation; the user can reply "yes to all" or name only the numbers they change. The approval is the round's last item, so "yes to all" covers it and an answer to the other numbers alone does not approve the stop. The number of stops is unchanged, and gate-check is untouched. The form is taken from the `grilling` skill in mattpocock/skills (MIT, Copyright (c) 2026 Matt Pocock); its open-ended rounds are not: in a local sample of 50 spec-level corrections found in Phase 5 (not in this repository), 3 were a decision the user should have been asked, and 20 were a fact nobody checked.
+- **The skill description no longer restates the rules.** The closing 387 characters ("Enforces strict role separation… Forbids…") repeated the body's non-negotiable rules and did not bear on whether the skill fires; the description is loaded in every session. It goes from 1,533 to 1,146 characters (the limit is 1,536), and keeps the trigger list and the SKIP clause word for word.
+
+### Tests
+
+- `skill-docs.test.sh`: 6 new checks (the description does not restate the rules, still carries the SKIP clause, and the body still states the rules; phases.md asks in one numbered round, words each question so that "yes" accepts, and makes the approval the last item). Putting the tail back, or deleting any of the three sentences from phases.md, turns it red.
+- The local eval suites were not re-run for this release; the 4.2.0 entry has the numbers.
+
 ## [4.0.1] - 2026-11-14
 
 ### Fixed

@@ -1,6 +1,6 @@
 ---
 name: openspec-superpowers-workflow
-description: "MUST use whenever the user proposes / adds / refines a feature, invokes an /openspec-* skill or runs any openspec CLI command, mentions OpenSpec changes, asks to brainstorm design / plan tasks / implement a spec'd feature, handles PR review feedback on a spec'd feature, or asks to reconcile / archive a completed change — also trigger whenever an `openspec/changes/<name>/` folder is present in the current conversation. SKIP this skill only when the change is single-module with clear acceptance criteria and touches none of: public API / data contract / schema / migration / backward compatibility / security or permission boundaries / concurrency or consistency / cross-module behavior — use bare superpowers skills there; judge by contract risk, not LOC or file count. A SKIP decision is valid only when the reply enumerates all eight surfaces with per-surface verdicts — an unstated skip is a workflow violation; behavior already covered by `openspec/specs/` almost always has spec impact (hooks enforce both: skip-gate wants the verdict in a declaration file; archive-gate wants a fresh reconcile-check pass). Enforces strict role separation between OpenSpec (spec lifecycle, the WHAT) and Superpowers (dev discipline, the HOW) across six phases. Forbids modifying spec files during code review (Phase 5), forbids sidecar design/plan files outside OpenSpec, forbids incremental spec patching (Phase 6 must be a clean rewrite), and forbids putting [CONSTITUTION] items into a feature's spec. Read phases.md before acting."
+description: "MUST use whenever the user proposes / adds / refines a feature, invokes an /openspec-* skill or runs any openspec CLI command, mentions OpenSpec changes, asks to brainstorm design / plan tasks / implement a spec'd feature, handles PR review feedback on a spec'd feature, or asks to reconcile / archive a completed change — also trigger whenever an `openspec/changes/<name>/` folder is present in the current conversation. SKIP this skill only when the change is single-module with clear acceptance criteria and touches none of: public API / data contract / schema / migration / backward compatibility / security or permission boundaries / concurrency or consistency / cross-module behavior — use bare superpowers skills there; judge by contract risk, not LOC or file count. A SKIP decision is valid only when the reply enumerates all eight surfaces with per-surface verdicts — an unstated skip is a workflow violation; behavior already covered by `openspec/specs/` almost always has spec impact (hooks enforce both: skip-gate wants the verdict in a declaration file; archive-gate wants a fresh reconcile-check pass). Read phases.md before acting."
 ---
 
 # OpenSpec + Superpowers Integration
@@ -25,8 +25,8 @@ If none of these apply (e.g. a one-off bug fix with no spec impact), this skill 
 ## Prerequisites
 
 Before acting, verify OpenSpec availability and project state:
-- `which openspec && openspec --version` — is the CLI installed, and is it 2.x? (This plugin follows OpenSpec 2.0.)
-- `ls .claude/skills/ 2>/dev/null | grep '^openspec-'` — are the OpenSpec skills (`/openspec-*`) installed?
+- `which openspec && openspec --version` — is the CLI installed, and is it 2.x? (This plugin follows OpenSpec 2.x and is checked against 2.1.)
+- `ls .claude/skills/ ~/.claude/skills/ 2>/dev/null | grep '^openspec-'` — are the OpenSpec skills (`/openspec-*`) installed? (2.1 installs them at user level unless the repo keeps its own)
 - `ls .claude/commands/opsx/ 2>/dev/null` — left over from OpenSpec 1.x? Then run `openspec update` first (2.0 replaced the `/opsx:*` commands with the skills)
 - `ls openspec/ 2>/dev/null` — is the project initialized?
 

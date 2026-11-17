@@ -433,7 +433,7 @@ This plugin ships an auto-triggered skill (no slash command) and two PreToolUse 
 
 ## Prerequisites
 
-- **[OpenSpec CLI](https://github.com/Fission-AI/OpenSpec)** — `npm i -g @fission-ai/openspec` (needs Node 22.12 or newer); run `openspec init .` once per project
+- **[OpenSpec CLI](https://github.com/Fission-AI/OpenSpec)** — `npm i -g @fission-ai/openspec` (OpenSpec 2.1 needs Node 22.20 or newer); run `openspec init .` once per project
 - **[Superpowers](https://github.com/anthropic-experimental/claude-code-plugins/tree/main/superpowers)** plugin — provides `brainstorming`, `writing-plans`, `subagent-driven-development`, `test-driven-development` skills
 
 ## Six-Phase Workflow

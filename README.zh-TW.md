@@ -431,7 +431,7 @@ docs/task-{YYYYMMDD-HHMM}-{簡短名稱}/
 
 ## 前置需求
 
-- **[OpenSpec CLI](https://github.com/Fission-AI/OpenSpec)** — `npm i -g @fission-ai/openspec`（需要 Node 22.12 以上）；專案需跑過 `openspec init .`
+- **[OpenSpec CLI](https://github.com/Fission-AI/OpenSpec)** — `npm i -g @fission-ai/openspec`（OpenSpec 2.1 需要 Node 22.20 以上）；專案需跑過 `openspec init .`
 - **[Superpowers](https://github.com/anthropic-experimental/claude-code-plugins/tree/main/superpowers)** plugin — 提供 `brainstorming`、`writing-plans`、`subagent-driven-development`、`test-driven-development` 等 skills
 
 ## 六階段工作流程

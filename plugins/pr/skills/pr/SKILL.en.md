@@ -1,3 +1,4 @@
+<!-- Adapted from the `pr` skill in mattpocock/skills (skills/engineering/pr/SKILL.md), MIT License, Copyright (c) 2026 Matt Pocock. See CREDITS.md in this directory for the notice and for what this copy adds. -->
 <!-- English reference copy of SKILL.md. Claude loads SKILL.md (Traditional Chinese), not this file; change both together. Frontmatter lives only in SKILL.md. -->
 
 Use this template for writing the PR body:

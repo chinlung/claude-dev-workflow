@@ -9,6 +9,7 @@ metadata:
     url: "https://github.com/humanlayer/skills/blob/main/plugins/show-me/skills/show-me/SKILL.md"
 ---
 
+<!-- 改寫自 mattpocock/skills 的 pr skill（MIT License，Copyright (c) 2026 Matt Pocock），見同目錄的 CREDITS.md。 -->
 <!-- 本檔是 Claude 載入的版本。英文對照版在同目錄的 SKILL.en.md，模型不會讀它；改規則時兩份要一起改。 -->
 
 PR body 用這個模板：

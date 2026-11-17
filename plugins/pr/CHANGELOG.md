@@ -2,6 +2,12 @@
 
 All notable changes to the `pr` plugin will be documented in this file.
 
+## [1.2.2] - 2026-11-18
+
+### Docs
+
+- **The skill names where it comes from.** It was ported from the `pr` skill in mattpocock/skills (`skills/engineering/pr/SKILL.md`, MIT License, Copyright (c) 2026 Matt Pocock); the READMEs said only "a standalone `pr` skill". `CREDITS.md` now carries the upstream copyright and permission notice, both READMEs and both skill files name the source, and `tests/credits.test.sh` fails when the notice is removed. The skill's instructions are unchanged.
+
 ## [1.2.1] - 2026-10-20
 
 ### Fixed
