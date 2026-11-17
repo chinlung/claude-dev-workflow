@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.1.0] - 2026-11-18
+
+### Changed
+
+- **A gate stop asks every `[needs user]` item in one numbered round.** On exit 10 the items go to the user all at once, each with the recommended answer and one line of reasoning, worded so that "yes" accepts the recommendation; the user can reply "yes to all" or name only the numbers they change. The approval is the round's last item, so "yes to all" covers it and an answer to the other numbers alone does not approve the stop. The number of stops is unchanged, and gate-check is untouched. The form is taken from the `grilling` skill in mattpocock/skills (MIT, Copyright (c) 2026 Matt Pocock); its open-ended rounds are not: in a local sample of 50 spec-level corrections found in Phase 5 (not in this repository), 3 were a decision the user should have been asked, and 20 were a fact nobody checked.
+- **The skill description no longer restates the rules.** The closing 387 characters ("Enforces strict role separation… Forbids…") repeated the body's non-negotiable rules and did not bear on whether the skill fires; the description is loaded in every session. It goes from 1,533 to 1,146 characters (the limit is 1,536), and keeps the trigger list and the SKIP clause word for word.
+
+### Tests
+
+- `skill-docs.test.sh`: 6 new checks (the description does not restate the rules, still carries the SKIP clause, and the body still states the rules; phases.md asks in one numbered round, words each question so that "yes" accepts, and makes the approval the last item). Putting the tail back, or deleting any of the three sentences from phases.md, turns it red.
+- The local eval suites (`evals-trigger`, `evals-design`) were not re-run for this release.
+
 ## [4.0.1] - 2026-11-14
 
 ### Fixed

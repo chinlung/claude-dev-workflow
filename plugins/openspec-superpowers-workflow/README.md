@@ -104,6 +104,7 @@ SKIP 的唯一依據是上述契約面判定，沒有其他豁免類別（例如
 
 **界線**：
 - 設定檔讀不懂、`gates` 值認不得，一律視同停下。方向刻意和兩支 hook 的 fail-open 相反：這裡出錯的代價是跳過人類決策。沒有 shell 的 session 照同一份規則手動判定。
+- gate 停下時，所有 `[needs user]` 會編號一次列出，每題附建議與一行理由，並寫成回答 yes 就等於接受建議；可以只回「全部照建議」，或只點出要改的編號（4.1.0）。最後一題固定是核准本身，所以「全部照建議」同時算核准，只回答其他編號不算。停的次數不變。
 - `[needs user]`／`[default]` 是 agent 自己寫的標記，gate-check 分辨不出誠實與否，只是提醒。真正擋得住漏判的只有結構事實（BREAKING、delta 標題）。
 
 **測試**：`bash plugins/openspec-superpowers-workflow/tests/gate-check.test.sh`（已接 CI；每個停下的理由至少兩個觸發輸入，七個突變各自轉紅）。

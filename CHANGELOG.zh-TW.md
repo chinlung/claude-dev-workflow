@@ -4,6 +4,16 @@
 
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
+## [1.20.0] - 2026-11-18
+
+### Changed
+
+- **openspec-superpowers-workflow 4.0.1 → 4.1.0**：gate 停下時，所有 `[needs user]` 編號一次問完，每題寫成回答 yes 就等於接受建議；skill description 刪掉重述本文規則的 387 字元（1,533 → 1,146）。gate-check 沒有改。
+
+### Docs
+
+- **pr 1.2.1 → 1.2.2**：skill 寫明來源（mattpocock/skills 的 `pr` skill，MIT），上游的授權聲明放進 `CREDITS.md`，並加一支測試守住它。
+
 ## [1.19.2] - 2026-11-14
 
 ### Fixed

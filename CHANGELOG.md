@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.20.0] - 2026-11-18
+
+### Changed
+
+- **openspec-superpowers-workflow 4.0.1 → 4.1.0** — a gate stop asks every `[needs user]` item in one numbered round, each worded so that "yes" accepts the recommendation; the skill description drops the 387 characters that restated the body's rules (1,533 → 1,146). gate-check is untouched.
+
+### Docs
+
+- **pr 1.2.1 → 1.2.2** — the skill names its source (the `pr` skill in mattpocock/skills, MIT) and carries the upstream notice in `CREDITS.md`; a test keeps it there.
+
 ## [1.19.2] - 2026-11-14
 
 ### Fixed

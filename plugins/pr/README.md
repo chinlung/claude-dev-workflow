@@ -47,6 +47,8 @@ It only shapes the body. It does not commit, push, or pick reviewers, and it ope
 
 - `skills/pr/SKILL.md` — the version Claude loads, in Traditional Chinese.
 - `skills/pr/SKILL.en.md` — an English reference copy the model does not read. Change both together.
+- `skills/pr/CREDITS.md` — where the skill comes from, and the upstream licence notice.
+- `tests/` — checks that the attribution stays in place.
 - `evals/` — behaviour regression suite, below.
 
 ## Behaviour checks (eval)
@@ -61,4 +63,4 @@ The judge must not be the agent's model. Results go to `evals/results/`, which i
 
 ## Origin and credits
 
-Ported from a standalone `pr` skill. 1.0.0 changed one line (the `GLOSSARY.md` instruction applies when the repository has one); 1.1.0 added the three rules marked 1.1.0 above and a closing "Delivering the body" section in the skill (described under "What it does not do"); 1.2.0 added the language rule and rewrote the skill in Traditional Chinese, keeping the English text as `SKILL.en.md`. The skill's Codex-only `agents/openai.yaml` interface file was not carried over, since Claude Code does not read it. The Summary section's menu of visuals comes from Dex Horthy's `show-me` skill (Humanlayer) — see [`skills/pr/CREDITS.md`](skills/pr/CREDITS.md).
+Ported from the `pr` skill in [mattpocock/skills](https://github.com/mattpocock/skills) (`skills/engineering/pr/SKILL.md`; MIT License, Copyright (c) 2026 Matt Pocock — the notice is in [`skills/pr/CREDITS.md`](skills/pr/CREDITS.md)). 1.0.0 changed one line (the `GLOSSARY.md` instruction applies when the repository has one); 1.1.0 added the three rules marked 1.1.0 above and a closing "Delivering the body" section in the skill (described under "What it does not do"); 1.2.0 added the language rule and rewrote the skill in Traditional Chinese, keeping the English text as `SKILL.en.md`. The skill's Codex-only `agents/openai.yaml` interface file was not carried over, since Claude Code does not read it. The Summary section's menu of visuals comes from Dex Horthy's `show-me` skill (Humanlayer) — see [`skills/pr/CREDITS.md`](skills/pr/CREDITS.md).
