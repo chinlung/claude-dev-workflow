@@ -447,4 +447,4 @@ Should I extract the reusable portions to shared-specs?
 - ❌ Skip Phase 2 brainstorming and go straight to implementation
 - ❌ Modify tasks.md during reconciliation (it's execution history)
 - ❌ Carry on past a gate-check `stop` (exit 10, or exit 1 twice) without the user's approval
-- ❌ Downgrade a `[needs user]` item to `[default]` so that gate-check proceeds (only the user's own delegation does that)
+- ❌ Downgrade a `[needs user]` item to `[default]` so that gate-check proceeds (the user's own delegation and the Phase 2 question budget are the only exceptions; the budget never removes the last `[needs user]` item)

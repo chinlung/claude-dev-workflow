@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Tests
 
-- `skill-docs.test.sh`: 37 checks (six new: the budget covers the reviewer's points, the overflow note, the second exception, the P2 quality gate's "at most two", the provisional default, one decision per number). Four were red before the phases.md change; the last two turn red on a copy with their sentences removed.
+- `skill-docs.test.sh`: 38 checks (seven new: the budget covers the reviewer's points, the overflow note, the second exception, the P2 quality gate's "at most two", the provisional default, one decision per number, and the anti-pattern list naming both exceptions — it still said only the user's delegation could downgrade an item). Five were red before their phases.md change; the other two turn red on a copy with their sentences removed.
 
 ### Evals (local suites, not committed)
 

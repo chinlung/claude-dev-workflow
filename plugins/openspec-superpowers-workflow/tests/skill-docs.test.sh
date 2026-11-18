@@ -80,9 +80,10 @@ eq "the no-downgrade rule names the budget as its second exception" yes "$(yn co
 eq "the P2 quality gate presents at most two questions" yes "$(yn command grep -qF 'questions (at most two, see the question budget)' "$PH")"
 eq "an item past the budget that someone else must answer gets a provisional default" yes "$(yn command grep -qF 'gets a provisional default' "$PH")"
 eq "two questions under one number count as two" yes "$(yn command grep -qF 'One number carries one decision' "$PH")"
+eq "the anti-pattern list names both exceptions to the no-downgrade rule" yes "$(yn command grep -qF "the user's own delegation and the Phase 2 question budget are the only exceptions" "$PH")"
 
 # ---- summary ----
-MIN=37
+MIN=38
 if [ "$((PASS + FAIL))" -lt "$MIN" ]; then
   echo "FAIL: ran $((PASS + FAIL)) assertions, expected at least $MIN"; FAIL=$((FAIL+1))
 fi
