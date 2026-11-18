@@ -4,6 +4,12 @@
 
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
+## [1.22.0] - 2026-11-18
+
+### Changed
+
+- **openspec-superpowers-workflow 4.2.0 → 4.3.0**：Phase 2 的提問上限（最多兩題）涵蓋 P2 停下時的整輪，獨立 reviewer 提出的也算在內；超過兩題時，其餘改成 `[default]` 並註明 `(reviewer suggested asking)`，在回覆裡列成使用者可推翻的陳述。仍然會停下；gate-check 沒有改。eval 數字見 plugin 自己的 CHANGELOG。
+
 ## [1.21.0] - 2026-11-18
 
 ### Changed

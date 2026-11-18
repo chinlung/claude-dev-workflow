@@ -99,7 +99,7 @@ Text inside HTML comments and code fences does not count. Matching is deliberate
 - `.claude/openspec-workflow.md` (committed — it describes the project): `high_risk_paths:` followed by `- <glob>` lines, indented or not; blank lines and `#` comments are fine (`**` crosses directories, `*` does not; a glob without `/` matches a root-level file such as `Dockerfile`). An inline value (`high_risk_paths: [a, b]`), a key other than `gates` and `high_risk_paths` (a misspelling would otherwise be ignored silently) and a repeated `gates:` all count as unreadable settings.
 - `.claude/openspec-workflow.local.md` (gitignored — personal): `gates: supervised` stops at every gate (the 2.x behaviour); `gates: risk-based` is the default. Its `gates` wins over the committed file; its `high_risk_paths` adds to the committed list and cannot remove from it.
 
-**`[needs user]` vs `[default]`**: `[needs user]` is a decision that changes *what* gets built and needs a value or risk trade-off only the user can make; `[default]` is a choice you made and can defend. When in doubt, mark `[needs user]`: these markers are reminders you write yourself, and gate-check cannot tell whether they are honest. An item you or the reviewer marked `[needs user]` is never downgraded to `[default]` — with one exception: the user has delegated the call in their own words ("skip the questions", "跳過提問", "you decide"). Then mark it `[default]`, say in the reply that it was delegated, and let the gate rules above decide as usual.
+**`[needs user]` vs `[default]`**: `[needs user]` is a decision that changes *what* gets built and needs a value or risk trade-off only the user can make; `[default]` is a choice you made and can defend. When in doubt, mark `[needs user]`: these markers are reminders you write yourself, and gate-check cannot tell whether they are honest. An item you or the reviewer marked `[needs user]` is never downgraded to `[default]` — with two exceptions. First, the user has delegated the call in their own words ("skip the questions", "跳過提問", "you decide"): mark it `[default]`, say in the reply that it was delegated, and let the gate rules above decide as usual. Second, at P2, an item past the Phase 2 question budget (see Phase 2, "Question budget"): it becomes `[default]` as described there, while the items kept within the budget stay `[needs user]`, so the stop still happens.
 
 ---
 
@@ -158,6 +158,7 @@ Text inside HTML comments and code fences does not count. Matching is deliberate
    - Classify before you ask. Anything you can find out by reading code, running a command or looking at output is a fact, not a question: go and look.
    - Ask at most **2** questions in total, and only ones whose answer changes *what* gets built (scope, behavior, who is affected), not *how*. Write `design.md` in the same reply anyway, taking your recommended answer to each question as the assumption, and put the questions at the end of the reply. Do not hold the file back until they are answered. Each such question goes under `## Open Questions` marked `[needs user]`, which makes `gate-check.cjs p2` stop.
    - Everything else is an assumption: write it into `design.md` under `## Open Questions` marked `[default]`, each with the default you chose.
+   - The budget covers the whole round you present at the P2 stop, the reviewer's points included. When more than two items qualify as `[needs user]` after the review, keep the two whose answers change most what gets built; prefer an item only someone else can answer (a legal conclusion), since it has no default you can take. Mark the rest `[default]` with the default you chose and the note `(reviewer suggested asking)` when the reviewer raised it, and list them in the reply after the round as statements the user can overrule ("I took X; say if you want otherwise"), not as numbered questions. An item past the budget that only someone else can answer gets a provisional default (what the design does until they reply) and the name of who has to answer it. One number carries one decision: two questions under one number count as two.
    - If the user says to skip the questions (any wording, e.g. "skip the questions", "跳過提問", "just write design.md"), ask nothing and write `design.md` now. They have delegated these calls, so every open question is `[default]` (see "Gates"). A conflict you notice (for example between the spec and the design) goes into the reply as a statement with the default you chose, not as a question.
    - If a fork can be settled by trying it, build a throwaway prototype in `$TMPDIR` or a scratch directory outside `openspec/`, and write the decision plus the evidence (one line) into `design.md`. A prototype is a disposable experiment, not a second design file, so it does not break the sidecar rule below.
 4. Work through the areas a design must cover — boundary conditions and error handling, impact on the existing system, performance and scalability, security — and end each as a decision or an assumption in `design.md`, not as a question.
@@ -172,7 +173,7 @@ After brainstorming completes, OVERWRITE `openspec/changes/<feature-name>/design
 
 **Do NOT create a separate Superpowers design file. The design lives in OpenSpec's structure.**
 
-**Quality gate (P2)**: run `gate-check.cjs p2` (see "Gates"). On a stop, the independent reviewer reads design.md against `DESIGN-RED-FLAGS.md` and the spec; present its findings with the `[needs user]` questions.
+**Quality gate (P2)**: run `gate-check.cjs p2` (see "Gates"). On a stop, the independent reviewer reads design.md against `DESIGN-RED-FLAGS.md` and the spec; present its findings with the `[needs user]` questions (at most two, see the question budget).
 
 ---
 
@@ -446,4 +447,4 @@ Should I extract the reusable portions to shared-specs?
 - ❌ Skip Phase 2 brainstorming and go straight to implementation
 - ❌ Modify tasks.md during reconciliation (it's execution history)
 - ❌ Carry on past a gate-check `stop` (exit 10, or exit 1 twice) without the user's approval
-- ❌ Downgrade a `[needs user]` item to `[default]` so that gate-check proceeds (only the user's own delegation does that)
+- ❌ Downgrade a `[needs user]` item to `[default]` so that gate-check proceeds (the user's own delegation and the Phase 2 question budget are the only exceptions; the budget never removes the last `[needs user]` item)

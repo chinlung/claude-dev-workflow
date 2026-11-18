@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.22.0] - 2026-11-18
+
+### Changed
+
+- **openspec-superpowers-workflow 4.2.0 → 4.3.0** — the Phase 2 question budget (at most two) covers the whole round at the P2 stop, the independent reviewer's points included; past two, the rest become `[default]` noted `(reviewer suggested asking)` and are listed as statements the user can overrule. The stop still happens; gate-check is untouched. Eval numbers are in the plugin's changelog.
+
 ## [1.21.0] - 2026-11-18
 
 ### Changed
