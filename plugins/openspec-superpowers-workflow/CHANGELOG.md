@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.3.0] - 2026-11-18
+
+### Changed
+
+- **The Phase 2 question budget covers the whole round at the P2 stop, the reviewer's points included.** Since 3.0.0 the stop sends an independent reviewer over design.md, a `[needs user]` item the reviewer raises is never downgraded, and every `[needs user]` item goes into the round — while the 2.0.0 budget says Phase 2 asks at most two questions. Nothing said which wins, and replies took either reading: "two of its points became questions 3 and 4", one round of six, another of five with three marked "raised by the reviewer". Now, when more than two items qualify after the review, the two whose answers change most what gets built stay `[needs user]` (an item only someone else can answer goes first, as it has no default to take); the rest become `[default]` with the default chosen, noted `(reviewer suggested asking)` when the reviewer raised them, and are listed after the round as statements the user can overrule. An item past the budget that only someone else can answer gets a provisional default and the name of who has to answer it, and one number carries one decision (two questions under one number count as two). The no-downgrade rule names this as its second exception. The stop still happens, since the items kept within the budget stay `[needs user]`; gate-check is untouched.
+
+### Tests
+
+- `skill-docs.test.sh`: 37 checks (six new: the budget covers the reviewer's points, the overflow note, the second exception, the P2 quality gate's "at most two", the provisional default, one decision per number). Four were red before the phases.md change; the last two turn red on a copy with their sentences removed.
+
+### Evals (local suites, not committed)
+
+- **`04-add-report-archive-open`** had two causes. (1) Its "at most two questions" grader dated from 2.0.0 and counted the approval request that every stop must end with (3.0.0, made the round's last item in 4.1.0) as a decision: a 4.2.0 reply with two questions plus the approval failed 3/3, and an opus re-grade of it fails with the approval counted and passes without. The grader now excludes the approval and accepts defaults listed as statements. (2) The budget conflict above. With the new grader and 4.2.0's skill: 0/3 with the plugin (0.56, same as without); the three rounds held two numbered questions (the first bundling two exceptions), five decisions and three decisions, each plus the approval. With 4.3.0, two runs of three: 1/3 (0.70) and 0/3 (0.56), against 0.56 without. By the sonnet judge that is 1 of 6, so **the case still fails and the score does not show the change working**. What the six replies did: five put exactly two numbered questions plus the approval and listed the rest as defaults; of those five, one put two questions under one number (the "one number carries one decision" sentence was added after it); the sixth attached five spec changes to the approval item. An opus re-grade of the five replies the judge failed passes three and fails two (the two just named); a sonnet re-grade of the last three passes one the judge had failed 3/3 and fails another only because two defaults carry "(reviewer suggested asking)". So this grader does not give the same verdict twice near the limit, and the replies still find ways to carry more than two decisions (reviewer items, two questions under one number, changes attached to the approval). No further rule was added for the third. Three runs per arm; small numbers.
+- **`07-points-expiry`** re-run on 4.3.0 before the last two sentences were added (provisional default, one decision per number): 0.90 vs 0.43, the same as on 4.2.0 (approval last 3/3, one round 2/3). Not re-run after them.
+- Correction to the 4.2.0 entry: the eval run labelled 2.2.1 that failed 04 two times in three ran a 3.0.0 working tree (its replies name `gate-check.cjs p2`, which 3.0.0 added), so it does not show the failure predating the gates.
+
 ## [4.2.0] - 2026-11-18
 
 ### Changed

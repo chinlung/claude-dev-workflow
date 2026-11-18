@@ -74,9 +74,15 @@ eq "a stop asks every [needs user] item in one numbered round" yes "$(yn command
 eq "each question is worded so that yes accepts the recommendation" yes "$(yn command grep -qF '"yes" accepts the recommendation' "$PH")"
 eq "the example puts the answer inside the question" yes "$(yn command grep -qF 'state the answer inside the question' "$PH")"
 eq "the approval is the round's last item, so answering the others is not an approval" yes "$(yn command grep -qF 'Make the approval the last numbered item of the round' "$PH")"
+eq "the Phase 2 question budget covers the reviewer's points too" yes "$(yn command grep -qF "the reviewer's points included" "$PH")"
+eq "items past the budget become defaults noted as the reviewer's" yes "$(yn command grep -qF '(reviewer suggested asking)' "$PH")"
+eq "the no-downgrade rule names the budget as its second exception" yes "$(yn command grep -qF 'with two exceptions' "$PH")"
+eq "the P2 quality gate presents at most two questions" yes "$(yn command grep -qF 'questions (at most two, see the question budget)' "$PH")"
+eq "an item past the budget that someone else must answer gets a provisional default" yes "$(yn command grep -qF 'gets a provisional default' "$PH")"
+eq "two questions under one number count as two" yes "$(yn command grep -qF 'One number carries one decision' "$PH")"
 
 # ---- summary ----
-MIN=31
+MIN=37
 if [ "$((PASS + FAIL))" -lt "$MIN" ]; then
   echo "FAIL: ran $((PASS + FAIL)) assertions, expected at least $MIN"; FAIL=$((FAIL+1))
 fi
