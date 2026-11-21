@@ -3,7 +3,7 @@
 // Phase 6 mechanical checks before an OpenSpec change is archived.
 //   snapshot <change-dir>        record the hash of tasks.md (run when Phase 6 starts; refused, exit 1, while R6 fails)
 //   check    <change-dir> [--json]  run R1–R9; with no fail, record a pass verdict pinned to the
-//                                    hashes of proposal, design, tasks, review-notes and specs
+//                                    hashes of proposal, design, tasks, review-notes, specs and .openspec.yaml
 //   verify   <change-dir>        exit 0 when that verdict exists, was recorded under the current RULES, and none of those files changed
 // State: <project>/.claude/openspec-reconcile.<change>.local.json. The archive gate hook calls
 // `verify`; the checks that need judgment (C1, C2, C5) are printed as `manual`, not decided here.
@@ -16,7 +16,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { execFileSync } = require('child_process');
-const { REQUIRED_FILES, findSpecFiles, checkRequirementBlocks } = require('./validate-openspec-workflow.cjs');
+const { REQUIRED_FILES, NO_SPECS, findSpecFiles, skipsSpecs, checkRequirementBlocks } = require('./validate-openspec-workflow.cjs');
 const { writeStateFile } = require('./safe-write.cjs');
 const { parseTaskLines } = require('./task-line.cjs');
 
@@ -62,6 +62,8 @@ function hashes(ctx) {
   const out = {};
   for (const [key, rel] of Object.entries(ARTIFACTS)) out[key] = fileHash(ctx, rel);
   out.specs = specsHash(ctx);
+  // R1 reads skip_specs from it, so turning the flag off or deleting the file after a pass must stale the verdict.
+  out.openspecYaml = fileHash(ctx, '.openspec.yaml');
   return out;
 }
 
@@ -93,7 +95,7 @@ const result = (status, detail = []) => ({ status, detail });
 
 function checkR1(ctx) {
   const detail = REQUIRED_FILES.filter((f) => !fs.existsSync(path.join(ctx.changeDir, f))).map((f) => `missing ${f}`);
-  if (findSpecFiles(ctx.changeDir).length === 0) detail.push('no specs/**/spec.md');
+  if (findSpecFiles(ctx.changeDir).length === 0 && !skipsSpecs(ctx.changeDir)) detail.push(NO_SPECS);
   return result(detail.length ? 'fail' : 'pass', detail);
 }
 

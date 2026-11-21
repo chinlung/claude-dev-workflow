@@ -197,7 +197,7 @@ SPEC 需求覆蓋核查（Phase 4 完成時）：
 
 `validators/validate-openspec-workflow.cjs <change-folder-path>` 自動檢查：
 - 必要檔案存在（`proposal.md`、`design.md`、`tasks.md`、`review-notes.md`）
-- `specs/**/spec.md` 存在
+- `specs/**/spec.md` 存在（`.openspec.yaml` 設 `skip_specs: true` 者除外，與 `gate-check p1`、`reconcile-check` R1 同一判斷）
 - 每個 `### Requirement:` 區塊第一段含 SHALL 或 MUST
 
 其他覆蓋項目（任務→需求追溯、Y 項目處理、延後項目）為 Phase 6 人工核查，記錄於 `RECONCILIATION-CRITERIA.md`。

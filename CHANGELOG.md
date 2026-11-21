@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.22.1] - 2026-11-21
+
+### Fixed
+
+- **openspec-superpowers-workflow 4.3.0 → 4.3.1** — a change with `skip_specs: true` passes the Phase 3 validator and `reconcile-check` R1, so it can be archived; before, P1 let it through and both later checks failed it for having no `specs/**/spec.md`. The three checks share one reading of the flag, which now matches OpenSpec 2.1.0's (`schema` required; a trailing comment or quoted key allowed), and a pass verdict pins `.openspec.yaml` — verdicts from 4.3.0 read as `stale:openspecYaml` once, so run `check` again. See that plugin's CHANGELOG [4.3.1].
+
 ## [1.22.0] - 2026-11-18
 
 ### Changed

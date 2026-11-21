@@ -127,7 +127,7 @@ Text inside HTML comments and code fences does not count. Matching is deliberate
         Never edit proposal.md / specs/ / design.md / tasks.md during review — record here, reconcile in Phase 6.
         Add `final` to the last Round heading only after the user says review has converged — the archive gate checks it. -->
    ```
-4. **Fast local pre-check (optional, lenient)**: run this plugin's bundled validator on the change folder to catch a missing artifact (any of `proposal.md` / `design.md` / `tasks.md` / `review-notes.md`, or no `specs/**/spec.md`) or an empty SHALL/MUST first paragraph *before* the authoritative CLI — it is fast and needs no OpenSpec install:
+4. **Fast local pre-check (optional, lenient)**: run this plugin's bundled validator on the change folder to catch a missing artifact (any of `proposal.md` / `design.md` / `tasks.md` / `review-notes.md`, or no `specs/**/spec.md` unless `.openspec.yaml` sets `skip_specs: true`) or an empty SHALL/MUST first paragraph *before* the authoritative CLI — it is fast and needs no OpenSpec install:
    ```bash
    node ${CLAUDE_PLUGIN_ROOT}/skills/openspec-superpowers-workflow/validators/validate-openspec-workflow.cjs openspec/changes/<feature-name>
    ```
