@@ -34,8 +34,11 @@ function findSpecFiles(dir) {
 // OpenSpec 2.1.0 (readSkipSpecsMarker, dist/utils/change-metadata.js) honors the flag only when the file is valid
 // change metadata, so `schema` is required. Without a YAML parser this matches the common forms: a top-level
 // `skip_specs` key (quotes allowed) whose value on the same line is boolean true, optionally followed by a
-// comment, and a top-level `schema` with a value. Not checked here: whether that schema exists, flow or multi-line
-// YAML; `openspec validate` decides those.
+// comment, and a top-level `schema` with a value. It is a text match, not a parse, so it honors some files OpenSpec
+// refuses. Known ones (not a complete list): a schema that does not exist or is not a non-empty string (`''`, `~`,
+// `123`), a duplicate key, more than one YAML document or a `...` end marker, flow or multi-line forms.
+// `openspec validate` decides those; do not grow the patterns to chase them.
+const NO_SPECS = 'no specs/**/spec.md, and .openspec.yaml does not declare skip_specs: true (the flag counts only next to a top-level schema: line)';
 const SKIP_SPECS_TRUE = /^(['"]?)skip_specs\1[ \t]*:[ \t]*(?:true|True|TRUE)(?:[ \t]+#.*)?[ \t]*$/m;
 const SCHEMA_SET = /^(['"]?)schema\1[ \t]*:[ \t]*[^\s#]/m;
 function skipsSpecs(changeDir) {
@@ -105,7 +108,7 @@ function validate(folderPath) {
   // Check specs/**/spec.md exists, unless the change opts out with skip_specs: true
   const specFiles = findSpecFiles(absFolder);
   if (specFiles.length === 0 && !skipsSpecs(absFolder)) {
-    errors.push('No specs/**/spec.md found in change folder (and .openspec.yaml does not set skip_specs: true)');
+    errors.push(NO_SPECS);
   }
 
   // Check SHALL/MUST in all spec.md requirement blocks
@@ -144,4 +147,4 @@ function main() {
 
 // CLI when run directly; reconcile-check.cjs requires these functions instead of copying them.
 if (require.main === module) main();
-module.exports = { REQUIRED_FILES, findSpecFiles, skipsSpecs, checkRequirementBlocks };
+module.exports = { REQUIRED_FILES, NO_SPECS, findSpecFiles, skipsSpecs, checkRequirementBlocks };

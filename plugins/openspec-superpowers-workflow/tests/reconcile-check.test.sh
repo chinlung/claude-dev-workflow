@@ -210,6 +210,10 @@ eq "check records the rules version in the verdict" true "$(jq '.verdict.rules |
 jq 'del(.verdict.rules)' "$SF" > "$SF.tmp" && mv "$SF.tmp" "$SF"
 node "$CHECK" verify "$D" > "$WORK/v.out" 2>&1; eq "verify: verdict without a rules version exit 3" 3 "$?"
 eq "verify: verdict without a rules version reason" "stale:rules" "$(head -1 "$WORK/v.out")"
+# verify 以現行的雜湊清單為準：4.3.0 的 verdict 沒有 openspecYaml，升級後要報 stale，不能因為舊 verdict 沒這個 key 就略過
+check "$D"; jq 'del(.verdict.hashes.openspecYaml)' "$SF" > "$SF.tmp" && mv "$SF.tmp" "$SF"
+node "$CHECK" verify "$D" > "$WORK/v.out" 2>&1; eq "verify: verdict without the .openspec.yaml hash exit 3" 3 "$?"
+eq "verify: verdict without the .openspec.yaml hash reason" "stale:openspecYaml" "$(head -1 "$WORK/v.out")"
 check "$D"; jq '.verdict.rules = 1' "$SF" > "$SF.tmp" && mv "$SF.tmp" "$SF"
 node "$CHECK" verify "$D" > "$WORK/v.out" 2>&1; eq "verify: verdict from an older rules version exit 3" 3 "$?"
 eq "verify: verdict from an older rules version reason" "stale:rules" "$(head -1 "$WORK/v.out")"
@@ -270,7 +274,7 @@ out=$(node -e 'const m = require(process.argv[1]); process.stdout.write(typeof m
 eq "validator require exports findSpecFiles without running main" "function" "$out"
 
 # ---- summary ----
-MIN=112
+MIN=114
 if [ "$((PASS + FAIL))" -lt "$MIN" ]; then
   echo "FAIL: ran $((PASS + FAIL)) assertions, expected at least $MIN"; FAIL=$((FAIL+1))
 fi

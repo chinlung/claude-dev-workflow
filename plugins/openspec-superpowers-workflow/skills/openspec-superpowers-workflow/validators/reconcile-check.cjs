@@ -16,7 +16,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { execFileSync } = require('child_process');
-const { REQUIRED_FILES, findSpecFiles, skipsSpecs, checkRequirementBlocks } = require('./validate-openspec-workflow.cjs');
+const { REQUIRED_FILES, NO_SPECS, findSpecFiles, skipsSpecs, checkRequirementBlocks } = require('./validate-openspec-workflow.cjs');
 const { writeStateFile } = require('./safe-write.cjs');
 const { parseTaskLines } = require('./task-line.cjs');
 
@@ -95,7 +95,7 @@ const result = (status, detail = []) => ({ status, detail });
 
 function checkR1(ctx) {
   const detail = REQUIRED_FILES.filter((f) => !fs.existsSync(path.join(ctx.changeDir, f))).map((f) => `missing ${f}`);
-  if (findSpecFiles(ctx.changeDir).length === 0 && !skipsSpecs(ctx.changeDir)) detail.push('no specs/**/spec.md and .openspec.yaml does not set skip_specs: true');
+  if (findSpecFiles(ctx.changeDir).length === 0 && !skipsSpecs(ctx.changeDir)) detail.push(NO_SPECS);
   return result(detail.length ? 'fail' : 'pass', detail);
 }
 

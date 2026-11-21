@@ -18,7 +18,7 @@
 // Design: docs/openspec-workflow-3-gates-design-2026-11-10.md §4. Tests: tests/gate-check.test.sh
 const fs = require('fs');
 const path = require('path');
-const { findSpecFiles, skipsSpecs } = require('./validate-openspec-workflow.cjs');
+const { NO_SPECS, findSpecFiles, skipsSpecs } = require('./validate-openspec-workflow.cjs');
 const { parseTaskLines } = require('./task-line.cjs');
 const { writeStateFile } = require('./safe-write.cjs');
 
@@ -208,7 +208,7 @@ function checkP1(changeDir, settings) {
   if (section(s.proposal, 'Decisions') === null) reasons.push({ id: 'no-decisions-section', detail: 'proposal.md has no ## Decisions section' });
   if (NEEDS_USER.test(s.proposal)) reasons.push({ id: 'needs-user', detail: 'proposal.md has a [needs user] item' });
   if (s.breaking) reasons.push({ id: 'breaking', detail: 'proposal.md marks a BREAKING change' });
-  if (s.specCount === 0 && !skipsSpecs(changeDir)) reasons.push({ id: 'no-specs', detail: 'no specs/**/spec.md and .openspec.yaml does not set skip_specs: true' });
+  if (s.specCount === 0 && !skipsSpecs(changeDir)) reasons.push({ id: 'no-specs', detail: NO_SPECS });
   if (s.unreadable.length) reasons.push({ id: 'spec-unreadable', detail: `cannot read ${s.unreadable.join(', ')}` });
   if (s.kinds.length) reasons.push({ id: 'delta-modified', detail: `spec deltas change existing requirements: ${s.kinds.join(', ')}` });
   if (s.hits.length) reasons.push({ id: 'high-risk-path', detail: `## Impact names high-risk paths: ${s.hits.join(', ')}` });
