@@ -29,6 +29,21 @@ function findSpecFiles(dir) {
   return results;
 }
 
+// OpenSpec lets a pure refactor or tooling change opt out of specs with `skip_specs: true` in .openspec.yaml.
+// The one reading of that flag: gate-check (P1), reconcile-check (R1) and validate() below all call this.
+// OpenSpec 2.1.0 (readSkipSpecsMarker, dist/utils/change-metadata.js) honors the flag only when the file is valid
+// change metadata, so `schema` is required. Without a YAML parser this matches the common forms: a top-level
+// `skip_specs` key (quotes allowed) whose value on the same line is boolean true, optionally followed by a
+// comment, and a top-level `schema` with a value. Not checked here: whether that schema exists, flow or multi-line
+// YAML; `openspec validate` decides those.
+const SKIP_SPECS_TRUE = /^(['"]?)skip_specs\1[ \t]*:[ \t]*(?:true|True|TRUE)(?:[ \t]+#.*)?[ \t]*$/m;
+const SCHEMA_SET = /^(['"]?)schema\1[ \t]*:[ \t]*[^\s#]/m;
+function skipsSpecs(changeDir) {
+  let yaml;
+  try { yaml = fs.readFileSync(path.join(changeDir, '.openspec.yaml'), 'utf8').replace(/\r\n/g, '\n'); } catch { return false; }
+  return SKIP_SPECS_TRUE.test(yaml) && SCHEMA_SET.test(yaml);
+}
+
 /**
  * Check all `### Requirement:` blocks in a markdown file.
  * Each such block's first paragraph must contain SHALL or MUST (case-insensitive).
@@ -87,10 +102,10 @@ function validate(folderPath) {
     }
   }
 
-  // Check specs/**/spec.md exists
+  // Check specs/**/spec.md exists, unless the change opts out with skip_specs: true
   const specFiles = findSpecFiles(absFolder);
-  if (specFiles.length === 0) {
-    errors.push('No specs/**/spec.md found in change folder');
+  if (specFiles.length === 0 && !skipsSpecs(absFolder)) {
+    errors.push('No specs/**/spec.md found in change folder (and .openspec.yaml does not set skip_specs: true)');
   }
 
   // Check SHALL/MUST in all spec.md requirement blocks
@@ -129,4 +144,4 @@ function main() {
 
 // CLI when run directly; reconcile-check.cjs requires these functions instead of copying them.
 if (require.main === module) main();
-module.exports = { REQUIRED_FILES, findSpecFiles, checkRequirementBlocks };
+module.exports = { REQUIRED_FILES, findSpecFiles, skipsSpecs, checkRequirementBlocks };

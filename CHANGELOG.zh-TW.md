@@ -4,6 +4,12 @@
 
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
+## [1.22.1] - 2026-11-21
+
+### Fixed
+
+- **openspec-superpowers-workflow 4.3.0 → 4.3.1**：設了 `skip_specs: true` 的 change 現在能通過 Phase 3 validator 與 `reconcile-check` R1，可以歸檔；之前 P1 放行，後面兩道檢查卻因沒有 `specs/**/spec.md` 而擋下。三處改用同一個旗標判斷，判斷方式與 OpenSpec 2.1.0 一致（必須有 `schema`；容許行尾註解與加引號的 key）；pass verdict 也會 pin 住 `.openspec.yaml`，4.3.0 留下的 verdict 升級後會報一次 `stale:openspecYaml`，重跑 `check` 即可。詳見該 plugin 的 CHANGELOG [4.3.1]。
+
 ## [1.22.0] - 2026-11-18
 
 ### Changed

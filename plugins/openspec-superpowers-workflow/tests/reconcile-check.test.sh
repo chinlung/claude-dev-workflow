@@ -60,6 +60,24 @@ P=$WORK/p2; D=$(make_change "$P" foo); rm "$D/review-notes.md"; check "$D"
 eq "R1: missing file exit 1" 1 "$RC"
 status "R1: missing file fail" R1 fail
 
+# R1：沒有 specs/ → fail，除非 .openspec.yaml 設 skip_specs: true（與 gate-check p1、validator 同一判斷）
+P=$WORK/p2b; D=$(make_change "$P" foo); rm -r "$D/specs"; check "$D"
+status "R1: no specs fail" R1 fail
+P=$WORK/p2c; D=$(make_change "$P" foo); rm -r "$D/specs"; printf 'schema: spec-driven\nskip_specs: true\n' > "$D/.openspec.yaml"; check "$D"
+status "R1: no specs with skip_specs: true pass" R1 pass
+eq "R1: skip_specs: true change passes check" 0 "$RC"
+node "$CHECK" verify "$D" > /dev/null 2>&1; eq "R1: skip_specs: true change verifies fresh" 0 "$?"
+node "$VALIDATOR" "$D" > /dev/null 2>&1; eq "validator: no specs with skip_specs: true exit 0" 0 "$?"
+# R1 讀 .openspec.yaml，所以 verdict 也 pin 它：check 之後拿掉 skip_specs，verify 要報 stale
+printf 'schema: spec-driven\nskip_specs: false\n' > "$D/.openspec.yaml"
+out=$(node "$CHECK" verify "$D" 2>/dev/null); rc=$?
+eq "verify after skip_specs is turned off exit 3" 3 "$rc"; eq "verify after skip_specs is turned off says stale:openspecYaml" stale:openspecYaml "$out"
+rm "$D/.openspec.yaml"; out=$(node "$CHECK" verify "$D" 2>/dev/null)
+eq "verify after .openspec.yaml is removed says stale:openspecYaml" stale:openspecYaml "$out"
+P=$WORK/p2d; D=$(make_change "$P" foo); rm -r "$D/specs"; printf 'schema: spec-driven\nskip_specs: false\n' > "$D/.openspec.yaml"; check "$D"
+status "R1: no specs with skip_specs: false fail" R1 fail
+node "$VALIDATOR" "$D" > /dev/null 2>&1; eq "validator: no specs with skip_specs: false exit 1" 1 "$?"
+
 # R2：Requirement 第一段沒有 SHALL／MUST
 P=$WORK/p3; D=$(make_change "$P" foo)
 printf '### Requirement: Export\nThe system exports invoices.\n' > "$D/specs/api/spec.md"; check "$D"
@@ -218,13 +236,41 @@ test -L "$P/.claude/openspec-reconcile.foo.local.json"; eq "the state symlink is
 # 路徑：上層不是 changes → exit 2
 mkdir -p "$WORK/x"; node "$CHECK" check "$WORK/x" > /dev/null 2>&1; eq "path: not under openspec/changes exit 2" 2 "$?"
 
+# skipsSpecs()：跟 OpenSpec 2.1.0 的 readSkipSpecsMarker 判斷一致（dist/utils/change-metadata.js）——
+# 要有非空的 schema，skip_specs 是頂層的布林 true；key 可加引號，值後可接 # 註解
+# 格式：<預期 true|false>|<printf %b 的 yaml>
+while IFS='|' read -r want yaml; do
+  [ -n "$want" ] || continue
+  d=$(mktemp -d "$WORK/yaml.XXXXXX"); printf '%b' "$yaml" > "$d/.openspec.yaml"
+  got=$(node -e 'process.stdout.write(String(require(process.argv[1]).skipsSpecs(process.argv[2])))' "$VALIDATOR" "$d" 2>&1)
+  eq "skipsSpecs [$yaml] is $want" "$want" "$got"
+done <<'CASES'
+true|schema: spec-driven\nskip_specs: true\n
+true|skip_specs: true\nschema: spec-driven\n
+true|schema: spec-driven\nskip_specs: true  # pure refactor\n
+true|schema: spec-driven\n"skip_specs": true\n
+true|schema: spec-driven\n'skip_specs': true\n
+true|schema: spec-driven\nskip_specs: True\n
+true|schema: spec-driven\r\nskip_specs: true\r\n
+false|skip_specs: true\n
+false|schema:\nskip_specs: true\n
+false|schema: spec-driven\nskip_specs: false\n
+false|schema: spec-driven\nskip_specs: "true"\n
+false|schema: spec-driven\nskip_specs: truex\n
+false|schema: spec-driven\nskip_specs: true# not a comment\n
+false|schema: spec-driven\n  skip_specs: true\n
+false|schema: spec-driven\n# skip_specs: true\n
+CASES
+d=$(mktemp -d "$WORK/yaml.XXXXXX")
+eq "skipsSpecs without .openspec.yaml is false" false "$(node -e 'process.stdout.write(String(require(process.argv[1]).skipsSpecs(process.argv[2])))' "$VALIDATOR" "$d" 2>&1)"
+
 # 既有 validator：CLI 不變；require 不印 usage、不結束行程
 node "$VALIDATOR" "$FIXTURES/valid-change" > /dev/null 2>&1; eq "validator CLI still exit 0" 0 "$?"
 out=$(node -e 'const m = require(process.argv[1]); process.stdout.write(typeof m.findSpecFiles)' "$VALIDATOR" 2>&1)
 eq "validator require exports findSpecFiles without running main" "function" "$out"
 
 # ---- summary ----
-MIN=86
+MIN=112
 if [ "$((PASS + FAIL))" -lt "$MIN" ]; then
   echo "FAIL: ran $((PASS + FAIL)) assertions, expected at least $MIN"; FAIL=$((FAIL+1))
 fi
