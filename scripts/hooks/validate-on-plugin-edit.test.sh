@@ -14,7 +14,9 @@ WORK=$(mktemp -d "${TMPBASE%/}/plugin-edit-hook-test.XXXXXX")
 trap 'rm -rf "$WORK"' EXIT
 
 check() { # <名稱> <實際> <期望子字串>
-  if echo "$2" | grep -q "$3"; then PASS=$((PASS+1)); echo "PASS: $1"
+  # here-string, not `echo | grep -q`: under pipefail, grep -q quitting at the first match while echo is still writing a long
+  # string kills echo with SIGPIPE and turns a match into a failure
+  if grep -q "$3" <<<"$2"; then PASS=$((PASS+1)); echo "PASS: $1"
   else FAIL=$((FAIL+1)); echo "FAIL: $1 — got: $2"; fi
 }
 
@@ -122,6 +124,69 @@ if [ -f "$r/ran.log" ]; then
 else
   PASS=$((PASS+1)); echo "PASS: 8b 專案根之外的 skill 程式檔零執行"
 fi
+
+# 9) suite 拿到 NO_MUTANTS=1(只留一般斷言、略過 mutant 重跑,CI 仍跑完整版),node runner 照呼叫端環境;
+#    全部 suite 依序跑要 658 s,遠超 settings.json 給 hook 的 120 s,後段 suite 的失敗就回不到 Claude
+r=$WORK/r9; make_root "$r"
+printf '#!/usr/bin/env node\nrequire("fs").appendFileSync(process.env.RAN_LOG,"runner-env="+process.env.NO_MUTANTS+"\\n");\n' > "$r/scripts/validate-fixtures.cjs"
+printf '#!/bin/bash\necho "suite-env=${NO_MUTANTS-unset}" >> "$RAN_LOG"\n' > "$r/plugins/x/tests/env.test.sh"
+NO_MUTANTS=from-caller run_hook "$r" "$r/plugins/x/hooks/h.sh"
+check "9 suite 的 NO_MUTANTS 是 1(蓋過呼叫端)" "$(cat "$r/ran.log" 2>/dev/null)" 'suite-env=1'
+check "9 node runner 不被改環境(照呼叫端)" "$(cat "$r/ran.log" 2>/dev/null)" 'runner-env=from-caller'
+
+# 10) suite 並行:兩支互等對方的 started 檔,依序跑的話第一支等滿 5 s 而失敗 → exit 2
+r=$WORK/r10; make_root "$r"
+for pair in "a b" "b a"; do set -- $pair
+  printf '#!/bin/bash\nD=$(dirname "$RAN_LOG")\ntouch "$D/%s.started"\nfor i in $(seq 1 100); do [ -f "$D/%s.started" ] && exit 0; sleep 0.05; done\necho "%s never saw %s" >&2\nexit 1\n' "$1" "$2" "$1" "$2" > "$r/plugins/x/tests/rendezvous-$1.test.sh"
+done
+run_hook "$r" "$r/plugins/x/hooks/h.sh"
+check "10 兩支 suite 同時在跑 → exit 0" "$rc" '^0$'
+
+# 11) 並行下失敗輸出仍依 suite 名稱排序(不是完成先後),且每段標出是哪支 suite
+r=$WORK/r11; make_root "$r"
+printf '#!/bin/bash\nsleep 0.5\necho aa-output >&2\nexit 1\n' > "$r/plugins/x/tests/aa-fail.test.sh"
+printf '#!/bin/bash\necho zz-output >&2\nexit 1\n' > "$r/plugins/x/tests/zz-fail.test.sh"
+run_hook "$r" "$r/plugins/x/hooks/h.sh"
+check "11 兩支失敗 → exit 2" "$rc" '^2$'
+a=$(echo "$err" | grep -n 'aa-output' | head -1 | cut -d: -f1); z=$(echo "$err" | grep -n 'zz-output' | head -1 | cut -d: -f1)
+if [ -n "$a" ] && [ -n "$z" ] && [ "$a" -lt "$z" ]; then PASS=$((PASS+1)); echo "PASS: 11 失敗輸出依 suite 名稱排序"
+else FAIL=$((FAIL+1)); echo "FAIL: 11 失敗輸出順序 — aa 行 [$a] zz 行 [$z]"; fi
+check "11 標出失敗的 suite" "$err" 'aa-fail.test.sh'
+
+# 12) suite 留在 hook 的 process group(不 detached),跟原本 spawnSync 一樣:harness 砍掉 hook 時才會連帶砍掉它們。
+#     另開 group 的話,hook 被砍時 suite 全成孤兒、繼續在背景跑(codex r3)
+r=$WORK/r12; make_root "$r"
+printf '#!/bin/bash\nps -o pgid= -p $$ | tr -d " " > "$(dirname "$RAN_LOG")/suite.pgid"\n' > "$r/plugins/x/tests/pgid.test.sh"
+run_hook "$r" "$r/plugins/x/hooks/h.sh"
+self_pgid=$(ps -o pgid= -p $$ | tr -d ' ')
+check "12 suite 與 hook 同一個 process group" "$(cat "$r/suite.pgid" 2>/dev/null)" "^${self_pgid}\$"
+
+# 13) 失敗的 suite 輸出很大 → 截斷後才回報(舊的 spawnSync 有 1 MB 上限;不截就整份灌進 Claude 的 context),頭尾都保留
+r=$WORK/r13; make_root "$r"
+printf '#!/bin/bash\necho HEAD-MARK >&2\nhead -c 200000 /dev/zero | tr "\\0" "x" >&2\necho >&2\necho TAIL-MARK >&2\nexit 1\n' > "$r/plugins/x/tests/big.test.sh"
+run_hook "$r" "$r/plugins/x/hooks/h.sh"
+check "13 大量輸出仍 exit 2" "$rc" '^2$'
+check "13 保留開頭" "$err" 'HEAD-MARK'
+check "13 保留結尾" "$err" 'TAIL-MARK'
+check "13 註明截斷" "$err" 'truncated'
+if [ "${#err}" -lt 60000 ]; then PASS=$((PASS+1)); echo "PASS: 13 回報長度有上限(${#err})"
+else FAIL=$((FAIL+1)); echo "FAIL: 13 回報長度沒有上限(${#err})"; fi
+
+# 14) 輸出停不下來的 job → 累計超過上限就停掉它、記為失敗(exit 2),跟舊 spawnSync 的 maxBuffer 一樣;
+#     不停的話 hook 會一直等它,直到 harness 的 120 s 把 hook 連同其他失敗一起靜默砍掉。外包 30 s alarm,修好前不至於卡死測試
+i=0
+for flood in 'yes' 'yes >&2'; do
+  i=$((i+1)); r=$WORK/r14-$i; make_root "$r"
+  printf '#!/bin/bash\n%s\n' "$flood" > "$r/plugins/x/tests/flood.test.sh"
+  rc=0; start=$SECONDS
+  out=$(printf '{"tool_input":{"file_path":"%s"}}' "$r/plugins/x/hooks/h.sh" \
+    | CLAUDE_PROJECT_DIR="$r" RAN_LOG="$r/ran.log" perl -e 'alarm 30; exec @ARGV' node "$HOOK" 2>"$r/stderr.txt") || rc=$?
+  err=$(cat "$r/stderr.txt" 2>/dev/null || true); elapsed=$((SECONDS - start))
+  check "14 [$flood] 停掉並記為失敗 → exit 2" "$rc" '^2$'
+  check "14 [$flood] 點名並說明為何停掉" "$err" 'flood.test.sh.*stopped'
+  if [ "$elapsed" -lt 25 ]; then PASS=$((PASS+1)); echo "PASS: 14 [$flood] 很快就停(${elapsed}s)"
+  else FAIL=$((FAIL+1)); echo "FAIL: 14 [$flood] 沒有停(${elapsed}s)"; fi
+done
 
 # ---- summary ----
 echo "----"
