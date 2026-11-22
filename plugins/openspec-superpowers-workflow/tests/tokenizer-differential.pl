@@ -22,12 +22,17 @@
 # --superset-of <earlier parser>: instead of asking bash, require that every line the earlier parser
 #   prints for a generated command is printed by the source too — the gate never sees less than it did.
 #   For the merge gate a line today that denies the command outright covers every earlier line.
+#   Exercised here counts the cases where the earlier parser printed a line, the only ones that can show
+#   a loss.
 #   With --judge, bash decides each case where a line was lost: it is a counterexample only when bash ran
 #   something the source does not report — the same test as without --superset-of, on those cases, so
 #   this is a listing tool, not a further check. The rest are counted and shown apart: lines only the
 #   earlier parser printed, while the source still covers everything bash ran.
+# A parser that does not exit 0 on a command is read the way its hook reads that: archive-gate has seen
+#   nothing (it allows), pr-merge-gate has a merge it cannot read (it denies). See heard().
 # Exit: 0 no counterexample, 1 counterexamples (printed), 2 the harness could not judge
-#       (the parser did not compile, a tool is missing, or too few cases reached bash's payload).
+#       (the parser did not compile or does not exit 0 on the probe, a tool is missing, or fewer cases
+#       than --min-exercised were exercised).
 use strict; use warnings;
 use File::Temp qw(tempdir);
 use Getopt::Long;
@@ -69,7 +74,7 @@ my $var = $kind eq 'ag' ? 'AG_CMD' : 'PMG_CMD';
 # Run it the way the hook does — `perl -e "$parser"` with the command in the environment, stderr
 # dropped — not compiled into this process: wrapped in a sub, a named sub inside an older parser
 # loses sight of the lexicals around it and the parser silently reads nothing.
-sub parse {
+sub run_parser {   # what it printed, and its wait status
   my ($text, $cmd) = @_;
   local $ENV{$var} = $cmd;
   my $pid = open(my $ph, '-|') // die "fork: $!";
@@ -77,13 +82,27 @@ sub parse {
   # (exit 2), never a counterexample — its empty output would otherwise read as "missed everything"
   if (!$pid) { open STDERR, '>', '/dev/null'; alarm 10; { exec $^X, '-e', $text; } POSIX::_exit(127); }
   local $/; my $out = <$ph> // ''; close $ph;
-  if (($? & 127) == 14) { print STDERR "a parser did not finish within 10 s on: " . oneline($cmd) . "\n"; exit 2; }
-  return $out;
+  my $status = $?;
+  if (($status & 127) == 14) { print STDERR "a parser did not finish within 10 s on: " . oneline($cmd) . "\n"; exit 2; }
+  return ($out, $status);
 }
+# What the hook makes of the parser's answer. One that does not exit 0 has not been heard, whatever it
+# printed first: archive-gate lets the command through (`names=$(…) || allow`), which is the same as
+# reading nothing, and pr-merge-gate denies it (`targets=$(…) || deny`), which is the line for a merge
+# it cannot read.
+sub heard {
+  my ($out, $status) = @_;
+  return $out unless $status;
+  return $kind eq 'ag' ? '' : "- - -\n";
+}
+sub parse { return heard(run_parser(@_)); }
 my @texts = (parser_text($source), $fixed_by ? parser_text($fixed_by) : ());
 for my $t (@texts) {
+  # on the probe a parser has to exit 0 as well: for the merge gate one that dies on every command would
+  # otherwise read as denying every command, and pass
   my $probe = $kind eq 'ag' ? 'openspec archive probe' : 'gh pr merge 1 --repo o/r';
-  parse($t, $probe) =~ /\S/ or do { print STDERR "a parser reports nothing for [$probe]: not one this harness can drive\n"; exit 2 };
+  my ($out, $status) = run_parser($t, $probe);
+  $status == 0 && $out =~ /\S/ or do { print STDERR "a parser reports nothing for [$probe], or does not exit 0 on it: not one this harness can drive\n"; exit 2 };
 }
 
 # ---- the oracle: bash with stub commands ----
@@ -283,11 +302,14 @@ for my $i (1 .. $n) {
   my $cmd = gen();
   if ($superset) {
     my $out = parse($texts[0], $cmd); my %now = map { $_ => 1 } split /\n/, $out;
-    my @lost = grep { !$now{$_} } split /\n/, parse($texts[1], $cmd);
+    my ($eout, $estatus) = run_parser($texts[1], $cmd);
+    my @lost = grep { !$now{$_} } split /\n/, heard($eout, $estatus);
     # the merge gate denies the whole command on one line it cannot pin (a `-` for the repo, or a number
     # that is not all digits): with such a line today, no line of the earlier parser is lost
     @lost = () if $kind eq 'pmg' && grep { my ($r, $num) = (split ' ')[0, 1]; ($r // '-') eq '-' || ($num // '') !~ /^\d+$/ } keys %now;
-    $exercised++;
+    # only a line the earlier parser printed and stood by (exit 0) can be lost; the `- - -` that stands in
+    # for one that failed is compared above, not counted here
+    $exercised++ if !$estatus && $eout =~ /\S/;
     next unless @lost;
     my @m = $judge ? missed($out, run_bash($cmd)) : @lost;
     if (@m) { push @bad, [$i, $cmd, join(',', @m), join("\n", sort keys %now)]; }
@@ -319,5 +341,8 @@ for my $b (@loose[0 .. min($show, scalar @loose) - 1]) {
   (my $o = $b->[3]) =~ s/\n/ | /g;
   print "  earlier only, what bash ran still covered: case $b->[0]: lost [$b->[2]], parser saw [$o]\n    " . oneline($b->[1]) . "\n";
 }
-if ($exercised < $min_ex) { print STDERR "only $exercised cases reached the payload, expected at least $min_ex\n"; exit 2; }
+if ($exercised < $min_ex) {
+  print STDERR "only $exercised cases " . ($superset ? 'had a line from the earlier parser' : 'reached the payload') . ", expected at least $min_ex\n";
+  exit 2;
+}
 exit(@bad ? 1 : 0);

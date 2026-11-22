@@ -356,17 +356,36 @@ mut_bad=0; mut_n=0
 # b16fb23, and that it does without them. The lexer has more mutants there, where bash judges.
 lexonly="$tmp/lexer-only.sh"
 perl -pe 's/^for my \$mode \(0, 1, 2\) \{$/for my \$mode (2) {/' "$HOOK" > "$lexonly"
-mutant() {   # <label> <substring of the case that must kill it> <perl substitution>
-  local label=$1 want=$2 m="$tmp/mutant-$1.sh" log="$tmp/mutant-$1.log" rc first
+# Each mutant is a run of this whole suite on a mutated copy. They run side by side, MUT_JOBS at a time
+# (the machine's processors, at most 8; MUT_JOBS=1 for one after another), and a run leaves only its log
+# and exit status: all are judged after the last one ends, in the order they are listed below.
+MUT_JOBS=${MUT_JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null)}
+[[ $MUT_JOBS =~ ^[1-9][0-9]*$ ]] || MUT_JOBS=2
+[ "$MUT_JOBS" -le 8 ] || MUT_JOBS=8
+mut_labels=(); mut_wants=()
+mutant() {   # <label> <substring of the case that must kill it> <perl substitution>: starts the run
+  local label=$1 m="$tmp/mutant-$1.sh"
   perl -pe "$3" "$lexonly" > "$m" || { echo "MUTANT [$label] perl failed"; mut_bad=1; return; }
   if cmp -s "$m" "$lexonly"; then echo "MUTANT [$label] substitution did not apply"; mut_bad=1; return; fi
-  HOOK="$m" NO_MUTANTS=1 STOP_ON_FAIL=1 perl -e 'alarm 120; exec @ARGV' bash "$0" > "$log" 2>&1; rc=$?
-  mut_n=$((mut_n + 1))
-  first=$(command grep -a -m1 '^FAIL' "$log")   # -a: a truncated multibyte char must not make GNU grep call the log binary
-  if [ "$rc" = 0 ]; then echo "MUTANT [$label] suite stayed green"; mut_bad=1
-  elif [ -z "$first" ]; then echo "MUTANT [$label] crashed before any case failed"; mut_bad=1
-  elif [[ $first != *"$want"* ]]; then echo "MUTANT [$label] killed by [${first:0:90}], expected [$want]"; mut_bad=1
-  else echo "mutant [$label]: suite red as required (by [$want])"; fi
+  while [ "$(jobs -rp | wc -l)" -ge "$MUT_JOBS" ]; do sleep 0.1; done
+  mut_labels+=("$label"); mut_wants+=("$2")
+  ( HOOK="$m" NO_MUTANTS=1 STOP_ON_FAIL=1 perl -e 'alarm 120; exec @ARGV' bash "$0" > "$tmp/mutant-$label.log" 2>&1
+    echo $? > "$tmp/mutant-$label.rc" ) &
+}
+mutants_judged() {   # waits for every run started above, then judges each
+  local i label want rc first
+  wait
+  for i in "${!mut_labels[@]}"; do
+    label=${mut_labels[$i]}; want=${mut_wants[$i]}
+    rc=$(cat "$tmp/mutant-$label.rc" 2>/dev/null || echo none)
+    mut_n=$((mut_n + 1))
+    first=$(command grep -a -m1 '^FAIL' "$tmp/mutant-$label.log")   # -a: a truncated multibyte char must not make GNU grep call the log binary
+    if [ "$rc" = 0 ]; then echo "MUTANT [$label] suite stayed green"; mut_bad=1
+    elif [ "$rc" = none ]; then echo "MUTANT [$label] run left no exit status"; mut_bad=1
+    elif [ -z "$first" ]; then echo "MUTANT [$label] crashed before any case failed"; mut_bad=1
+    elif [[ $first != *"$want"* ]]; then echo "MUTANT [$label] killed by [${first:0:90}], expected [$want]"; mut_bad=1
+    else echo "mutant [$label]: suite red as required (by [$want])"; fi
+  done
 }
 if [ "${NO_MUTANTS:-0}" != 1 ]; then
   # the copy is the hook without its two older readings, and without them only the last case fails
@@ -422,6 +441,7 @@ if [ "${NO_MUTANTS:-0}" != 1 ]; then
   mutant budget        "[two merges, budget spent]"   's/if \[ "\$left" -lt 1000 \]; then/if false; then/'
   mutant clock-start   "[slow reading, budget spent]" 's/^\s*start_ms=\$\(now_ms\)   # the budget below counts the reading of the command too$//'
   mutant clock-own     "[MCP merge, start_ms in the environment]" 's/^start_ms=$//'
+  mutants_judged
   MUT_WANT_N=44
   if [ "$mut_n" != "$MUT_WANT_N" ]; then echo "FAIL: $mut_n of $MUT_WANT_N mutants ran"; mut_bad=1; fi
   [ "$mut_bad" = 0 ] || fail=$((fail + 1))
