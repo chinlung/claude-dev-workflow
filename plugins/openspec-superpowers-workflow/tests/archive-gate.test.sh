@@ -15,7 +15,10 @@ BASH_BIN=$(command -v bash)
 
 TMPBASE="${TMPDIR:-/tmp}"
 WORK=$(mktemp -d "${TMPBASE%/}/archive-gate-test.XXXXXX") || exit 1
-trap 'rm -rf "$WORK"' EXIT
+# Removed first: a run that dies of SIGPIPE (the `| grep -m1` below) runs its EXIT trap only up to the
+# first builtin. Then the mutant runs still going after a Ctrl-C are stopped and waited for, and it is
+# removed again: they write their .rc files here, and one removal racing them left the directory behind.
+trap 'rm -rf "$WORK"; kill $(jobs -p) 2>/dev/null; wait 2>/dev/null; rm -rf "$WORK"' EXIT
 PASS=0; FAIL=0
 # STOP_ON_FAIL=1 (set for mutant runs): exit at the first failing case, which is all a mutant run reads
 fail_case() { FAIL=$((FAIL+1)); echo "$1"; [ "${STOP_ON_FAIL:-0}" = 1 ] && exit 1; return 0; }

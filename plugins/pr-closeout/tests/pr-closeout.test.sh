@@ -10,7 +10,10 @@ here=$(cd "$(dirname "$0")" && pwd)
 SCRIPT=${SCRIPT:-"$here/../scripts/pr-closeout.mjs"}
 BASE="$here/fixtures/base"
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/prc-test.XXXXXX") || exit 1
-trap 'rm -rf "$tmp"' EXIT
+# Removed first: a run that dies of SIGPIPE runs its EXIT trap only up to the first builtin. Then the
+# mutant runs still going after a Ctrl-C are stopped and waited for, and it is removed again: they write
+# their .rc files here, and one removal racing them left the directory behind.
+trap 'rm -rf "$tmp"; kill $(jobs -p) 2>/dev/null; wait 2>/dev/null; rm -rf "$tmp"' EXIT
 command -v node >/dev/null 2>&1 || { echo "pr-closeout.test: node is required"; exit 1; }
 command -v jq >/dev/null 2>&1 || { echo "pr-closeout.test: jq is required"; exit 1; }
 # never the real per-user list: every case below names the config it means
