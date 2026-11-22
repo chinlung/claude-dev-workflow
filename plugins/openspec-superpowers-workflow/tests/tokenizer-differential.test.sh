@@ -238,7 +238,12 @@ timed "pr-merge-gate: 15000 nested \$(( in under 5 s, unreadable" 0 "- - -" 5 PM
   perl -pe 's/ ?lex_tick\([^;]*\);// if /^sub param_end/ .. /^\}/' "$WORK/pmg-lexer.pl" > "$WORK/c-param.pl"
   perl -pe 's/ ?lex_tick\([^;]*\);// if /^sub lex_(arith|text) / .. /^\}/; $_ = "" if /^\s*if \(\$depth > 50\) \{ \$LEX_UNREAD = 1; return \$n; \}$/ && $in_arith; $in_arith = /^sub lex_arith / ? 1 : /^\}/ ? 0 : $in_arith' "$WORK/pmg-lexer.pl" > "$WORK/c-arith.pl"
   for c in memo param arith; do cmp -s "$WORK/pmg-lexer.pl" "$WORK/c-$c.pl" && bad "canary [$c]: what it removes is not in the lexer"; done
-  out=$(within 5 PMG_CMD "$ARITH_PMG" "$WORK/c-memo.pl" 2>/dev/null)
+  # canary [memo] is judged on what the parser prints; its clock only keeps a parser that never ends from
+  # stalling the suite. 20 s, not the 5 s of the checks around it: spending the whole step limit takes
+  # 0.9 s alone and took 9 s with the CPUs seven times oversubscribed, and at 5 s the canary failed once
+  # when two runs of the suites overlapped. Not longer: the plugin-edit hook has 120 s for every suite
+  # and this one takes about 63 s there, so a hang must still end in time to be reported.
+  out=$(within 20 PMG_CMD "$ARITH_PMG" "$WORK/c-memo.pl" 2>/dev/null)
   if [[ $out == *"- - -"* && $out != *"o/r 3 -"* ]]; then ok "canary [memo]: reading each text every time spends the limit"; else bad "canary [memo] — output [${out:0:80}]"; fi
   timed "canary [param]: without counting in param_end the unclosed \${ run out of time" 142 "" 3 PMG_CMD "$WIDE_PARAM" "$WORK/c-param.pl"
   timed "canary [arith]: without the depth check and counting the nested \$(( run out of time" 142 "" 3 PMG_CMD "$WIDE_ARITH" "$WORK/c-arith.pl"
