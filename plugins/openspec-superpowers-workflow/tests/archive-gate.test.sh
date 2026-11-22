@@ -346,19 +346,38 @@ fi
 # lexer has more mutants there, where bash is the judge.
 LEXONLY="$WORK/lexer-only.sh"
 perl -pe 's/^for my \$mode \(0, 1, 2\) \{$/for my \$mode (2) {/' "$GATE" > "$LEXONLY"
-mutant() {
-  local d="$WORK/mutant-$1" log="$WORK/mutant-$1.log" first
+# Each mutant is a run of this whole suite on a mutated copy. They run side by side, MUT_JOBS at a time
+# (the machine's processors, at most 8; MUT_JOBS=1 for one after another), and a run leaves only its log
+# and exit status: all are judged after the last one ends, in the order they are listed below.
+MUT_JOBS=${MUT_JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null)}
+[[ $MUT_JOBS =~ ^[1-9][0-9]*$ ]] || MUT_JOBS=2
+[ "$MUT_JOBS" -le 8 ] || MUT_JOBS=8
+MUT_LABELS=(); MUT_WANTS=(); MUT_N=0
+mutant() {   # starts the run
+  local d="$WORK/mutant-$1"
   mkdir -p "$d/hooks"; ln -s "$SCRIPT_DIR/../skills" "$d/skills"
   perl -pe "$3" "$LEXONLY" > "$d/hooks/archive-gate.sh" || { FAIL=$((FAIL+1)); echo "FAIL: mutant [$1] perl failed"; return; }
   if cmp -s "$d/hooks/archive-gate.sh" "$LEXONLY"; then FAIL=$((FAIL+1)); echo "FAIL: mutant [$1] substitution did not apply"; return; fi
+  while [ "$(jobs -rp | wc -l)" -ge "$MUT_JOBS" ]; do sleep 0.1; done
+  MUT_LABELS+=("$1"); MUT_WANTS+=("$2")
   # alarm: a mutant that makes the parser loop forever must fail, not hang CI
-  if GATE="$d/hooks/archive-gate.sh" NO_MUTANTS=1 STOP_ON_FAIL=1 perl -e 'alarm 120; exec @ARGV' "$BASH_BIN" "$0" > "$log" 2>&1; then
-    FAIL=$((FAIL+1)); echo "FAIL: mutant [$1] suite stayed green"; return
-  fi
-  first=$(command grep -a -m1 '^FAIL' "$log")   # -a: a truncated multibyte char must not make GNU grep call the log binary
-  if [ -z "$first" ]; then FAIL=$((FAIL+1)); echo "FAIL: mutant [$1] suite crashed before any case failed"
-  elif [[ $first == *"$2"* ]]; then PASS=$((PASS+1)); echo "PASS: mutant [$1] caught first by [$2]"
-  else FAIL=$((FAIL+1)); echo "FAIL: mutant [$1] went red first on [${first:0:160}], expected [$2]"; fi
+  ( GATE="$d/hooks/archive-gate.sh" NO_MUTANTS=1 STOP_ON_FAIL=1 perl -e 'alarm 120; exec @ARGV' "$BASH_BIN" "$0" > "$WORK/mutant-$1.log" 2>&1
+    echo $? > "$WORK/mutant-$1.rc" ) &
+}
+mutants_judged() {   # waits for every run started above, then judges each
+  local i label want rc first
+  wait
+  for i in "${!MUT_LABELS[@]}"; do
+    label=${MUT_LABELS[$i]}; want=${MUT_WANTS[$i]}
+    rc=$(cat "$WORK/mutant-$label.rc" 2>/dev/null || echo none)
+    MUT_N=$((MUT_N+1))
+    first=$(command grep -a -m1 '^FAIL' "$WORK/mutant-$label.log")   # -a: a truncated multibyte char must not make GNU grep call the log binary
+    if [ "$rc" = 0 ]; then FAIL=$((FAIL+1)); echo "FAIL: mutant [$label] suite stayed green"
+    elif [ "$rc" = none ]; then FAIL=$((FAIL+1)); echo "FAIL: mutant [$label] run left no exit status"
+    elif [ -z "$first" ]; then FAIL=$((FAIL+1)); echo "FAIL: mutant [$label] suite crashed before any case failed"
+    elif [[ $first == *"$want"* ]]; then PASS=$((PASS+1)); echo "PASS: mutant [$label] caught first by [$want]"
+    else FAIL=$((FAIL+1)); echo "FAIL: mutant [$label] went red first on [${first:0:160}], expected [$want]"; fi
+  done
 }
 if [ "${NO_MUTANTS:-0}" != 1 ]; then
   # the copy is the gate without its two older readings, and without them only the last case fails
@@ -379,6 +398,10 @@ if [ "${NO_MUTANTS:-0}" != 1 ]; then
   mutant quoted-delim  "substitution bash does not run: [cat <<'EOF'" 's/unless \(\$quoted\) \{ my \$x = substr\(\$\$sr, \$i, \$stop - \$i\)/unless (0) { my \$x = substr(\$\$sr, \$i, \$stop - \$i)/'
   mutant backslash-delim 'substitution bash does not run: [cat <<\EOF' 's/\$d \.= substr\(\$\$sr, \$j \+ 1, 1\); \$quoted = 1; \}/\$d .= substr(\$\$sr, \$j + 1, 1); }/'
   mutant dq-escape     'substitution bash does not run: [echo "\$(' 's/^\s*if \(\$ch eq "\\\\"\) \{ my \$e = substr\(\$\$sr, \$i \+ 1, 1\); \$t \.= .*$//'
+  mutants_judged
+  # written out, not counted from the list: a mutant that never started must lower the count
+  MUT_WANT_N=11
+  if [ "$MUT_N" != "$MUT_WANT_N" ]; then FAIL=$((FAIL+1)); echo "FAIL: $MUT_N of $MUT_WANT_N mutants ran"; fi
 fi
 
 echo "archive-gate: $PASS passed, $FAIL failed"

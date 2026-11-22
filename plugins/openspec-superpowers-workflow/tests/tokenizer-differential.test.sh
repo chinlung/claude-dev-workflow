@@ -15,6 +15,8 @@
 #    check turns red and the item moves from @gaps into the default grammar. The three gaps recorded with
 #    #57 moved there with the lexer (W5-8); gap 0 now is a line bash drops as a syntax error.
 # 4. Canaries: a parser that sees nothing is reported, and one that is not a parser at all is refused.
+#    A parser that does not exit 0 is read the way its hook reads that (archive-gate allows, the merge
+#    gate denies), and the superset check counts only the cases where the earlier parser printed a line.
 # 5. Lexer mutants: each breaks one path of the lexer, and bash must catch it.
 # 6. Bounded time on nested shapes the lexer reads two ways, with a canary that the check can fail, and
 #    the step limit past which the merge gate denies.
@@ -59,6 +61,8 @@ readings_only() {   # <modes> <gate or parser> <copy>: 0 when the copy was made 
   MODES=$1 perl -pe 's/^for my \$mode \(0, 1, 2\) \{$/for my \$mode ($ENV{MODES}) {/' "$2" > "$3" && ! cmp -s "$2" "$3"
 }
 lexer_only() { readings_only 2 "$@"; }
+# the text a gate hands to perl, as a file: what the canaries in 4b add a line to and 6 and 7 put a clock on
+parser_of() { perl -ne 'if (!$in) { $in = 1 if /<<\x27PERL\x27/; next } last if /^\s*PERL\s*$/; print' "$1"; }
 AGL="$WORK/ag-lexer.sh"; PMGL="$WORK/pmg-lexer.sh"
 lexer_only "$AG" "$AGL" && lexer_only "$PMG" "$PMGL" || bad "lexer alone — the reading loop `for my \$mode (0, 1, 2)` is not in both gates"
 expect "archive-gate's lexer alone misses nothing bash runs" 0 --kind ag --source "$AGL" --n 400 --min-exercised 350
@@ -95,12 +99,15 @@ EOF
 #     Retiring them was tried and measured in docs/gate-lexer-design-2026-11-13.md §11.
 if git -C "$ROOT" cat-file -e "b16fb23^{commit}" 2>/dev/null \
    && git -C "$ROOT" show "b16fb23:$AG_PATH" > "$WORK/base-ag.sh" && git -C "$ROOT" show "b16fb23:$PMG_PATH" > "$WORK/base-pmg.sh"; then
-  for g in "" "--chars --seed 3"; do
-    expect "archive-gate reports at least what it did at b16fb23 ${g:+(random punctuation)}" 0 --kind ag --source "$AG" --superset-of "$WORK/base-ag.sh" $g --n 1500
-    expect "pr-merge-gate reports at least what it did at b16fb23 ${g:+(random punctuation)}" 0 --kind pmg --source "$PMG" --superset-of "$WORK/base-pmg.sh" $g --n 1500
+  # --min-exercised: the cases where b16fb23 printed a line, the only ones that can show a loss
+  # (measured: all 1500 from the grammar; 1319 and 1328 of 1500 with random punctuation, seed 3)
+  for g in "--min-exercised 1400" "--chars --seed 3 --min-exercised 1200"; do
+    case $g in *chars*) note=" (random punctuation)" ;; *) note="" ;; esac
+    expect "archive-gate reports at least what it did at b16fb23$note" 0 --kind ag --source "$AG" --superset-of "$WORK/base-ag.sh" $g --n 1500
+    expect "pr-merge-gate reports at least what it did at b16fb23$note" 0 --kind pmg --source "$PMG" --superset-of "$WORK/base-pmg.sh" $g --n 1500
   done
-  expect "canary: archive-gate without the older readings reports less" 1 --kind ag --source "$AGL" --superset-of "$WORK/base-ag.sh" --chars --seed 3 --n 1500 --show 0
-  expect "canary: pr-merge-gate without the older readings reports less" 1 --kind pmg --source "$PMGL" --superset-of "$WORK/base-pmg.sh" --chars --seed 3 --n 1500 --show 0
+  expect "canary: archive-gate without the older readings reports less" 1 --kind ag --source "$AGL" --superset-of "$WORK/base-ag.sh" --chars --seed 3 --n 1500 --min-exercised 1200 --show 0
+  expect "canary: pr-merge-gate without the older readings reports less" 1 --kind pmg --source "$PMGL" --superset-of "$WORK/base-pmg.sh" --chars --seed 3 --n 1500 --min-exercised 1200 --show 0
 else
   bad "superset check — commit b16fb23 is not in this clone (needs full history)"
 fi
@@ -111,11 +118,40 @@ for g in 0; do
   expect "known gap $g still found in pr-merge-gate" 1 --kind pmg --source "$PMG" --gap "$g" --n 200 --show 0
 done
 
-# 4. canaries
-printf '%s\n' 'print "probe\n" if ($ENV{AG_CMD} // "") eq "openspec archive probe";' > "$WORK/blind.pl"
+# 4. canaries. The probe is the command the harness first asks each parser about (tokenizer-differential.pl).
+ag_probe='($ENV{AG_CMD} // "") eq "openspec archive probe"'; pmg_probe='($ENV{PMG_CMD} // "") eq "gh pr merge 1 --repo o/r"'
+printf '%s\n' "print \"probe\\n\" if $ag_probe;" > "$WORK/blind.pl"
 expect "canary: a parser that sees nothing is reported" 1 --kind ag --source "$WORK/blind.pl" --n 20 --show 0
 printf '%s\n' 'print "";' > "$WORK/mute.pl"
 expect "canary: something that is not a parser is refused" 2 --kind ag --source "$WORK/mute.pl" --n 5
+# 4b. a parser that does not exit 0 is read the way its hook reads that, whatever it printed first.
+#     archive-gate allows (`|| allow`): the real parser, made to print its answer and then exit 3 or be
+#     ended by a signal on every command but the probe, has read nothing — with bash as the judge and
+#     against an earlier parser. pr-merge-gate denies (`|| deny`): a parser that prints nothing and dies
+#     is a denial of every command, not a miss.
+{ printf '%s\n' "BEGIN { \$| = 1 } END { \$? = 3 unless $ag_probe }"; parser_of "$AG"; } > "$WORK/ag-exit3.pl"
+{ printf '%s\n' "BEGIN { \$| = 1 } END { kill 'TERM', \$\$ unless $ag_probe }"; parser_of "$AG"; } > "$WORK/ag-term.pl"
+printf '%s\n' "if ($pmg_probe) { print \"o/r 1 -\\n\" } else { exit 3 }" > "$WORK/pmg-exit3.pl"
+printf '%s\n' "if ($pmg_probe) { print \"o/r 1 -\\n\" } else { kill 'TERM', \$\$ }" > "$WORK/pmg-term.pl"
+expect "canary: an archive-gate parser that prints and then exits 3 has read nothing" 1 --kind ag --source "$WORK/ag-exit3.pl" --n 50 --show 0
+expect "canary: an archive-gate parser that prints and is then ended by a signal has read nothing" 1 --kind ag --source "$WORK/ag-term.pl" --n 50 --show 0
+expect "canary: the same parser reports less than the gate it was copied from" 1 --kind ag --source "$WORK/ag-exit3.pl" --superset-of "$AG" --n 50 --show 0
+expect "canary: a merge-gate parser that exits 3 is a denial, not a miss" 0 --kind pmg --source "$WORK/pmg-exit3.pl" --n 50 --min-exercised 10 --show 0
+expect "canary: a merge-gate parser ended by a signal is a denial, not a miss" 0 --kind pmg --source "$WORK/pmg-term.pl" --n 50 --min-exercised 10 --show 0
+#     …but not on the probe: one that dies on every command would read as denying them all, and pass.
+#     Both print an answer first, so that only the exit status can refuse them.
+printf '%s\n' 'print "o/r 1 -\n"; exit 3;' > "$WORK/pmg-dead.pl"
+printf '%s\n' '$| = 1; print "o/r 1 -\n"; kill "TERM", $$;' > "$WORK/pmg-killed.pl"
+expect "canary: a merge-gate parser that exits 3 on the probe too is refused" 2 --kind pmg --source "$WORK/pmg-dead.pl" --n 5
+expect "canary: a merge-gate parser ended by a signal on the probe too is refused" 2 --kind pmg --source "$WORK/pmg-killed.pl" --n 5
+# 4c. --superset-of counts a case as exercised only when the earlier parser printed a line: against one
+#     that prints nothing past the probe, no case can show a loss, and the floor says so
+printf '%s\n' "print \"o/r 1 -\\n\" if $pmg_probe;" > "$WORK/blind-pmg.pl"
+expect "canary: an earlier archive-gate parser that prints nothing leaves nothing exercised" 2 --kind ag --source "$AG" --superset-of "$WORK/blind.pl" --n 50 --min-exercised 1
+expect "canary: an earlier merge-gate parser that prints nothing leaves nothing exercised" 2 --kind pmg --source "$PMG" --superset-of "$WORK/blind-pmg.pl" --n 50 --min-exercised 1
+#     …nor does one that fails: the `- - -` that stands in for it is compared, not counted (on both sides
+#     here, so nothing is lost and only the floor can say that nothing was exercised)
+expect "canary: an earlier merge-gate parser that fails leaves nothing exercised" 2 --kind pmg --source "$WORK/pmg-exit3.pl" --superset-of "$WORK/pmg-exit3.pl" --n 50 --min-exercised 1
 
 # 5. lexer mutants: <label> <perl substitution on the lexer-alone copy of archive-gate>
 #    The lexer region is the same bytes in both gates (shared-tokenizer.test.sh), so one copy serves.
@@ -160,7 +196,6 @@ wait   # the clocked checks below run alone: the harness jobs above would share 
 #    each text only once, 20 nested unclosed `"$(` or 20 nested `$((` took seconds and 40 took hours;
 #    with the step limit they now spend it instead, and an ordinary command goes unread.
 #    Run the way the hook runs the parser, under a clock: 142 is the alarm.
-parser_of() { perl -ne 'if (!$in) { $in = 1 if /<<\x27PERL\x27/; next } last if /^\s*PERL\s*$/; print' "$1"; }
 within() {   # <seconds> <env var> <command> <parser file>: the parser's output; exit 142 past the time
   env "$2=$3" perl -e 'alarm shift; my $p = do { local $/; open my $f, "<", shift or die; <$f> }; exec $^X, "-e", $p' "$1" "$4"
 }
@@ -274,7 +309,7 @@ done
 
 # ---- summary ----
 # written out, not counted as the checks run: a check that is skipped must lower the count
-MIN=68
+MIN=78
 if [ "$((PASS + FAIL))" -lt "$MIN" ]; then bad "ran $((PASS + FAIL)) checks, expected at least $MIN"; fi
 echo "tokenizer-differential: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]

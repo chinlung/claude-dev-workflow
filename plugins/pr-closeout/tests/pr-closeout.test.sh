@@ -374,17 +374,36 @@ if [ "$pass" -lt "$MIN_PASS" ] && [ "${STOP_ON_FAIL:-0}" != 1 ]; then failed "on
 echo "pr-closeout: $pass passed, $fail failed"
 
 mut_bad=0; mut_n=0
-mutant() {   # <label> <substring of the case that must kill it> <perl substitution>
-  local label=$1 want=$2 m="$tmp/mutant-$1.mjs" log="$tmp/mutant-$1.log" rc first
+# Each mutant is a run of this whole suite on a mutated copy. They run side by side, MUT_JOBS at a time
+# (the machine's processors, at most 8; MUT_JOBS=1 for one after another), and a run leaves only its log
+# and exit status: all are judged after the last one ends, in the order they are listed below.
+MUT_JOBS=${MUT_JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null)}
+[[ $MUT_JOBS =~ ^[1-9][0-9]*$ ]] || MUT_JOBS=2
+[ "$MUT_JOBS" -le 8 ] || MUT_JOBS=8
+mut_labels=(); mut_wants=()
+mutant() {   # <label> <substring of the case that must kill it> <perl substitution>: starts the run
+  local label=$1 m="$tmp/mutant-$1.mjs"
   perl -pe "$3" "$SCRIPT" > "$m" || { echo "MUTANT [$label] perl failed"; mut_bad=1; return; }
   if cmp -s "$m" "$SCRIPT"; then echo "MUTANT [$label] substitution did not apply"; mut_bad=1; return; fi
-  SCRIPT="$m" NO_MUTANTS=1 STOP_ON_FAIL=1 bounded 300 bash "$0" > "$log" 2>&1; rc=$?
-  mut_n=$((mut_n + 1))
-  first=$(command grep -a -m1 '^FAIL' "$log")   # -a: a truncated multibyte char must not make GNU grep call the log binary
-  if [ "$rc" = 0 ]; then echo "MUTANT [$label] suite stayed green"; mut_bad=1
-  elif [ -z "$first" ]; then echo "MUTANT [$label] crashed before any case failed"; mut_bad=1
-  elif [[ $first != *"$want"* ]]; then echo "MUTANT [$label] killed by [${first:0:90}], expected [$want]"; mut_bad=1
-  else echo "mutant [$label]: suite red as required (by [$want])"; fi
+  while [ "$(jobs -rp | wc -l)" -ge "$MUT_JOBS" ]; do sleep 0.1; done
+  mut_labels+=("$label"); mut_wants+=("$2")
+  ( SCRIPT="$m" NO_MUTANTS=1 STOP_ON_FAIL=1 bounded 300 bash "$0" > "$tmp/mutant-$label.log" 2>&1
+    echo $? > "$tmp/mutant-$label.rc" ) &
+}
+mutants_judged() {   # waits for every run started above, then judges each
+  local i label want rc first
+  wait
+  for i in "${!mut_labels[@]}"; do
+    label=${mut_labels[$i]}; want=${mut_wants[$i]}
+    rc=$(cat "$tmp/mutant-$label.rc" 2>/dev/null || echo none)
+    mut_n=$((mut_n + 1))
+    first=$(command grep -a -m1 '^FAIL' "$tmp/mutant-$label.log")   # -a: a truncated multibyte char must not make GNU grep call the log binary
+    if [ "$rc" = 0 ]; then echo "MUTANT [$label] suite stayed green"; mut_bad=1
+    elif [ "$rc" = none ]; then echo "MUTANT [$label] run left no exit status"; mut_bad=1
+    elif [ -z "$first" ]; then echo "MUTANT [$label] crashed before any case failed"; mut_bad=1
+    elif [[ $first != *"$want"* ]]; then echo "MUTANT [$label] killed by [${first:0:90}], expected [$want]"; mut_bad=1
+    else echo "mutant [$label]: suite red as required (by [$want])"; fi
+  done
 }
 if [ "${NO_MUTANTS:-0}" != 1 ]; then
   mutant outdated      "[outdated is not resolved]"        "s/t\.isResolved !== true\)/t.isResolved !== true && !t.isOutdated)/"
@@ -425,6 +444,7 @@ if [ "${NO_MUTANTS:-0}" != 1 ]; then
   mutant link-norm     "[symlink recorded as link:]"       "s/if \(mode === '120000'\) return/if (false) return/"
   mutant verify-time   "[verify hangs: unavailable]"       "s/, timeout: verifyLeft\(\), killSignal: 'SIGKILL'//"
   mutant deletions     "[a deletion the review never saw]" "s/const changed = git\(repoDir, \['diff', '--name-only', '-z', /const changed = git(repoDir, ['diff', '--name-only', '-z', '--diff-filter=d', /"
+  mutants_judged
   MUT_WANT_N=38
   if [ "$mut_n" != "$MUT_WANT_N" ]; then echo "FAIL: $mut_n of $MUT_WANT_N mutants ran"; mut_bad=1; fi
   [ "$mut_bad" = 0 ] || fail=$((fail + 1))
