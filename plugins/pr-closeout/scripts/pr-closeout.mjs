@@ -562,6 +562,86 @@ export function saveState(file, s) {
   fs.renameSync(tmpFile, file);
 }
 
+// Why a stretch of watching ends, in the order watchVerdict checks them; the first that holds wins.
+// The pr-watch SKILL names exactly these (its docs test reads this list).
+export const STOP_REASONS = ['not-open', 'fork', 'head-not-allowed', 'query-failed', 'limit', 'ready', 'needs-user', 'no-progress'];
+const LIMIT_MS = 24 * 3600 * 1000;
+const LIMIT_ROUNDS = 60;
+const QUERY_FAILURES_TO_STOP = 3;
+const NO_PROGRESS_TO_STOP = 2;
+const REQUIRED_MISSING = 'required check missing:';
+
+// One round of a watch, without I/O: verdict is ready's answer (null when the query threw), local the
+// clone's facts about that head, extra the run attempts of failed checks. Returns the next state, the
+// round's facts and exit 0 (go on) or 8 (stop, reason in watch.stop).
+export function watchVerdict(verdict, queryError, state, local, extra, now) {
+  const s = { ...state, seen: [...state.seen], headSeen: { ...state.headSeen } };
+  const w = {
+    round: s.round + 1, inGrace: false, settled: false, newComments: [], headAllowed: null, unpushed: null,
+    dirty: local ? !!local.dirty : null, staleRemote: false, failedRuns: [], unchangedRounds: s.unchangedRounds,
+    noProgressRounds: s.noProgressRounds, queryFailed: false, stop: null,
+  };
+  const finish = (reason, detail) => {
+    if (reason) { w.stop = { reason, detail: detail || '' }; s.active = false; }
+    s.round = w.round;
+    s.lastTickAt = now.toISOString();
+    return { state: s, watch: w, exit: reason ? 8 : 0 };
+  };
+
+  // a round that could not read the PR judges nothing else; only the third in a row stops
+  let qerr = queryError;
+  const items = (verdict && verdict.comments && verdict.comments.items) || [];
+  if (!qerr && verdict.exit === 7) qerr = (verdict.hits[0] && verdict.hits[0].detail) || 'query failed';
+  if (!qerr && typeof verdict.isCrossRepository !== 'boolean') qerr = 'isCrossRepository missing from the answer';
+  if (!qerr && items.some((i) => i.id === null || i.id === undefined)) qerr = 'a comment has no id';
+  if (qerr) {
+    s.queryFailures += 1;
+    w.queryFailed = true;
+    return finish(s.queryFailures >= QUERY_FAILURES_TO_STOP ? 'query-failed' : null, qerr);
+  }
+  s.queryFailures = 0;
+
+  const hits = verdict.hits || [];
+  if (hits.some((h) => h.code === 'merge-gate' && h.gate === 'not-open')) return finish('not-open', 'the PR is merged or closed');
+  if (verdict.isCrossRepository) return finish('fork', 'the PR comes from a fork');
+  w.headAllowed = !!(local && local.headKnown && local.headAllowed);
+  if (!w.headAllowed) return finish('head-not-allowed', `PR head ${verdict.head} is not an ancestor of the local HEAD`);
+  w.unpushed = local.unpushed;
+  if (now - Date.parse(s.startedAt) > LIMIT_MS || s.round >= LIMIT_ROUNDS) return finish('limit', `started ${s.startedAt}, ${s.round} rounds`);
+
+  // a head is in its grace round the first time it is seen: GitHub may not have started its checks
+  if (s.headSeen[verdict.head] === undefined) s.headSeen[verdict.head] = w.round;
+  w.inGrace = s.headSeen[verdict.head] === w.round;
+  const pending = hits.some((h) => h.code === 'pending');
+  const requiredMissing = hits.some((h) => h.code === 'checks-failed' && String(h.detail).startsWith(REQUIRED_MISSING));
+  w.settled = !w.inGrace && !pending && !requiredMissing;
+  w.newComments = items.filter((i) => !i.emptyBody).map((i) => `${i.endpoint}:${i.id}:${i.bodyHash}`).filter((k) => !s.seen.includes(k));
+  w.staleRemote = w.unpushed > 0;
+  if (w.settled && !w.staleRemote) {
+    const attempts = (extra && extra.runAttempts) || {};
+    w.failedRuns = (verdict.checks || []).filter((c) => c.state === 'failed').map((c) => {
+      const m = /\/actions\/runs\/([0-9]+)/.exec(c.detailsUrl || '');
+      const runId = m ? m[1] : null;
+      return { name: c.name, runId, attempt: runId && attempts[runId] !== undefined ? attempts[runId] : null };
+    });
+  }
+
+  const signature = JSON.stringify([hits.map((h) => `${h.code}|${h.gate || ''}|${h.detail}`).sort(), verdict.head, local.head, w.newComments.length]);
+  const unchanged = signature === s.lastSignature;
+  s.lastSignature = signature;
+  s.unchangedRounds = w.unchangedRounds = unchanged ? s.unchangedRounds + 1 : 0;
+  // only settled rounds count: while checks run nothing is expected to move
+  s.noProgressRounds = w.noProgressRounds = w.settled && unchanged ? s.noProgressRounds + 1 : 0;
+
+  const quiet = !w.inGrace && w.newComments.length === 0;
+  if (quiet && w.settled && verdict.exit === 0 && w.unpushed === 0) return finish('ready', 'mergeable, every check done');
+  if (quiet && (w.staleRemote || (w.settled && hits.length > 0 && !hits.some((h) => h.code === 'checks-failed')))) {
+    return finish('needs-user', w.staleRemote ? `${w.unpushed} local commit(s) not pushed` : hits.map((h) => h.code).join(', '));
+  }
+  if (s.noProgressRounds >= NO_PROGRESS_TO_STOP) return finish('no-progress', `${s.noProgressRounds} settled rounds without change`);
+  return finish(null);
+}
+
 function watchAck(o) {
   if (!o.repoDir) throw new UsageError('watch-ack needs --repo-dir');
   if (!o.comments.length) throw new UsageError('watch-ack needs at least one --comment');

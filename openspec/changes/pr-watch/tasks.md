@@ -84,7 +84,7 @@
 5. commit（具名）。
 
 ### Task 4: `watchVerdict` 純函式、停止判定與突變
-- [ ] 3.2 `watchVerdict` 依 design 的步驟 5–7 算出 `watch{}` 與停止原因，每個原因兩個觸發輸入，突變全部被殺死
+- [x] 3.2 `watchVerdict` 依 design 的步驟 5–7 算出 `watch{}` 與停止原因，每個原因兩個觸發輸入，突變全部被殺死
 **Files：** 修改 `pr-closeout.mjs`（export `STOP_REASONS`、`watchVerdict`）；測試新節 `# ── pr-watch Task 4`。用 `node --input-type=module -e` import 函式，餵 JSON 情境。
 **Interfaces：**
 - 輸入：`watchVerdict(verdict: ReadyVerdict|null, queryError: string|null, state: State, local: {head, branch, headKnown, headAllowed, unpushed, dirty}, extra: {runAttempts: Record<runId, number>}, now: Date)`。

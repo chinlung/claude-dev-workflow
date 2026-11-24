@@ -445,8 +445,128 @@ if [ "$got" = '[["a"],0,true,"2026-11-25T10:00:00.000Z",{},null,0,0,0]' ]; then 
 got=$(node --input-type=module -e "import { startState } from '$SCRIPT'; console.log(JSON.stringify(startState(null, 4, new Date(0)).seen))" 2>&1)
 if [ "$got" = '[]' ]; then ok; else failed "[startState from nothing] $got"; fi
 
+# ── pr-watch Task 4: watchVerdict, one round at a time ───────────────────────────────────────────
+# A ready verdict is recorded from a fixture, then fed to watchVerdict with a state file that each
+# round rewrites, so a sequence of rounds reads like a watch: wstart, then wround per round.
+cat > "$tmp/wv.mjs" <<'JS'
+import fs from 'node:fs';
+const [script, vf, qerr, sf, localJ, extraJ, now] = process.argv.slice(2);
+const m = await import(script);
+const verdict = vf === '-' ? null : JSON.parse(fs.readFileSync(vf, 'utf8'));
+const state = JSON.parse(fs.readFileSync(sf, 'utf8'));
+const r = m.watchVerdict(verdict, qerr || null, state, JSON.parse(localJ), JSON.parse(extraJ), new Date(now));
+fs.writeFileSync(sf, JSON.stringify(r.state));
+console.log(JSON.stringify(r));
+JS
+H1=1111111111111111111111111111111111111111
+LOCAL='{"head":"'$H1'","headKnown":true,"headAllowed":true,"unpushed":0,"dirty":false}'
+WST="$tmp/wv-state.json"
+T0=2026-11-25T00:00:00Z
+mkv() {   # <name> <fixture dir> [env assignments…]: records ready's verdict, prints its path
+  local name=$1 fx=$2; shift 2
+  env "$@" node "$SCRIPT" ready example/repo 1 --fixture "$fx" > "$tmp/v-$name.json" 2>/dev/null
+  printf '%s' "$tmp/v-$name.json"
+}
+wstart() {   # [now]: a new stretch of watching on top of whatever state is there
+  node --input-type=module -e "
+    import fs from 'node:fs'; import { startState } from '$SCRIPT';
+    const prev = fs.existsSync('$WST') ? JSON.parse(fs.readFileSync('$WST', 'utf8')) : null;
+    fs.writeFileSync('$WST', JSON.stringify(startState(prev, 1, new Date('${1:-$T0}'))));"
+}
+fresh() { rm -f "$WST"; wstart "$@"; }
+wround() {   # <label> <verdict|-> <minutes after T0> [local json] [query error] [extra json]
+  local at; at=$(node -e "console.log(new Date(Date.parse('$T0') + $3 * 60000).toISOString())")
+  if node "$tmp/wv.mjs" "$SCRIPT" "$2" "${5:-}" "$WST" "${4:-$LOCAL}" "${6:-{\}}" "$at" > "$tmp/out.json" 2> "$tmp/err"; then ok
+  else failed "[$1] watchVerdict threw: $(head -c 300 "$tmp/err")"; fi
+}
+stops() { jqeq "$1" '.watch.stop.reason // "none"' "\"$2\""; }   # <label> <reason or none>
+
+V_BASE=$(mkv base "$(fixture wv-base)")
+V_MERGED=$(mkv merged "$(fixture wv-merged "$P.state = \"MERGED\"")")
+V_CLOSED=$(mkv closed "$(fixture wv-closed "$P.state = \"CLOSED\"")")
+V_FORK=$(mkv fork "$(fixture wv-fork "$P.isCrossRepository = true")")
+V_FORKRED=$(mkv forkred "$(fixture wv-forkred "$P.isCrossRepository = true | $CX[0].conclusion = \"FAILURE\"")")
+V_NOFLAG=$(mkv noflag "$(fixture wv-noflag "del($P.isCrossRepository)")")
+V_THREAD=$(mkv thread "$(fixture wv-thread "$P.reviewThreads.nodes = [$THREAD]")")
+V_CONFLICT=$(mkv conflict "$(fixture wv-conflict "$P.mergeable = \"CONFLICTING\"")")
+V_PENDING=$(mkv pending "$(fixture wv-pending "$CX[0].status = \"IN_PROGRESS\"")")
+V_NOROLLUP=$(mkv norollup "$(fixture wv-norollup "$P.commits.nodes[0].commit.statusCheckRollup = null")")
+V_RED=$(mkv red "$(fixture wv-red "$CX[0].conclusion = \"FAILURE\" | $CX[0].detailsUrl = \"https://github.com/o/r/actions/runs/77/job/1\"")")
+V_RED2=$(mkv red2 "$(fixture wv-red2 "$CX[1].conclusion = \"FAILURE\"")")
+V_WEIRD=$(mkv weird "$(fixture wv-weird "$P.mergeable = \"WEIRD\"")")
+printf '{"example/repo":{"required":["absent-check"]}}' > "$tmp/req.json"
+V_MISSING=$(mkv missing "$(fixture wv-missing)" PR_CLOSEOUT_CONFIG="$tmp/req.json")
+fx=$(fixture wv-comment); printf '[{"id":33,"updated_at":"t","body":"please fix","user":{"login":"claude[bot]"}}]' > "$fx/issues-comments.json"
+V_COMMENT=$(mkv comment "$fx")
+fx=$(fixture wv-threadcomment "$P.reviewThreads.nodes = [$THREAD]"); printf '[{"id":34,"updated_at":"t","body":"new","user":{"login":"claude[bot]"}}]' > "$fx/issues-comments.json"
+V_THREADCOMMENT=$(mkv threadcomment "$fx")
+fx=$(fixture wv-review1); printf '[{"id":22,"submitted_at":"t","body":"first","user":{"login":"r"}},{"id":23,"submitted_at":"t","body":" ","user":{"login":"r"}}]' > "$fx/pulls-reviews.json"
+V_REVIEW1=$(mkv review1 "$fx")
+fx=$(fixture wv-review2); printf '[{"id":22,"submitted_at":"t","body":"edited","user":{"login":"r"}},{"id":23,"submitted_at":"t","body":" ","user":{"login":"r"}}]' > "$fx/pulls-reviews.json"
+V_REVIEW2=$(mkv review2 "$fx")
+fx=$(fixture wv-noid); printf '[{"id":null,"updated_at":"t","body":"x","user":{"login":"u"}}]' > "$fx/issues-comments.json"
+V_NOID=$(mkv noid "$fx")
+ackall() {   # acks the keys the last round reported, as the skill does: the key is watch's, never rebuilt here
+  node -e "const o=require('$tmp/out.json'); const s=require('$WST'); s.seen=[...new Set([...s.seen, ...o.watch.newComments])]; require('fs').writeFileSync('$WST', JSON.stringify(s))"
+}
+
+# not-open, fork, head-not-allowed: the first round already knows
+fresh; wround "merged" "$V_MERGED" 1; stops "merged stops" not-open; jqeq "merged: exit 8" '.exit' '8'; jqeq "stop clears active" '.state.active' 'false'
+fresh; wround "closed" "$V_CLOSED" 1; stops "closed stops" not-open
+fresh; wround "fork, green" "$V_FORK" 1; stops "fork, green stops" fork
+fresh; wround "fork, red" "$V_FORKRED" 1; stops "fork, red stops" fork
+fresh; wround "head not in the clone" "$V_BASE" 1 '{"head":"'$H1'","headKnown":false,"headAllowed":false,"unpushed":null,"dirty":false}'
+stops "head not in the clone stops" head-not-allowed
+fresh; wround "head not an ancestor" "$V_BASE" 1 '{"head":"'$H1'","headKnown":true,"headAllowed":false,"unpushed":null,"dirty":false}'
+stops "head not an ancestor stops" head-not-allowed
+# query-failed: only the third failure in a row stops; a good round in between resets the count
+fresh; wround "query fails 1" - 1 "$LOCAL" "boom"; stops "query fails 1: not yet" none; jqeq "query fails 1: flagged" '.watch.queryFailed' 'true'; jqeq "query fails 1: exit 0" '.exit' '0'
+wround "query fails 2" - 7 "$LOCAL" "boom"; stops "query fails 2: not yet" none
+wround "query fails 3" - 13 "$LOCAL" "boom"; stops "query fails 3 stops" query-failed
+fresh; wround "unknown value 1" "$V_WEIRD" 1; wround "unknown value 2" "$V_WEIRD" 7; wround "unknown value 3" "$V_WEIRD" 13; stops "unknown value three times stops" query-failed
+fresh; wround "fail, ok, fail" - 1 "$LOCAL" "boom"; wround "fail, ok, fail: ok" "$V_BASE" 7; wround "fail, ok, fail: fail" - 13 "$LOCAL" "boom"
+wround "fail, ok, fail: fail again" - 19 "$LOCAL" "boom"; stops "a good round resets the count" none
+fresh; wround "isCrossRepository missing" "$V_NOFLAG" 1; jqeq "isCrossRepository missing: a query failure" '.watch.queryFailed' 'true'
+fresh; wround "comment without id" "$V_NOID" 1; jqeq "comment without id: a query failure" '.watch.queryFailed' 'true'
+# limit
+fresh; wround "a day later" "$V_PENDING" $((25 * 60)); stops "a day later stops" limit
+fresh; node -e "const f='$WST', s=require(f); s.round=60; require('fs').writeFileSync(f, JSON.stringify(s))"
+wround "sixtieth round" "$V_PENDING" 1; stops "sixtieth round stops" limit
+# ready: never in the round a head is first seen
+fresh; wround "base, first round" "$V_BASE" 1; stops "base, first round: grace" none; jqeq "base, first round: inGrace" '.watch.inGrace' 'true'
+wround "base, second round" "$V_BASE" 6; stops "base, second round" ready
+fresh; wround "seen comment r1" "$V_COMMENT" 1; ackall; wround "seen comment r2" "$V_COMMENT" 6; stops "a seen comment does not hold ready" ready
+fresh; wround "no rollup r1" "$V_NOROLLUP" 1; stops "no rollup, first round: not ready" none
+# needs-user
+fresh; wround "thread r1" "$V_THREAD" 1; stops "thread r1: grace" none; wround "thread r2" "$V_THREAD" 6; stops "only a thread left" needs-user
+fresh; wround "conflict r1" "$V_CONFLICT" 1; wround "conflict r2" "$V_CONFLICT" 6; stops "only a conflict left" needs-user
+UNPUSHED='{"head":"'$H1'","headKnown":true,"headAllowed":true,"unpushed":1,"dirty":false}'
+fresh; wround "fixed locally r1" "$V_RED" 1 "$UNPUSHED"; wround "fixed locally r2" "$V_RED" 6 "$UNPUSHED"
+stops "fixed locally, not pushed" needs-user; jqeq "fixed locally: staleRemote" '.watch.staleRemote' 'true'; jqeq "fixed locally: no runs to act on" '.watch.failedRuns' '[]'
+# no-progress: the skill gets one settled round to act, then two unchanged settled rounds stop
+fresh; wround "red r1" "$V_RED" 1; stops "red r1: grace" none
+wround "red r2" "$V_RED" 6 "$LOCAL" "" '{"runAttempts":{"77":2}}'; stops "red r2: one round to act" none
+jqeq "red r2: run and attempt" '.watch.failedRuns' '[{"name":"security-review","runId":"77","attempt":2}]'
+wround "red r3" "$V_RED" 16; stops "red, nothing changed" no-progress
+fresh; wround "red2 r1" "$V_RED2" 1; wround "red2 r2" "$V_RED2" 6; wround "red2 r3" "$V_RED2" 16; stops "another red, nothing changed" no-progress
+fresh; wround "red then other red r1" "$V_RED" 1; wround "r2" "$V_RED" 6; wround "r3 changes" "$V_RED2" 16; stops "a different failure is progress" none
+# counter-cases
+fresh; for n in 1 2 3 4 5; do wround "pending $n" "$V_PENDING" $((n * 5)); done
+stops "pending five rounds" none; jqeq "pending: no progress counted" '.watch.noProgressRounds' '0'; jqeq "pending: unchanged counted" '.watch.unchangedRounds' '4'
+fresh; wround "thread+comment r1" "$V_THREADCOMMENT" 1; wround "thread+comment r2" "$V_THREADCOMMENT" 6
+stops "a new comment holds needs-user" none; jqeq "new comment listed" '.watch.newComments | length' '1'
+fresh; wround "required check missing r1" "$V_MISSING" 1; wround "required check missing r2" "$V_MISSING" 6
+stops "a missing required check is unsettled" none; jqeq "missing required: not settled" '.watch.settled' 'false'; jqeq "missing required: no runs" '.watch.failedRuns' '[]'
+fresh; wround "limit then restart" "$V_PENDING" $((25 * 60)); wstart 2026-11-26T02:00:00Z
+wround "after restart" "$V_BASE" $((26 * 60 + 5)); stops "restart after limit" none; jqeq "restart: round 1" '.watch.round' '1'
+fresh; wround "needs-user then restart r1" "$V_THREAD" 1; wround "r2" "$V_THREAD" 6; wstart 2026-11-25T00:10:00Z
+wround "after restart r1" "$V_THREAD" 11; stops "restart after needs-user: grace" none
+# comment keys: an edited review is new again, a blank review never is
+fresh; wround "review r1" "$V_REVIEW1" 1; jqeq "review r1: one new" '.watch.newComments | length' '1'; ackall
+wround "review r2 edited" "$V_REVIEW2" 6; jqeq "edited review is new" '.watch.newComments | length' '1'
+
 # ── summary and mutants ──────────────────────────────────────────────────────────────────────────
-MIN_PASS=160
+MIN_PASS=300
 if [ "$pass" -lt "$MIN_PASS" ] && [ "${STOP_ON_FAIL:-0}" != 1 ]; then failed "only $pass checks passed, expected at least $MIN_PASS"; fi
 echo "pr-closeout: $pass passed, $fail failed"
 
@@ -521,8 +641,18 @@ if [ "${NO_MUTANTS:-0}" != 1 ]; then
   mutant link-norm     "[symlink recorded as link:]"       "s/if \(mode === '120000'\) return/if (false) return/"
   mutant verify-time   "[verify hangs: unavailable]"       "s/, timeout: verifyLeft\(\), killSignal: 'SIGKILL'//"
   mutant deletions     "[a deletion the review never saw]" "s/const changed = git\(repoDir, \['diff', '--name-only', '-z', /const changed = git(repoDir, ['diff', '--name-only', '-z', '--diff-filter=d', /"
+  # pr-watch: each rule of watchVerdict dies on the case written for it
+  mutant w-limit       "[a day later stops]"               "s/if \(now - Date\.parse\(s\.startedAt\) > LIMIT_MS \|\| s\.round >= LIMIT_ROUNDS\)/if (false)/"
+  mutant w-pending     "[pending five rounds]"             "s/w\.settled && unchanged \? s\.noProgressRounds/unchanged ? s.noProgressRounds/"
+  mutant w-grace       "[base, first round: grace]"        "s/w\.inGrace = s\.headSeen\[verdict\.head\] === w\.round;/w.inGrace = false;/"
+  mutant w-stale       "[fixed locally, not pushed]"       "s/w\.staleRemote = w\.unpushed > 0;/w.staleRemote = false;/"
+  mutant w-hash        "[edited review is new]"            's/\$\{i\.endpoint\}:\$\{i\.id\}:\$\{i\.bodyHash\}/\${i.endpoint}:\${i.id}:x/'
+  mutant w-queries     "[query fails 1: not yet]"          "s/QUERY_FAILURES_TO_STOP = 3;/QUERY_FAILURES_TO_STOP = 1;/"
+  mutant w-required    "[missing required: not settled]" "s/const requiredMissing = hits\.some/const requiredMissing = false \&\& hits.some/"
+  mutant w-progress    "[red r2: one round to act]"        "s/NO_PROGRESS_TO_STOP = 2;/NO_PROGRESS_TO_STOP = 1;/"
+  mutant w-head        "[head not in the clone stops]"     "s/w\.headAllowed = !!\(local && local\.headKnown && local\.headAllowed\);/w.headAllowed = true;/"
   mutants_judged
-  MUT_WANT_N=38
+  MUT_WANT_N=47
   if [ "$mut_n" != "$MUT_WANT_N" ]; then echo "FAIL: $mut_n of $MUT_WANT_N mutants ran"; mut_bad=1; fi
   [ "$mut_bad" = 0 ] || fail=$((fail + 1))
 fi
