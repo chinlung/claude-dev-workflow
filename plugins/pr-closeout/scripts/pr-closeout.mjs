@@ -486,18 +486,27 @@ export function landed(o) {
 // ── CLI ──────────────────────────────────────────────────────────────────────────────────────────
 function parseArgs(argv) {
   const [cmd, slug, prArg, ...rest] = argv;
-  if (!['ready', 'landed'].includes(cmd)) throw new UsageError('unknown subcommand');
+  if (!['ready', 'landed', 'watch', 'watch-ack'].includes(cmd)) throw new UsageError('unknown subcommand');
   const m = /^([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)$/.exec(slug || '');
   if (!m) throw new UsageError('<owner/repo> expected');
   if (!/^[1-9][0-9]*$/.test(prArg || '')) throw new UsageError('<pr> must be a number');
-  const o = { cmd, owner: m[1], repo: m[2], pr: Number(prArg), accept: [] };
+  const o = { cmd, owner: m[1], repo: m[2], pr: Number(prArg), accept: [], comments: [], start: false };
+  const watchFlags = ['--start', '--now', '--comment'];
   for (let i = 0; i < rest.length; i++) {
     const flag = rest[i];
     const val = rest[i + 1];
-    if (!['--expect-head', '--repo-dir', '--fixture', '--branch', '--accept-unreviewed'].includes(flag)) throw new UsageError(`unknown option ${flag}`);
+    if (!['--expect-head', '--repo-dir', '--fixture', '--branch', '--accept-unreviewed', ...watchFlags].includes(flag)) throw new UsageError(`unknown option ${flag}`);
+    if (watchFlags.includes(flag) && !cmd.startsWith('watch')) throw new UsageError(`${flag} is for watch only`);
+    if (flag === '--start') { o.start = true; continue; }
     if (val === undefined) throw new UsageError(`${flag} needs a value`);
     i++;
-    if (flag === '--expect-head') {
+    if (flag === '--now') {
+      if (Number.isNaN(Date.parse(val))) throw new UsageError('--now must be an ISO time');
+      o.now = new Date(val);
+    } else if (flag === '--comment') {
+      if (!COMMENT_KEY.test(val)) throw new UsageError(`--comment must look like <endpoint>:<id>:<16 hex>, got ${val}`);
+      o.comments.push(val);
+    } else if (flag === '--expect-head') {
       if (!/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(val)) throw new UsageError('--expect-head must be a full commit sha');
       o.expectHead = val;
     } else if (flag === '--repo-dir') o.repoDir = val;
@@ -514,6 +523,56 @@ function parseArgs(argv) {
   return o;
 }
 
+// ── pr-watch: the per-PR state file (only watch and watch-ack write it) ──────────────────────────
+const COMMENT_KEY = /^(pulls\/comments|pulls\/reviews|issues\/comments):[0-9]+:[0-9a-f]{16}$/;
+export const STATE_VERSION = 1;
+export const statePath = (repoDir, pr) => path.join(repoDir, '.claude', `pr-watch.${pr}.local.json`);
+
+// The state of a PR's watch, null when there is none yet. Anything else that is not a state this
+// version wrote is refused, never rebuilt: a rebuilt state forgets which comments were handled.
+export function loadState(file, pr) {
+  if (!fs.existsSync(file)) return null;
+  const s = parse(fs.readFileSync(file, 'utf8'), `state ${file}`);
+  const bad = (why) => new QueryError(`state ${file}: ${why}`);
+  if (!s || typeof s !== 'object' || Array.isArray(s)) throw bad('not an object');
+  if (s.version !== STATE_VERSION) throw bad(`version ${JSON.stringify(s.version)}, this script writes ${STATE_VERSION}`);
+  if (s.pr !== pr) throw bad(`it is the state of PR ${JSON.stringify(s.pr)}, not ${pr}`);
+  if (!Array.isArray(s.seen) || !s.seen.every((k) => typeof k === 'string')) throw bad('seen is not a list of keys');
+  if (!s.headSeen || typeof s.headSeen !== 'object' || Array.isArray(s.headSeen)) throw bad('headSeen is not an object');
+  for (const k of ['round', 'noProgressRounds', 'unchangedRounds', 'queryFailures']) {
+    if (!Number.isInteger(s[k]) || s[k] < 0) throw bad(`${k} is not a count`);
+  }
+  if (typeof s.active !== 'boolean' || Number.isNaN(Date.parse(s.startedAt))) throw bad('active or startedAt is missing');
+  return s;
+}
+
+// A new stretch of watching: what was handled stays handled, everything else starts over.
+export function startState(prev, pr, now) {
+  return {
+    version: STATE_VERSION, pr, active: true, startedAt: now.toISOString(), round: 0,
+    seen: prev ? [...prev.seen] : [], headSeen: {}, lastSignature: null,
+    noProgressRounds: 0, unchangedRounds: 0, queryFailures: 0, lastTickAt: prev ? prev.lastTickAt ?? null : null,
+  };
+}
+
+export function saveState(file, s) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const tmpFile = `${file}.tmp.${process.pid}`;
+  fs.writeFileSync(tmpFile, `${JSON.stringify(s, null, 2)}\n`);
+  fs.renameSync(tmpFile, file);
+}
+
+function watchAck(o) {
+  if (!o.repoDir) throw new UsageError('watch-ack needs --repo-dir');
+  if (!o.comments.length) throw new UsageError('watch-ack needs at least one --comment');
+  const file = statePath(o.repoDir, o.pr);
+  const s = loadState(file, o.pr);
+  if (!s) throw new QueryError(`no watch state at ${file}: start one with watch --start`);
+  s.seen = [...new Set([...s.seen, ...o.comments])];
+  saveState(file, s);
+  return { exit: 0, state: s };
+}
+
 function emit(obj) {
   process.stdout.write(`${JSON.stringify(obj, null, 2)}\n`);
   return obj.exit;
@@ -528,6 +587,7 @@ export function main(argv) {
   const head = { pr: { owner: o.owner, repo: o.repo, number: o.pr } };
   try {
     if (o.cmd === 'landed') return emit({ ...head, ...landed(o) });
+    if (o.cmd === 'watch-ack') return emit({ ...head, ...watchAck(o) });
     const raw = fetchAll(o);
     const p = prOf(raw.graphql);
     const cover = o.repoDir

@@ -415,6 +415,36 @@ jqeq "body hash: same body same hash" '[.comments.items[] | .bodyHash] | (.[0] =
 ready_case 0 "detailsUrl carried" "$(fixture details "$CX[0].detailsUrl = \"https://github.com/o/r/actions/runs/77/job/88\"")"
 jqeq "detailsUrl carried" '.checks[0].detailsUrl' '"https://github.com/o/r/actions/runs/77/job/88"'
 
+# ── pr-watch Task 3: state file, watch-ack ───────────────────────────────────────────────────────
+WD="$tmp/wd3"; mkdir -p "$WD/.claude"; ST="$WD/.claude/pr-watch.1.local.json"
+K1="issues/comments:33:0123456789abcdef"; K2="pulls/reviews:22:fedcba9876543210"
+state_json() {   # <pr> <version>: a valid state with one seen key
+  printf '{"version":%s,"pr":%s,"active":true,"startedAt":"2026-11-25T00:00:00.000Z","round":3,"seen":["%s"],"headSeen":{},"lastSignature":null,"noProgressRounds":0,"unchangedRounds":0,"queryFailures":0,"lastTickAt":null}' "$2" "$1" "$K1"
+}
+rm -f "$ST"
+run_cli 7 "watch-ack without a state file" watch-ack example/repo 1 --repo-dir "$WD" --comment "$K1"
+if [ -e "$ST" ]; then failed "[watch-ack without a state file] created one"; else ok; fi
+state_json 1 1 > "$ST"
+run_cli 0 "watch-ack adds keys" watch-ack example/repo 1 --repo-dir "$WD" --comment "$K1" --comment "$K2" --comment "$K2"
+jqeq "watch-ack: seen deduplicated" '.state.seen' "[\"$K1\",\"$K2\"]"
+if [ "$(jq -c .seen "$ST")" = "[\"$K1\",\"$K2\"]" ]; then ok; else failed "[watch-ack: written] $(jq -c .seen "$ST")"; fi
+run_cli 7 "watch-ack rejects a malformed key" watch-ack example/repo 1 --repo-dir "$WD" --comment "issues/comments:33"
+run_cli 7 "watch-ack needs a comment" watch-ack example/repo 1 --repo-dir "$WD"
+for bad in broken v2 otherpr; do
+  case $bad in broken) printf '{not json' > "$ST" ;; v2) state_json 1 2 > "$ST" ;; otherpr) state_json 2 1 > "$ST" ;; esac
+  cp "$ST" "$tmp/st-before"
+  run_cli 7 "state $bad refused" watch-ack example/repo 1 --repo-dir "$WD" --comment "$K2"
+  if cmp -s "$ST" "$tmp/st-before"; then ok; else failed "[state $bad refused] file changed"; fi
+done
+# startState keeps what was seen and resets the rest (watch --start uses it; Task 5 runs it end to end)
+got=$(node --input-type=module -e "
+  import { startState } from '$SCRIPT';
+  const s = startState({ version: 1, pr: 1, seen: ['a'], round: 9, startedAt: 'x', headSeen: { h: 1 }, lastSignature: 's', noProgressRounds: 2, unchangedRounds: 4, queryFailures: 2, lastTickAt: 'y', active: false }, 1, new Date('2026-11-25T10:00:00Z'));
+  console.log(JSON.stringify([s.seen, s.round, s.active, s.startedAt, s.headSeen, s.lastSignature, s.noProgressRounds, s.unchangedRounds, s.queryFailures]));" 2>&1)
+if [ "$got" = '[["a"],0,true,"2026-11-25T10:00:00.000Z",{},null,0,0,0]' ]; then ok; else failed "[startState keeps seen, resets the rest] $got"; fi
+got=$(node --input-type=module -e "import { startState } from '$SCRIPT'; console.log(JSON.stringify(startState(null, 4, new Date(0)).seen))" 2>&1)
+if [ "$got" = '[]' ]; then ok; else failed "[startState from nothing] $got"; fi
+
 # ── summary and mutants ──────────────────────────────────────────────────────────────────────────
 MIN_PASS=160
 if [ "$pass" -lt "$MIN_PASS" ] && [ "${STOP_ON_FAIL:-0}" != 1 ]; then failed "only $pass checks passed, expected at least $MIN_PASS"; fi

@@ -62,7 +62,7 @@
 ## 3. watch
 
 ### Task 3: 狀態檔、`--start`、`watch-ack`
-- [ ] 3.1 `loadState`／`startState`／`saveState` 與 `watch-ack`；壞檔、`too-soon`、`not-started` 都回 exit 7 且檔案不動
+- [x] 3.1 `loadState`／`startState`／`saveState` 與 `watch-ack`；壞檔、`too-soon`、`not-started` 都回 exit 7 且檔案不動
 **Files：** 修改 `pr-closeout.mjs`（`parseArgs` 接受 `watch`、`watch-ack`、`--start`、`--now`、`--comment`；新增狀態函式並 export）；測試新節 `# ── pr-watch Task 3`。
 **Interfaces：**
 - 產出 `statePath(repoDir, pr)`。
