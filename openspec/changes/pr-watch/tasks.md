@@ -32,7 +32,7 @@
 ## 1. ready 補欄位
 
 ### Task 1: `ready` 輸出留言清單與 cross-repo 旗標
-- [ ] 1.1 `extras().comments.items[]` 與 `isCrossRepository` 進 `ready` 輸出，現有案例全綠
+- [x] 1.1 `extras().comments.items[]` 與 `isCrossRepository` 進 `ready` 輸出，現有案例全綠
 **Files:** Modify `plugins/pr-closeout/scripts/pr-closeout.mjs`（`GQL` 常數、`extras()`）；Modify `plugins/pr-closeout/tests/fixtures/base/graphql.json`（加 `"isCrossRepository": false`）；Test `plugins/pr-closeout/tests/pr-closeout.test.sh`（新節 `# ── pr-watch Task 1`）
 **Interfaces:** Produces `extras(raw, pr).comments.items: Array<{endpoint: 'pulls/comments'|'pulls/reviews'|'issues/comments', id: number, updatedAt: string|null, author: string|null, emptyBody: boolean}>`；`prOf(...).isCrossRepository: boolean`（GQL 加這個欄位）；`ready` 輸出 `isCrossRepository`。
 1. 寫失敗測試：fixture 的三個留言檔各放一則（review 一則 body 為 `"  "`），斷言 `.comments.items | length == 3`、review 那筆 `emptyBody == true`、`pulls/comments` 那筆 `updatedAt` 等於 fixture 的 `updated_at`、review 那筆 `updatedAt` 等於 `submitted_at`；斷言 `.isCrossRepository == false`。

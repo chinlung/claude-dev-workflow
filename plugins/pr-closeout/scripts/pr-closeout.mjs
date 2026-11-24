@@ -31,7 +31,7 @@ class UsageError extends Error {}
 
 const PAGE = 100;
 const GQL = `query($owner:String!,$name:String!,$n:Int!){repository(owner:$owner,name:$name){pullRequest(number:$n){
-state isDraft mergeable mergeStateStatus reviewDecision headRefOid headRefName baseRefName
+state isDraft isCrossRepository mergeable mergeStateStatus reviewDecision headRefOid headRefName baseRefName
 reviewThreads(first:${PAGE}){pageInfo{hasNextPage} nodes{isResolved isOutdated path line comments(first:1){nodes{author{login}}}}}
 commits(last:1){nodes{commit{oid statusCheckRollup{state contexts(first:${PAGE}){pageInfo{hasNextPage} nodes{__typename
 ... on CheckRun{name status conclusion startedAt completedAt} ... on StatusContext{context state}}}}}}}}}}`;
@@ -289,15 +289,26 @@ function extras(raw, pr) {
   const method = !prev || parents === null ? 'unknown' : parents === 1 ? 'squash' : parents === 2 ? 'merge' : 'unknown';
   const list = (x) => (Array.isArray(x) ? x : []);
   const authors = new Set();
-  for (const k of ['pullsComments', 'pullsReviews', 'issuesComments']) {
-    for (const c of list(raw[k])) if (c && c.user && c.user.login) authors.add(c.user.login);
+  const items = [];
+  // one entry per comment, for pr-watch to tell a new or edited comment from one it already handled;
+  // a review has no updated_at, so its submitted_at stands in, and only a review can be empty
+  const ENDPOINTS = [['pullsComments', 'pulls/comments', 'updated_at'], ['pullsReviews', 'pulls/reviews', 'submitted_at'], ['issuesComments', 'issues/comments', 'updated_at']];
+  for (const [k, endpoint, stamp] of ENDPOINTS) {
+    for (const c of list(raw[k])) {
+      if (c && c.user && c.user.login) authors.add(c.user.login);
+      if (!c) continue;
+      items.push({
+        endpoint, id: c.id ?? null, updatedAt: c[stamp] ?? null, author: (c.user && c.user.login) || null,
+        emptyBody: endpoint === 'pulls/reviews' && String(c.body ?? '').trim() === '',
+      });
+    }
   }
   return {
     precedent: { pr: prev ? prev.number : null, parents: prev ? parents : null, method },
     baseBehind: raw.compare && Number.isInteger(raw.compare.behind_by) ? raw.compare.behind_by : null,
     comments: {
       pullsComments: list(raw.pullsComments).length, pullsReviews: list(raw.pullsReviews).length,
-      issuesComments: list(raw.issuesComments).length, authors: [...authors].sort(),
+      issuesComments: list(raw.issuesComments).length, authors: [...authors].sort(), items,
     },
   };
 }
@@ -401,6 +412,8 @@ export function assess(raw, { expectHead, owner, repo, pr, config, cover } = {})
     head: p.headRefOid ?? null,
     headRefName: p.headRefName ?? null,
     baseRefName: p.baseRefName ?? null,
+    // reported, never judged here: ready's verdict does not depend on it (pr-watch's watch does)
+    isCrossRepository: typeof p.isCrossRepository === 'boolean' ? p.isCrossRepository : null,
     threads,
     checks,
     suspectedSkip,

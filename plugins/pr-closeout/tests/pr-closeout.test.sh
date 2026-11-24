@@ -373,6 +373,23 @@ jqeq "unreviewed deletion: named" '.coverage.unreviewed' '["z.sh"]'
 record4 feat/x "a.sh=$(blob4 a.sh)" "b.md=$(blob4 b.md)" "z.sh=deleted"
 cov_case 0 "a deletion the review saw"
 
+# ── pr-watch Task 1: ready lists every comment and the cross-repo flag ───────────────────────────
+fx=$(fixture comments)
+printf '[{"id":11,"updated_at":"2026-11-25T01:00:00Z","body":"inline","user":{"login":"claude[bot]"}}]' > "$fx/pulls-comments.json"
+printf '[{"id":22,"submitted_at":"2026-11-25T02:00:00Z","body":"  ","user":{"login":"claude[bot]"}}]' > "$fx/pulls-reviews.json"
+printf '[{"id":33,"updated_at":"2026-11-25T03:00:00Z","body":"summary","user":{"login":"someone"}}]' > "$fx/issues-comments.json"
+ready_case 0 "comment items listed" "$fx"
+jqeq "comment items: three" '.comments.items | length' '3'
+jqeq "comment items: inline updatedAt" '[.comments.items[] | select(.endpoint == "pulls/comments") | .updatedAt]' '["2026-11-25T01:00:00Z"]'
+jqeq "comment items: review uses submitted_at" '[.comments.items[] | select(.endpoint == "pulls/reviews") | .updatedAt]' '["2026-11-25T02:00:00Z"]'
+jqeq "comment items: blank review is emptyBody" '[.comments.items[] | select(.emptyBody) | .id]' '[22]'
+jqeq "comment items: issue comment not emptyBody" '[.comments.items[] | select(.endpoint == "issues/comments") | .emptyBody]' '[false]'
+jqeq "comment items: author" '[.comments.items[] | select(.id == 33) | .author]' '["someone"]'
+ready_case 0 "cross-repo flag false" "$(fixture base)"
+jqeq "cross-repo flag false" '.isCrossRepository' 'false'
+ready_case 0 "cross-repo flag true" "$(fixture fork '.data.repository.pullRequest.isCrossRepository = true')"
+jqeq "cross-repo flag true" '.isCrossRepository' 'true'
+
 # ── summary and mutants ──────────────────────────────────────────────────────────────────────────
 MIN_PASS=160
 if [ "$pass" -lt "$MIN_PASS" ] && [ "${STOP_ON_FAIL:-0}" != 1 ]; then failed "only $pass checks passed, expected at least $MIN_PASS"; fi
