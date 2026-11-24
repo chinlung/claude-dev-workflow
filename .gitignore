@@ -9,6 +9,8 @@ node_modules/
 
 # Local plugin settings (per the plugin-settings .local.md pattern — may hold config/secrets)
 *.local.md
+# Local state files (openspec gate records, pr-watch state)
+*.local.json
 
 # Logs
 *.log
