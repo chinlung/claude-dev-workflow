@@ -39,7 +39,7 @@
 ## 2. 查詢層
 
 ### Task 2: 留言分頁、`bodyHash`、`detailsUrl`
-- [ ] 2.1 留言端點分頁到 10 頁；`items[].bodyHash`；CheckRun 帶 `detailsUrl`
+- [x] 2.1 留言端點分頁到 10 頁；`items[].bodyHash`；CheckRun 帶 `detailsUrl`
 **Files：** 修改 `plugins/pr-closeout/scripts/pr-closeout.mjs` 的 `fetchAll`、`readFixture`、`GQL`、`extras`、`assess` 的 `checks` 映射；測試加在 `tests/pr-closeout.test.sh` 新節 `# ── pr-watch Task 2`。
 **Interfaces：**
 - 產出 `restAll(apiPath: string, what: string): any[]`：逐頁抓取，`&page=1..10`，某一頁少於 100 則就停；超過 10 頁 throw `QueryError`。

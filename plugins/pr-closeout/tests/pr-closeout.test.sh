@@ -390,6 +390,31 @@ jqeq "cross-repo flag false" '.isCrossRepository' 'false'
 ready_case 0 "cross-repo flag true" "$(fixture fork '.data.repository.pullRequest.isCrossRepository = true')"
 jqeq "cross-repo flag true" '.isCrossRepository' 'true'
 
+# ── pr-watch Task 2: comment pages, body hash, detailsUrl ────────────────────────────────────────
+page100() { jq -n --argjson from "$1" '[range($from; $from + 100) | {id: ., updated_at: "2026-11-25T00:00:00Z", body: "b\(.)", user: {login: "u"}}]'; }
+fx=$(fixture pages2)
+page100 1 > "$fx/pulls-comments.json"
+printf '[{"id":9001,"updated_at":"2026-11-25T00:00:00Z","body":"last","user":{"login":"u"}}]' > "$fx/pulls-comments.2.json"
+ready_case 0 "101 comments over two pages read in full" "$fx"
+jqeq "two pages: count" '.comments.pullsComments' '101'
+jqeq "two pages: last one listed" '[.comments.items[] | select(.id == 9001) | .id]' '[9001]'
+fx=$(fixture pages-exact)
+page100 1 > "$fx/issues-comments.json"
+ready_case 0 "exactly 100 comments, no second page" "$fx"
+jqeq "exactly 100: count" '.comments.issuesComments' '100'
+fx=$(fixture pages10)
+page100 1 > "$fx/pulls-reviews.json"
+for n in 2 3 4 5 6 7 8 9 10; do page100 $((n * 1000)) > "$fx/pulls-reviews.$n.json"; done
+ready_case 7 "ten full pages is more than read" "$fx"
+jqeq "ten full pages: query-failed" '.hits[0].code' '"query-failed"'
+fx=$(fixture hash)
+printf '[{"id":1,"updated_at":"t","body":"same","user":{"login":"u"}},{"id":2,"updated_at":"t","body":"same","user":{"login":"u"}},{"id":3,"updated_at":"t","body":"other","user":{"login":"u"}}]' > "$fx/issues-comments.json"
+ready_case 0 "body hash" "$fx"
+jqeq "body hash: 16 hex" '[.comments.items[].bodyHash | test("^[0-9a-f]{16}$")] | all' 'true'
+jqeq "body hash: same body same hash" '[.comments.items[] | .bodyHash] | (.[0] == .[1]) and (.[0] != .[2])' 'true'
+ready_case 0 "detailsUrl carried" "$(fixture details "$CX[0].detailsUrl = \"https://github.com/o/r/actions/runs/77/job/88\"")"
+jqeq "detailsUrl carried" '.checks[0].detailsUrl' '"https://github.com/o/r/actions/runs/77/job/88"'
+
 # ── summary and mutants ──────────────────────────────────────────────────────────────────────────
 MIN_PASS=160
 if [ "$pass" -lt "$MIN_PASS" ] && [ "${STOP_ON_FAIL:-0}" != 1 ]; then failed "only $pass checks passed, expected at least $MIN_PASS"; fi

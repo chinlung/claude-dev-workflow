@@ -18,6 +18,7 @@
 // compare.json, prev-pulls.json, prev-commit.json) — the tests use it; nothing else should.
 // Design: docs/pr-closeout-skill-design-2026-11-09.md. Tests: tests/pr-closeout.test.sh
 import { spawnSync } from 'node:child_process';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -34,7 +35,7 @@ const GQL = `query($owner:String!,$name:String!,$n:Int!){repository(owner:$owner
 state isDraft isCrossRepository mergeable mergeStateStatus reviewDecision headRefOid headRefName baseRefName
 reviewThreads(first:${PAGE}){pageInfo{hasNextPage} nodes{isResolved isOutdated path line comments(first:1){nodes{author{login}}}}}
 commits(last:1){nodes{commit{oid statusCheckRollup{state contexts(first:${PAGE}){pageInfo{hasNextPage} nodes{__typename
-... on CheckRun{name status conclusion startedAt completedAt} ... on StatusContext{context state}}}}}}}}}}`;
+... on CheckRun{name status conclusion startedAt completedAt detailsUrl} ... on StatusContext{context state}}}}}}}}}}`;
 
 // ── query layer ──────────────────────────────────────────────────────────────────────────────────
 // One deadline for every query of a run (PR_CLOSEOUT_DEADLINE_MS, default 20 s), under the merge
@@ -79,16 +80,25 @@ function rest(apiPath) {
   if (!r.ok) throw new QueryError(`REST ${apiPath.split('?')[0]} failed (gh and curl)`);
   return parse(r.stdout, `REST ${apiPath.split('?')[0]}`);
 }
-function fullPage(list, what) {
-  if (!Array.isArray(list)) throw new QueryError(`${what}: not a list`);
-  if (list.length >= PAGE) throw new QueryError(`${what}: ${PAGE} or more entries, not read in full`);
-  return list;
+// Every page of a list endpoint: page n+1 is asked for only while page n came back full. One loop
+// for the network and the fixtures (pageOf differs), so the tests run the code a real PR runs.
+const MAX_PAGES = 10;
+function allPages(pageOf, what) {
+  const all = [];
+  for (let n = 1; n <= MAX_PAGES; n++) {
+    const list = pageOf(n);
+    if (!Array.isArray(list)) throw new QueryError(`${what}: not a list`);
+    all.push(...list);
+    if (list.length < PAGE) return all;
+  }
+  throw new QueryError(`${what}: more than ${MAX_PAGES * PAGE} entries, not read in full`);
 }
 
 const FIXTURE_FILES = {
   graphql: 'graphql.json', pullsComments: 'pulls-comments.json', pullsReviews: 'pulls-reviews.json',
   issuesComments: 'issues-comments.json', compare: 'compare.json', prevPulls: 'prev-pulls.json', prevCommit: 'prev-commit.json',
 };
+const PAGED = new Set(['pullsComments', 'pullsReviews', 'issuesComments']);
 function readFixture(dir) {
   const raw = {};
   for (const [key, file] of Object.entries(FIXTURE_FILES)) {
@@ -96,6 +106,12 @@ function readFixture(dir) {
     if (!fs.existsSync(f)) {
       if (key === 'prevCommit') { raw[key] = null; continue; }   // no merged PR before this one
       throw new QueryError(`fixture ${file} missing`);
+    }
+    if (PAGED.has(key)) {
+      // <name>.json is page 1, <name>.<n>.json page n; a page with no file is an empty page
+      const pageFile = (n) => path.join(dir, n === 1 ? file : file.replace(/\.json$/, `.${n}.json`));
+      raw[key] = allPages((n) => (fs.existsSync(pageFile(n)) ? parse(fs.readFileSync(pageFile(n), 'utf8'), `fixture ${file} page ${n}`) : []), `fixture ${file}`);
+      continue;
     }
     raw[key] = parse(fs.readFileSync(f, 'utf8'), `fixture ${file}`);
   }
@@ -117,9 +133,10 @@ export function fetchAll({ owner, repo, pr, fixture }) {
   const raw = { graphql: graphql(owner, repo, pr) };
   const p = prOf(raw.graphql);
   const base = `repos/${owner}/${repo}`;
-  raw.pullsComments = fullPage(rest(`${base}/pulls/${pr}/comments?per_page=${PAGE}`), 'review comments');
-  raw.pullsReviews = fullPage(rest(`${base}/pulls/${pr}/reviews?per_page=${PAGE}`), 'reviews');
-  raw.issuesComments = fullPage(rest(`${base}/issues/${pr}/comments?per_page=${PAGE}`), 'issue comments');
+  const paged = (p, what) => allPages((n) => rest(`${p}?per_page=${PAGE}&page=${n}`), what);
+  raw.pullsComments = paged(`${base}/pulls/${pr}/comments`, 'review comments');
+  raw.pullsReviews = paged(`${base}/pulls/${pr}/reviews`, 'reviews');
+  raw.issuesComments = paged(`${base}/issues/${pr}/comments`, 'issue comments');
   raw.compare = rest(`${base}/compare/${encodeURIComponent(p.baseRefName)}...${p.headRefOid}`);
   raw.prevPulls = rest(`${base}/pulls?state=closed&sort=updated&direction=desc&per_page=20`);
   const prev = Array.isArray(raw.prevPulls) ? raw.prevPulls.find((x) => x && x.merged_at && x.number !== Number(pr)) : null;
@@ -300,6 +317,8 @@ function extras(raw, pr) {
       items.push({
         endpoint, id: c.id ?? null, updatedAt: c[stamp] ?? null, author: (c.user && c.user.login) || null,
         emptyBody: endpoint === 'pulls/reviews' && String(c.body ?? '').trim() === '',
+        // an edit changes the hash; a review has no updated_at, so the hash is how its edits show
+        bodyHash: crypto.createHash('sha256').update(String(c.body ?? '')).digest('hex').slice(0, 16),
       });
     }
   }
@@ -369,7 +388,7 @@ export function assess(raw, { expectHead, owner, repo, pr, config, cover } = {})
     else {
       if (cx.pageInfo.hasNextPage) hits.push({ code: 'query-failed', detail: `more than ${PAGE} check contexts` });
       checks = cx.nodes.map((c) => ({
-        name: c && (c.name || c.context), state: contextState(c),
+        name: c && (c.name || c.context), state: contextState(c), detailsUrl: (c && c.detailsUrl) || null,
         conclusion: c && (c.conclusion || c.state || null), startedAt: c && c.startedAt, completedAt: c && c.completedAt,
       }));
     }
