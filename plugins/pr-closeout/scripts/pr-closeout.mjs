@@ -642,6 +642,65 @@ export function watchVerdict(verdict, queryError, state, local, extra, now) {
   return finish(null);
 }
 
+// The attempt number of each failed Actions run (the run id is in a check's detailsUrl). A run whose
+// attempt cannot be read is left out: the skill then only reports it, never reruns it blind.
+function runAttempts(o, checks) {
+  const ids = [...new Set(checks.filter((c) => c.state === 'failed').map((c) => (/\/actions\/runs\/([0-9]+)/.exec(c.detailsUrl || '') || [])[1]).filter(Boolean))];
+  const out = {};
+  if (o.fixture) {
+    const f = path.join(o.fixture, 'runs.json');
+    const all = fs.existsSync(f) ? parse(fs.readFileSync(f, 'utf8'), 'fixture runs.json') : {};
+    for (const id of ids) if (Number.isInteger(all[id])) out[id] = all[id];
+    return out;
+  }
+  for (const id of ids) {
+    try {
+      const run = rest(`repos/${o.owner}/${o.repo}/actions/runs/${id}`);
+      if (Number.isInteger(run && run.run_attempt)) out[id] = run.run_attempt;
+    } catch (e) { if (!(e instanceof QueryError)) throw e; }
+  }
+  return out;
+}
+
+// One round of `watch`: read the state (or start one), ask GitHub and the clone, judge, write. Every
+// refusal before the judgement (not started, too soon, wrong branch, a state it did not write) is
+// exit 7 with the state file untouched.
+function watchCli(o) {
+  if (!o.repoDir) throw new UsageError('watch needs --repo-dir');
+  const now = o.now || new Date();
+  const file = statePath(o.repoDir, o.pr);
+  let s = loadState(file, o.pr);
+  if (!s && !o.start) throw new QueryError(`not-started: no watch state at ${file}; start one with watch --start`);
+  if (o.start) s = startState(s, o.pr, now);
+  else if (s.lastTickAt && now - Date.parse(s.lastTickAt) < 30000) throw new QueryError(`too-soon: the last round of PR ${o.pr} was at ${s.lastTickAt}; is another session watching it?`);
+
+  let verdict = null;
+  let queryError = null;
+  try {
+    verdict = assess(fetchAll(o), { ...o, config: loadConfig(), cover: null });
+  } catch (e) {
+    if (!(e instanceof QueryError)) throw e;
+    queryError = e.message;
+  }
+  const branch = git(o.repoDir, ['rev-parse', '--abbrev-ref', 'HEAD']).out.trim();
+  if (verdict && verdict.headRefName && branch !== verdict.headRefName) {
+    throw new QueryError(`wrong-branch: the clone is on ${branch}, the PR's branch is ${verdict.headRefName}`);
+  }
+  const localHead = git(o.repoDir, ['rev-parse', 'HEAD']).out.trim();
+  const local = { head: localHead, headKnown: false, headAllowed: false, unpushed: null, dirty: git(o.repoDir, ['status', '--porcelain']).out.trim() !== '' };
+  if (verdict && typeof verdict.head === 'string') {
+    local.headKnown = git(o.repoDir, ['cat-file', '-e', `${verdict.head}^{commit}`]).ok;
+    local.headAllowed = local.headKnown && git(o.repoDir, ['merge-base', '--is-ancestor', verdict.head, 'HEAD']).ok;
+    if (local.headAllowed) local.unpushed = Number(git(o.repoDir, ['rev-list', '--count', `${verdict.head}..HEAD`]).out.trim());
+  }
+  const extra = { runAttempts: verdict ? runAttempts(o, verdict.checks || []) : {} };
+  const r = watchVerdict(verdict, queryError, s, local, extra, now);
+  saveState(file, r.state);
+  const stateIgnored = spawnSync('git', ['-C', o.repoDir, 'check-ignore', '-q', '--', file]).status === 0;
+  const base = verdict || { gate: null, hits: [{ code: 'query-failed', detail: queryError }] };
+  return { ...base, readyExit: verdict ? verdict.exit : 7, exit: r.exit, watch: { ...r.watch, stateIgnored } };
+}
+
 function watchAck(o) {
   if (!o.repoDir) throw new UsageError('watch-ack needs --repo-dir');
   if (!o.comments.length) throw new UsageError('watch-ack needs at least one --comment');
@@ -668,6 +727,7 @@ export function main(argv) {
   try {
     if (o.cmd === 'landed') return emit({ ...head, ...landed(o) });
     if (o.cmd === 'watch-ack') return emit({ ...head, ...watchAck(o) });
+    if (o.cmd === 'watch') return emit({ ...head, ...watchCli(o) });
     const raw = fetchAll(o);
     const p = prOf(raw.graphql);
     const cover = o.repoDir

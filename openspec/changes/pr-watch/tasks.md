@@ -116,7 +116,7 @@
 6. commit（具名）。
 
 ### Task 5: `watch` CLI 與本機 git 事實
-- [ ] 3.3 `watch` 從 CLI 端到端跑通：bare remote fixture、`wrong-branch`、祖先判斷、`unpushed`、`dirty`、`run_attempt`、`stateIgnored`
+- [x] 3.3 `watch` 從 CLI 端到端跑通：bare remote fixture、`wrong-branch`、祖先判斷、`unpushed`、`dirty`、`run_attempt`、`stateIgnored`
 **Files：** 修改 `pr-closeout.mjs`（`main` 的 `watch` 分支、`localFacts(repoDir, verdict)`、`runAttempts(owner, repo, checks)`，fixture 模式讀 `runs.json`）；測試新節 `# ── pr-watch Task 5`（`mktemp -d` 建 repo 加 bare remote，分支名與 fixture 的 `headRefName` 相同；fixture 的 `headRefOid` 用 jq 改成本機 commit 的 SHA）。
 **Interfaces：**
 - 使用 Task 3 的狀態函式與 Task 4 的 `watchVerdict`。

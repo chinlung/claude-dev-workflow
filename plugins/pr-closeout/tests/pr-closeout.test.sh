@@ -564,6 +564,51 @@ wround "after restart r1" "$V_THREAD" 11; stops "restart after needs-user: grace
 # comment keys: an edited review is new again, a blank review never is
 fresh; wround "review r1" "$V_REVIEW1" 1; jqeq "review r1: one new" '.watch.newComments | length' '1'; ackall
 wround "review r2 edited" "$V_REVIEW2" 6; jqeq "edited review is new" '.watch.newComments | length' '1'
+fresh; wround "blank review r1" "$V_REVIEW1" 1; jqeq "blank review never listed" '[.watch.newComments[] | select(startswith("pulls/reviews:23:"))]' '[]'
+
+# ── pr-watch Task 5: watch from the command line, with a real clone ──────────────────────────────
+R5="$tmp/r5"; rm -rf "$R5"; git init -q -b main "$R5"
+echo a > "$R5/a.txt"; git -C "$R5" add a.txt; $G -C "$R5" commit -q -m a
+git -C "$R5" switch -q -c feat/x; echo b > "$R5/b.txt"; git -C "$R5" add b.txt; $G -C "$R5" commit -q -m b
+H5=$(git -C "$R5" rev-parse HEAD); ST5="$R5/.claude/pr-watch.1.local.json"
+FX5=$(fixture w5 "$P.headRefOid = \"$H5\"")
+wcli() { local want=$1 label=$2 at=$3; shift 3; run_cli "$want" "$label" watch example/repo 1 --repo-dir "$R5" --fixture "${FX:-$FX5}" --now "$at" "$@"; }
+run_cli 7 "watch before any start" watch example/repo 1 --repo-dir "$R5" --fixture "$FX5" --now 2026-11-25T00:00:00Z
+if [ -e "$ST5" ]; then failed "[watch before any start] wrote a state"; else ok; fi
+wcli 0 "watch --start" 2026-11-25T00:00:00Z --start
+jqeq "start: round 1 in grace" '[.watch.round, .watch.inGrace, .watch.headAllowed, .watch.unpushed]' '[1,true,true,0]'
+if [ -f "$ST5" ]; then ok; else failed "[watch --start] no state file"; fi
+jqeq "start: ready's own exit kept" '.readyExit' '0'
+cp "$ST5" "$tmp/st5"; wcli 7 "ten seconds later is too soon" 2026-11-25T00:00:10Z
+if cmp -s "$ST5" "$tmp/st5"; then ok; else failed "[too soon] state changed"; fi
+has "too soon: says so" "$(jq -r '.hits[0].detail' "$tmp/out.json")" "too-soon"
+wcli 8 "second round is ready" 2026-11-25T00:05:00Z
+jqeq "second round: ready" '.watch.stop.reason' '"ready"'
+jqeq "stateIgnored: no .gitignore" '.watch.stateIgnored' 'false'
+# another branch checked out: the clone says nothing about this PR
+git -C "$R5" switch -q main; cp "$ST5" "$tmp/st5"
+wcli 7 "wrong branch" 2026-11-25T00:10:00Z --start
+has "wrong branch: says so" "$(jq -r '.hits[0].detail' "$tmp/out.json")" "wrong-branch"
+if cmp -s "$ST5" "$tmp/st5"; then ok; else failed "[wrong branch] state changed"; fi
+git -C "$R5" switch -q feat/x
+# a commit on top of the PR head: still allowed, one unpushed; a dirty tree shows
+echo c > "$R5/c.txt"; git -C "$R5" add c.txt; $G -C "$R5" commit -q -m c; echo d > "$R5/d.txt"
+wcli 0 "local commit on top" 2026-11-25T00:15:00Z --start
+jqeq "local commit on top: allowed, one unpushed, dirty" '[.watch.headAllowed, .watch.unpushed, .watch.dirty]' '[true,1,true]'
+rm -f "$R5/d.txt"
+# a PR head this clone has never seen
+FX=$(fixture w5-unknown "$P.headRefOid = \"2222222222222222222222222222222222222222\"") wcli 8 "unknown PR head" 2026-11-25T00:20:00Z --start
+jqeq "unknown PR head: stops" '.watch.stop.reason' '"head-not-allowed"'
+# a failed Actions run: its attempt comes from runs.json (the REST answer in fixture mode)
+git -C "$R5" reset -q --hard "$H5"
+FXR=$(fixture w5-red "$P.headRefOid = \"$H5\" | $CX[0].conclusion = \"FAILURE\" | $CX[0].detailsUrl = \"https://github.com/o/r/actions/runs/77/job/1\"")
+printf '{"77":2}' > "$FXR/runs.json"
+FX=$FXR wcli 0 "red r1" 2026-11-25T00:25:00Z --start
+FX=$FXR wcli 0 "red r2" 2026-11-25T00:30:00Z
+jqeq "red r2: attempt from runs.json" '.watch.failedRuns' '[{"name":"security-review","runId":"77","attempt":2}]'
+printf '*.local.json\n' > "$R5/.gitignore"
+wcli 0 "ignored state" 2026-11-25T00:35:00Z --start
+jqeq "stateIgnored: ignored" '.watch.stateIgnored' 'true'
 
 # ── summary and mutants ──────────────────────────────────────────────────────────────────────────
 MIN_PASS=300
