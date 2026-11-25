@@ -156,7 +156,7 @@
 5. commit（具名）。
 
 ### Task 7: `/review-pr --triage-only`
-- [ ] 4.2 只分類模式寫進 review-pr.md，docs 測試把關
+- [x] 4.2 只分類模式寫進 review-pr.md，docs 測試把關
 **Files：** 修改 `plugins/code-audit-rigor/commands/review-pr.md`；新增 `plugins/code-audit-rigor/tests/review-pr-triage.test.sh`。
 **步驟：**
 1. 寫失敗測試：
