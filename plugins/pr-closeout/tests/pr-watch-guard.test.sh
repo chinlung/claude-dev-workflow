@@ -60,7 +60,59 @@ done
 for c in 'git status' 'gh pr view 7 --json comments' 'gh pr checks 7' 'node pr-closeout.mjs watch o/r 7 --repo-dir .' 'gh run rerun 77'; do
   verdict "active: allow $c" allow "$(bash_in "$c")"
 done
-# no CLAUDE_PROJECT_DIR: nothing to read, nothing to deny
+# writes to GitHub by other spellings (security-guidance r1): REST, GraphQL mutations, curl, spacing, -R
+for c in \
+  'gh api -X POST repos/o/r/issues/7/comments -f body=done' \
+  'gh api repos/o/r/issues/7/comments -f body=done' \
+  'gh api repos/o/r/issues/7/comments --raw-field body=done' \
+  'gh api --method PATCH repos/o/r/issues/comments/5 -f body=x' \
+  'gh api -XDELETE repos/o/r/issues/comments/5' \
+  'gh api repos/o/r/pulls/7/reviews --input review.json' \
+  "gh api graphql -f query='mutation { addComment(input:{subjectId:\"X\",body:\"hi\"}) { clientMutationId } }'" \
+  'curl -X POST -H "Authorization: bearer $T" https://api.github.com/repos/o/r/issues/7/comments -d "{\"body\":\"x\"}"' \
+  'curl https://api.github.com/repos/o/r/issues/7/comments --data @body.json' \
+  'wget --post-data=x https://api.github.com/repos/o/r/issues/7/comments' \
+  'gh   pr    comment 7 -b x' \
+  'gh -R o/r pr comment 7 -b x' \
+  "node -e \"fetch('https://api.github.com/graphql',{method:'POST',body:JSON.stringify({query:'mutation{resolveReviewThread(input:{threadId:1}){clientMutationId}}'})})\"" \
+  'gh pr --repo o/r review 7 --comment -b x'; do
+  verdict "active: deny $c" deny "$(bash_in "$c")"
+done
+for c in \
+  "gh api graphql -f query='query{repository(owner:\"o\",name:\"r\"){pullRequest(number:7){title}}}'" \
+  'gh api repos/o/r/pulls/7/comments' \
+  'gh api repos/o/r/actions/runs/77 --jq .run_attempt' \
+  'gh pr view 7 --comments' \
+  'curl -s https://api.github.com/repos/o/r/pulls/7'; do
+  verdict "active: allow $c" allow "$(bash_in "$c")"
+done
+# the watch's state is under the clone the command runs in, not under the session's project dir
+Q="$tmp/other"; mkdir -p "$Q/.claude"; git init -q "$Q"
+printf '{"version":1,"pr":3,"active":true}' > "$Q/.claude/pr-watch.3.local.json"
+E="$tmp/empty"; mkdir -p "$E"
+cwd_in() { jq -cn --arg c "$1" --arg d "$2" '{hook_event_name:"PreToolUse",tool_name:"Bash",cwd:$d,tool_input:{command:$c}}'; }
+out=$(cwd_in 'gh pr comment 3 -b x' "$Q" | CLAUDE_PROJECT_DIR="$E" bash "$HOOK" 2>/dev/null)
+if [ "$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision // empty')" = deny ]; then ok; else failed "[state under the cwd's clone is found] $out"; fi
+mkdir -p "$Q/sub"
+out=$(cwd_in 'gh pr comment 3 -b x' "$Q/sub" | env -u CLAUDE_PROJECT_DIR bash "$HOOK" 2>/dev/null)
+if [ "$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision // empty')" = deny ]; then ok; else failed "[no CLAUDE_PROJECT_DIR, cwd in a watched clone] $out"; fi
+out=$(cwd_in 'gh pr comment 3 -b x' "$E" | CLAUDE_PROJECT_DIR="$E" bash "$HOOK" 2>/dev/null); rc=$?
+if [ "$rc" = 0 ] && [ -z "$out" ]; then ok; else failed "[nothing watched anywhere] rc $rc out $out"; fi
+# every GitHub MCP tool that is not a read is denied, whatever its server calls it
+for t in mcp__github__resolve_review_thread mcp__claude_ai_GitHub_MCP_Server__create_pull_request_review \
+  mcp__github__add_pull_request_review_comment mcp__claude_ai_GitHub_MCP_Server__issue_write; do
+  verdict "active: deny MCP $t" deny "$(mcp_in "$t")"
+done
+for t in mcp__github__get_pull_request mcp__claude_ai_GitHub_MCP_Server__pull_request_read \
+  mcp__github__list_pull_requests mcp__claude_ai_GitHub_MCP_Server__search_issues mcp__claude_ai_GitHub_MCP_Server__issue_read; do
+  verdict "active: allow MCP $t" allow "$(mcp_in "$t")"
+done
+# the matcher sends every GitHub MCP tool here
+m=$(jq -r '.hooks.PreToolUse[] | select(.hooks[].command | test("pr-watch-guard")) | .matcher' "$here/../hooks/hooks.json" | command grep -v '^Bash$')
+for t in mcp__github__resolve_review_thread mcp__claude_ai_GitHub_MCP_Server__issue_write mcp__github__get_pull_request; do
+  if printf '%s' "$t" | perl -ne "exit(/^(?:$m)\$/ ? 0 : 1)"; then ok; else failed "[matcher sends $t to the guard] $m"; fi
+done
+# no CLAUDE_PROJECT_DIR and no cwd: nothing to read, nothing to deny
 out=$(bash_in 'gh pr comment 7 -b x' | env -u CLAUDE_PROJECT_DIR bash "$HOOK" 2>/dev/null); rc=$?
 if [ "$rc" = 0 ] && [ -z "$out" ]; then ok; else failed "[no CLAUDE_PROJECT_DIR] rc $rc out $out"; fi
 
@@ -82,9 +134,11 @@ mutant() {   # <label> <substring of the first failing case> <perl substitution>
 }
 if [ "${NO_MUTANTS:-0}" != 1 ]; then
   mutant never-active "[active: deny gh api graphql"          's/active=\$f; break/break/'
-  mutant no-bash      "[active: deny gh api graphql"          's/\[\[ \$input == \*"\$s"\* \]\] && deny/[[ \$input == *"\$s"* ]] \&\& false \&\& deny/'
-  mutant no-mcp       "[active: deny MCP"                     's/\*\x27"tool_name"\x27\*\) deny/*\x27"tool_name"\x27*) exit 0/'
-  [ "$mut_n" = 3 ] || { echo "FAIL: $mut_n of 3 mutants ran"; mut_bad=1; }
+  mutant no-bash      "[active: deny node -e"                 's/\[\[ \$input == \*"\$s"\* \]\] && deny/false \&\& deny/'
+  mutant no-mcp       "[active: deny MCP"                     's/  deny "GitHub MCP \$op"/  exit 0/'
+  mutant no-cwd       "[state under the cwd"                  's/dirs\+=\("\$top"\)/:/'
+  mutant no-api-write "[active: deny gh api -X POST"          's/if \[\[ \$input =~ gh\$ws/if false \&\& [[ \$input =~ gh\$ws/'
+  [ "$mut_n" = 5 ] || { echo "FAIL: $mut_n of 5 mutants ran"; mut_bad=1; }
   [ "$mut_bad" = 0 ] || fail=$((fail + 1))
 fi
 [ "$fail" = 0 ]
