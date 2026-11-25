@@ -5,7 +5,7 @@
 # are denied: resolving a review thread, commenting, replying, reviewing, hiding a comment, by any
 # spelling the guard knows (gh pr|issue comment|review, gh api with a method, body field, --input or
 # a GraphQL mutation, curl or wget writing to api.github.com) and every GitHub MCP tool that is not
-# a read (get_*, list_*, search_*, *_read). pr-watch reads PR comments written by anyone, so this is
+# a read (get_*, list_*, search_*, pull_request_read, issue_read). pr-watch reads PR comments written by anyone, so this is
 # enforced here rather than left to the model's reading of its instructions. Reads go through.
 #
 # Where the state lives: pr-closeout.mjs watch writes it under --repo-dir, which pr-watch sets to the
@@ -41,7 +41,7 @@ done
 deny() {
   local r="⛔ pr-watch 防護：監看中不做「$1」（狀態檔 $active）。
 pr-watch 不把 thread 標成已解決、不在 PR 上留言、回覆或送出 review，這些交給使用者自己做。
-確定要做：先請 Claude 停止監看（狀態檔的 active 會變成 false），或自己把狀態檔的 \"active\" 改成 false。"
+確定要做：先請 Claude 停止監看（pr-closeout.mjs watch … --stop，狀態檔的 active 會變成 false），或自己把狀態檔的 \"active\" 改成 false。"
   if command -v jq >/dev/null 2>&1; then
     jq -cn --arg r "$r" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
     exit 0
@@ -80,11 +80,12 @@ done
 # attached or not), --input or GraphQL mutation without an explicit GET is a write.
 if [[ $norm =~ (^|[^[:alnum:]_-])gh$ws(-[^[:space:]]+$ws)*api([[:space:]]|$) ]]; then
   rest=$norm; get=
-  while [[ $rest =~ (-x|--method)[[:space:]=]*([a-z]+)(.*)$ ]]; do
-    [ "${BASH_REMATCH[2]}" = get ] || deny "gh api ${BASH_REMATCH[2]}"
-    get=1; rest=${BASH_REMATCH[3]}
+  while [[ $rest =~ (^|[[:space:]])(-x|--method)[[:space:]=]*([a-z]+)(.*)$ ]]; do
+    [ "${BASH_REMATCH[3]}" = get ] || deny "gh api ${BASH_REMATCH[3]}"
+    get=1; rest=${BASH_REMATCH[4]}
   done
-  [[ $norm == *mutation* ]] && deny "GraphQL mutation"
+  # a mutation is a GraphQL thing: a repo or path that merely contains the word is a read
+  [[ $norm == *graphql* && $norm == *mutation* ]] && deny "GraphQL mutation"
   if [ -z "$get" ] && [[ $norm =~ (^|[[:space:]])(-f|--field|--raw-field|--input) ]]; then deny "gh api ${BASH_REMATCH[2]}"; fi
 fi
 # curl and wget have no business with GitHub during a watch: pr-watch reads through gh

@@ -53,6 +53,7 @@ has_reason() { if [[ $(printf '%s' "$LAST" | jq -r '.hookSpecificOutput.permissi
 verdict "active: deny gh pr comment (reason)" deny "$(bash_in 'gh pr comment 7 -b x')"
 has_reason "pr-watch.7.local.json"
 has_reason "停止監看"
+has_reason "--stop"
 for t in mcp__github__add_issue_comment mcp__claude_ai_GitHub_MCP_Server__add_reply_to_pull_request_comment \
   mcp__github__add_comment_to_pending_review mcp__github__pull_request_review_write mcp__github__update_issue_comment; do
   verdict "active: deny MCP $t" deny "$(mcp_in "$t")"
@@ -93,6 +94,9 @@ for c in \
   'gh api repos/o/r/pulls/7/comments' \
   'gh api repos/o/r/actions/runs/77 --jq .run_attempt' \
   'gh pr view 7 --comments' \
+  'gh api repos/acme/react-xterm/pulls/7/comments --paginate' \
+  'gh api repos/acme/mutation-testing/pulls/7/comments --paginate' \
+  'gh api repos/acme/mutation-testing/issues/7/comments --paginate' \
   'gh api -X GET repos/o/r/pulls/7/comments -f per_page=100'; do
   verdict "active: allow $c" allow "$(bash_in "$c")"
 done
@@ -126,7 +130,7 @@ done
 out=$(bash_in 'gh pr comment 7 -b x' | env -u CLAUDE_PROJECT_DIR bash "$HOOK" 2>/dev/null); rc=$?
 if [ "$rc" = 0 ] && [ -z "$out" ]; then ok; else failed "[no CLAUDE_PROJECT_DIR] rc $rc out $out"; fi
 
-MIN_PASS=25
+MIN_PASS=75
 [ "$pass" -ge "$MIN_PASS" ] || failed "only $pass checks passed, expected at least $MIN_PASS"
 echo "pr-watch-guard: $pass passed, $fail failed"
 
@@ -134,7 +138,7 @@ echo "pr-watch-guard: $pass passed, $fail failed"
 mut_bad=0; mut_n=0
 mutant() {   # <label> <substring of the first failing case> <perl substitution>
   local m="$tmp/mutant-$1.sh" first
-  perl -pe "$3" "$HOOK" > "$m"
+  perl -pe "$3" "$HOOK" > "$m" || { echo "MUTANT [$1] perl failed"; mut_bad=1; return; }
   if cmp -s "$m" "$HOOK"; then echo "MUTANT [$1] substitution did not apply"; mut_bad=1; return; fi
   mut_n=$((mut_n + 1))
   first=$(HOOK="$m" NO_MUTANTS=1 STOP_ON_FAIL=1 bash "$0" 2>&1 | command grep -a -m1 '^FAIL')
@@ -148,10 +152,12 @@ if [ "${NO_MUTANTS:-0}" != 1 ]; then
   mutant no-mcp       "[active: deny MCP"                     's/  deny "MCP \$op"/  exit 0/'
   mutant no-cwd       "[state under the cwd"                  's/dirs\+=\("\$top"\)/:/'
   mutant no-api-write "[active: deny gh api -X POST"          's/^if \[\[ \$norm =~ \(\^\|\[\^\[:alnum:\]_-\]\)gh\$ws\(/if false \&\& [[ \$norm =~ (^|[^[:alnum:]_-])gh\$ws(/'
-  mutant no-unquote   "[active: deny gh api graphql -f query="  's/^norm=\$\{norm//.*$/:/'
+  mutant no-unquote   "[active: deny gh api repos/o/r/issues/7/comments \"-f\""  's{^norm=\$\{norm//.*$}{:}'
   mutant no-lower     "[active: deny gh api -XDELETE"        's/\| tr .\[:upper:\]. .\[:lower:\]. //'
   mutant no-curl      "[active: deny curl -X POST"            's/^if \[\[ \$norm =~ \(\^\|\[\^\[:alnum:\]_-\]\)\(curl/if false \&\& [[ \$norm =~ (^|[^[:alnum:]_-])(curl/'
-  [ "$mut_n" = 8 ] || { echo "FAIL: $mut_n of 8 mutants ran"; mut_bad=1; }
+  mutant no-xanchor   "[active: allow gh api repos/acme/react-xterm" 's/\(\^\|\[\[:space:\]\]\)\(-x\|--method\)/()(-x|--method)/'
+  mutant mutation-any "[active: allow gh api repos/acme/mutation-testing" 's/\$norm == \*graphql\* && //'
+  [ "$mut_n" = 10 ] || { echo "FAIL: $mut_n of 10 mutants ran"; mut_bad=1; }
   [ "$mut_bad" = 0 ] || fail=$((fail + 1))
 fi
 [ "$fail" = 0 ]

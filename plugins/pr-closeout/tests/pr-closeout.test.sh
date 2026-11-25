@@ -498,6 +498,8 @@ printf '{"example/repo":{"required":["absent-check"]}}' > "$tmp/req.json"
 V_MISSING=$(mkv missing "$(fixture wv-missing)" PR_CLOSEOUT_CONFIG="$tmp/req.json")
 fx=$(fixture wv-comment); printf '[{"id":33,"updated_at":"t","body":"please fix","user":{"login":"claude[bot]"}}]' > "$fx/issues-comments.json"
 V_COMMENT=$(mkv comment "$fx")
+fx=$(fixture wv-comment2); printf '[{"id":33,"updated_at":"t","body":"please fix","user":{"login":"claude[bot]"}},{"id":35,"updated_at":"t","body":"one more","user":{"login":"r[bot]"}}]' > "$fx/issues-comments.json"
+V_COMMENT2=$(mkv comment2 "$fx")
 fx=$(fixture wv-threadcomment "$P.reviewThreads.nodes = [$THREAD]"); printf '[{"id":34,"updated_at":"t","body":"new","user":{"login":"claude[bot]"}}]' > "$fx/issues-comments.json"
 V_THREADCOMMENT=$(mkv threadcomment "$fx")
 fx=$(fixture wv-review1); printf '[{"id":22,"submitted_at":"t","body":"first","user":{"login":"r"}},{"id":23,"submitted_at":"t","body":" ","user":{"login":"r"}}]' > "$fx/pulls-reviews.json"
@@ -557,6 +559,13 @@ fresh; wround "thread+comment r1" "$V_THREADCOMMENT" 1; wround "thread+comment r
 stops "a new comment holds needs-user" none; jqeq "new comment listed" '.watch.newComments | length' '1'
 fresh; wround "required check missing r1" "$V_MISSING" 1; wround "required check missing r2" "$V_MISSING" 6
 stops "a missing required check is unsettled" none; jqeq "missing required: not settled" '.watch.settled' 'false'; jqeq "missing required: no runs" '.watch.failedRuns' '[]'
+wround "required check missing r3" "$V_MISSING" 11; jqeq "missing required r3: still unsettled" '.watch.settled' 'false'
+wround "required check missing r4" "$V_MISSING" 16; jqeq "missing required after the window: settled" '.watch.settled' 'true'
+wround "required check missing r5" "$V_MISSING" 26; stops "missing required for good: no-progress" no-progress
+# a second comment arriving after the first was triaged is progress, never no-progress
+fresh; wround "comment then another r1" "$V_COMMENT" 1; wround "comment then another r2" "$V_COMMENT" 6; ackall
+wround "comment then another r3" "$V_COMMENT2" 11; stops "a new comment is not no-progress" none
+jqeq "the second comment is listed" '.watch.newComments | map(split(":")[1])' '["35"]'
 fresh; wround "limit then restart" "$V_PENDING" $((25 * 60)); wstart 2026-11-26T02:00:00Z
 wround "after restart" "$V_BASE" $((26 * 60 + 5)); stops "restart after limit" none; jqeq "restart: round 1" '.watch.round' '1'
 fresh; wround "needs-user then restart r1" "$V_THREAD" 1; wround "r2" "$V_THREAD" 6; wstart 2026-11-25T00:10:00Z
@@ -585,6 +594,18 @@ has "too soon: says so" "$(jq -r '.hits[0].detail' "$tmp/out.json")" "too-soon"
 wcli 8 "second round is ready" 2026-11-25T00:05:00Z
 jqeq "second round: ready" '.watch.stop.reason' '"ready"'
 jqeq "stateIgnored: no .gitignore" '.watch.stateIgnored' 'false'
+cp "$ST5" "$tmp/st5"; wcli 7 "a tick after a stop" 2026-11-25T00:06:00Z
+has "tick after a stop: says so" "$(jq -r '.hits[0].detail' "$tmp/out.json")" "stopped"
+if cmp -s "$ST5" "$tmp/st5"; then ok; else failed "[tick after a stop] state changed"; fi
+wcli 0 "--start right after a stop" 2026-11-25T00:05:10Z --start
+cp "$ST5" "$tmp/st5"; wcli 7 "--start while another session watches" 2026-11-25T00:05:20Z --start
+has "--start while watched: too soon" "$(jq -r '.hits[0].detail' "$tmp/out.json")" "too-soon"
+if cmp -s "$ST5" "$tmp/st5"; then ok; else failed "[--start while watched] state changed"; fi
+run_cli 0 "watch --stop" watch example/repo 1 --repo-dir "$R5" --stop
+jqeq "watch --stop: inactive" '.watch.active' 'false'
+if [ "$(jq -r '.active' "$ST5")" = false ]; then ok; else failed "[watch --stop] state still active"; fi
+rm -rf "$tmp/r5none"; mkdir -p "$tmp/r5none"
+run_cli 7 "watch --stop with nothing watched" watch example/repo 1 --repo-dir "$tmp/r5none" --stop
 # another branch checked out: the clone says nothing about this PR
 git -C "$R5" switch -q main; cp "$ST5" "$tmp/st5"
 wcli 7 "wrong branch" 2026-11-25T00:10:00Z --start
@@ -700,12 +721,17 @@ if [ "${NO_MUTANTS:-0}" != 1 ]; then
   mutant w-stale       "[fixed locally, not pushed]"       "s/w\.staleRemote = w\.unpushed > 0;/w.staleRemote = false;/"
   mutant w-hash        "[edited review is new]"            's/\$\{i\.endpoint\}:\$\{i\.id\}:\$\{i\.bodyHash\}/\${i.endpoint}:\${i.id}:x/'
   mutant w-queries     "[query fails 1: not yet]"          "s/QUERY_FAILURES_TO_STOP = 3;/QUERY_FAILURES_TO_STOP = 1;/"
-  mutant w-required    "[missing required: not settled]" "s/const requiredMissing = hits\.some/const requiredMissing = false \&\& hits.some/"
+  mutant w-required    "[missing required: not settled]" "s/REQUIRED_MISSING_ROUNDS && hits\.some/REQUIRED_MISSING_ROUNDS && false \&\& hits.some/"
   mutant w-progress    "[red r2: one round to act]"        "s/NO_PROGRESS_TO_STOP = 2;/NO_PROGRESS_TO_STOP = 1;/"
   mutant w-head        "[head not in the clone stops]"     "s/w\.headAllowed = !!\(local && local\.headKnown && local\.headAllowed\);/w.headAllowed = true;/"
   mutant w-untracked  "[local commit on top: allowed, one unpushed, untracked is clean]" "s/, '--untracked-files=no'\]/]/"
+  mutant w-stopped     "[a tick after a stop]"             "s/else if \(!s\.active\) throw/else if (false) throw/"
+  mutant w-stop        "[watch --stop: inactive]"                    "s/  if \(o\.stop\) \{/  if (false) {/"
+  mutant w-soon-start  "[--start while another session watches]" "s/const tooSoon = s && s\.active &&/const tooSoon = !o.start \&\& s \&\& s.active \&\&/"
+  mutant w-req-window  "[missing required after the window: settled]" "s/w\.round - s\.headSeen\[verdict\.head\] < REQUIRED_MISSING_ROUNDS && //"
+  mutant w-keys        "[a new comment is not no-progress]" "s/\[\.\.\.w\.newComments\]\.sort\(\)\]/w.newComments.length]/"
   mutants_judged
-  MUT_WANT_N=48
+  MUT_WANT_N=53
   if [ "$mut_n" != "$MUT_WANT_N" ]; then echo "FAIL: $mut_n of $MUT_WANT_N mutants ran"; mut_bad=1; fi
   [ "$mut_bad" = 0 ] || fail=$((fail + 1))
 fi

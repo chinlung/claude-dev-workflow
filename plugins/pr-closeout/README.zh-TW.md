@@ -104,11 +104,11 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/pr-closeout.mjs landed <owner/repo> <pr> \
 
 `pr-watch` skill 在 push 後監看一個 PR，一段一段進行：使用者說「盯 PR」時啟動，由內建 `/loop` 一輪一輪跑，只剩使用者能處理的事時停下，處理完再啟動下一段。它不合併、不把 thread 標成已解決、不在 GitHub 上發言，使用者沒說就不 push。
 
-- **`watch <owner/repo> <pr> --repo-dir <clone> [--start] [--fixture <dir>] [--now <iso>]`** 跑 `ready` 的查詢、判定這一輪，寫入狀態檔 `<clone>/.claude/pr-watch.<pr>.local.json`（請在 `.gitignore` 加 `*.local.json`）。exit 0 繼續、8 停止（`watch.stop.reason`）、7 是用法錯誤或判定前就拒絕（`not-started`、`too-soon`——距上一輪不到 30 秒——、`wrong-branch`、不是它寫的狀態檔），狀態檔不動。
+- **`watch <owner/repo> <pr> --repo-dir <clone> [--start | --stop] [--fixture <dir>] [--now <iso>]`** 跑 `ready` 的查詢、判定這一輪，寫入狀態檔 `<clone>/.claude/pr-watch.<pr>.local.json`（請在 `.gitignore` 加 `*.local.json`）。exit 0 繼續、8 停止（`watch.stop.reason`）、7 是用法錯誤或判定前就拒絕（`not-started`、`stopped`——對已停止的監看再跑一輪——、`too-soon`——距進行中監看的上一輪不到 30 秒——、`wrong-branch`、不是它寫的狀態檔），狀態檔不動。`--stop` 只把狀態寫成 `"active": false`，exit 0。
 - **停止原因**依序檢查：`not-open`、`fork`、`head-not-allowed`（PR head 不是本機 HEAD 的祖先）、`query-failed`（連續 3 次）、`limit`（24 小時或 60 輪）、`ready`、`needs-user`、`no-progress`（check 跑完後連兩輪沒有變化）。head 第一次出現的那一輪不會被判成 `ready` 或 `needs-user`；必跑 check 還沒出現時視為還在跑。
 - **`watch-ack <owner/repo> <pr> --repo-dir <clone> --comment <key>...`** 把留言標成已處理。key 是 `<endpoint>:<id>:<內文 sha256 的前 16 碼>`，所以被編輯過的留言或 review 會重新算成新留言。
 - **新留言**不論作者，都交給 `/review-pr <pr> --triage-only <ids>`（code-audit-rigor 2.4.0），它分類完就停；使用者確認分類表之前什麼都不修。
-- **`hooks/pr-watch-guard.sh`** 在監看期間擋下寫入 GitHub 的 Bash 命令（`gh pr|issue comment|review`、帶欄位、`--input`、非 GET 方法或 GraphQL mutation 的 `gh api`、對 github.com 的 curl 或 wget、`resolveReviewThread` 等）以及所有非讀取的 GitHub MCP 工具。它是攔下習慣性失誤、或照著文件錯誤段落去寫入的絆線，不是對付刻意繞過的安全邊界：那樣的模型可以把狀態檔的 `active` 改成 false。要自己寫入，先停止監看。
+- **`hooks/pr-watch-guard.sh`** 在監看期間擋下寫入 GitHub 的 Bash 命令（`gh pr|issue comment|review`、帶欄位、`--input`、非 GET 方法或 GraphQL mutation 的 `gh api`、對 github.com 的 curl 或 wget、`resolveReviewThread` 等）以及所有非讀取的 GitHub MCP 工具。它是攔下習慣性失誤、或照著文件錯誤段落去寫入的絆線，不是對付刻意繞過的安全邊界：那樣的模型可以把狀態檔的 `active` 改成 false。要自己寫入，先停止監看（`watch … --stop`）。
 
 ## 測試
 

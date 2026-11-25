@@ -5,10 +5,14 @@
 //   ready  <owner/repo> <pr> [--expect-head <sha>] [--repo-dir <path>] [--fixture <dir>]
 //          [--accept-unreviewed <path>=<reason>]...
 //   landed <owner/repo> <pr> --expect-head <sha> --repo-dir <path> [--branch <name>] [--fixture <dir>]
+//   watch  <owner/repo> <pr> --repo-dir <path> [--start | --stop] [--fixture <dir>]
+//   watch-ack <owner/repo> <pr> --repo-dir <path> --comment <key>...
 //
 // stdout is one JSON object; the exit code is the verdict:
 //   0 ready · 2 conflict · 3 unresolved review threads · 4 checks failed · 5 pending
 //   6 merge gate (field `gate` says which) · 7 query failed, unknown value or usage error
+// watch (one round of the pr-watch skill; state in <repo-dir>/.claude/pr-watch.<pr>.local.json):
+//   0 go on · 8 stop (watch.stop.reason) · 7 refused (not-started, stopped, too-soon, wrong-branch)
 // Every check runs; `hits[]` lists every condition met and the exit is the most urgent of them.
 // Fail-closed: a value this script does not know, a missing field or a failed query is never ready.
 //
@@ -25,7 +29,9 @@ import path from 'node:path';
 
 const USAGE = `Usage:
   pr-closeout.mjs ready  <owner/repo> <pr> [--expect-head <sha>] [--repo-dir <path>] [--fixture <dir>] [--accept-unreviewed <path>=<reason>]...
-  pr-closeout.mjs landed <owner/repo> <pr> --expect-head <sha> --repo-dir <path> [--branch <name>] [--fixture <dir>]`;
+  pr-closeout.mjs landed <owner/repo> <pr> --expect-head <sha> --repo-dir <path> [--branch <name>] [--fixture <dir>]
+  pr-closeout.mjs watch  <owner/repo> <pr> --repo-dir <path> [--start | --stop]
+  pr-closeout.mjs watch-ack <owner/repo> <pr> --repo-dir <path> --comment <key>...`;
 
 export class QueryError extends Error {}
 class UsageError extends Error {}
@@ -490,14 +496,15 @@ function parseArgs(argv) {
   const m = /^([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)$/.exec(slug || '');
   if (!m) throw new UsageError('<owner/repo> expected');
   if (!/^[1-9][0-9]*$/.test(prArg || '')) throw new UsageError('<pr> must be a number');
-  const o = { cmd, owner: m[1], repo: m[2], pr: Number(prArg), accept: [], comments: [], start: false };
-  const watchFlags = ['--start', '--now', '--comment'];
+  const o = { cmd, owner: m[1], repo: m[2], pr: Number(prArg), accept: [], comments: [], start: false, stop: false };
+  const watchFlags = ['--start', '--stop', '--now', '--comment'];
   for (let i = 0; i < rest.length; i++) {
     const flag = rest[i];
     const val = rest[i + 1];
     if (!['--expect-head', '--repo-dir', '--fixture', '--branch', '--accept-unreviewed', ...watchFlags].includes(flag)) throw new UsageError(`unknown option ${flag}`);
     if (watchFlags.includes(flag) && !cmd.startsWith('watch')) throw new UsageError(`${flag} is for watch only`);
     if (flag === '--start') { o.start = true; continue; }
+    if (flag === '--stop') { o.stop = true; continue; }
     if (val === undefined) throw new UsageError(`${flag} needs a value`);
     i++;
     if (flag === '--now') {
@@ -570,6 +577,8 @@ const LIMIT_ROUNDS = 60;
 const QUERY_FAILURES_TO_STOP = 3;
 const NO_PROGRESS_TO_STOP = 2;
 const REQUIRED_MISSING = 'required check missing:';
+// rounds, counted from the one a head is first seen in, that a missing required check may still be on its way
+const REQUIRED_MISSING_ROUNDS = 3;
 
 // One round of a watch, without I/O: verdict is ready's answer (null when the query threw), local the
 // clone's facts about that head, extra the run attempts of failed checks. Returns the next state, the
@@ -613,7 +622,7 @@ export function watchVerdict(verdict, queryError, state, local, extra, now) {
   if (s.headSeen[verdict.head] === undefined) s.headSeen[verdict.head] = w.round;
   w.inGrace = s.headSeen[verdict.head] === w.round;
   const pending = hits.some((h) => h.code === 'pending');
-  const requiredMissing = hits.some((h) => h.code === 'checks-failed' && String(h.detail).startsWith(REQUIRED_MISSING));
+  const requiredMissing = w.round - s.headSeen[verdict.head] < REQUIRED_MISSING_ROUNDS && hits.some((h) => h.code === 'checks-failed' && String(h.detail).startsWith(REQUIRED_MISSING));
   w.settled = !w.inGrace && !pending && !requiredMissing;
   w.newComments = items.filter((i) => !i.emptyBody).map((i) => `${i.endpoint}:${i.id}:${i.bodyHash}`).filter((k) => !s.seen.includes(k));
   w.staleRemote = w.unpushed > 0;
@@ -626,7 +635,7 @@ export function watchVerdict(verdict, queryError, state, local, extra, now) {
     });
   }
 
-  const signature = JSON.stringify([hits.map((h) => `${h.code}|${h.gate || ''}|${h.detail}`).sort(), verdict.head, local.head, w.newComments.length]);
+  const signature = JSON.stringify([hits.map((h) => `${h.code}|${h.gate || ''}|${h.detail}`).sort(), verdict.head, local.head, [...w.newComments].sort()]);
   const unchanged = signature === s.lastSignature;
   s.lastSignature = signature;
   s.unchangedRounds = w.unchangedRounds = unchanged ? s.unchangedRounds + 1 : 0;
@@ -671,8 +680,16 @@ function watchCli(o) {
   const file = statePath(o.repoDir, o.pr);
   let s = loadState(file, o.pr);
   if (!s && !o.start) throw new QueryError(`not-started: no watch state at ${file}; start one with watch --start`);
+  if (o.start && o.stop) throw new UsageError('--start and --stop together');
+  if (o.stop) {
+    s.active = false;
+    saveState(file, s);
+    return { exit: 0, gate: null, hits: [], watch: { active: false, round: s.round } };
+  }
+  const tooSoon = s && s.active && s.lastTickAt && now - Date.parse(s.lastTickAt) < 30000;
+  if (tooSoon) throw new QueryError(`too-soon: the last round of PR ${o.pr} was at ${s.lastTickAt}; is another session watching it?`);
   if (o.start) s = startState(s, o.pr, now);
-  else if (s.lastTickAt && now - Date.parse(s.lastTickAt) < 30000) throw new QueryError(`too-soon: the last round of PR ${o.pr} was at ${s.lastTickAt}; is another session watching it?`);
+  else if (!s.active) throw new QueryError(`stopped: this watch of PR ${o.pr} stopped at round ${s.round}; start a new one with watch --start`);
 
   let verdict = null;
   let queryError = null;
