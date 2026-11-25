@@ -87,7 +87,11 @@ for c in \
   "gh api repos/o/r/issues/7/comments	-f	body=x" \
   'curl -s https://API.GITHUB.COM/repos/o/r/pulls/7' \
   'gh api repos/o/r/issues/7/comments -f body=x -X GET -X POST' \
-  'GH API repos/o/r/issues/7/comments -F body=x'; do
+  'GH API repos/o/r/issues/7/comments -F body=x' \
+  "node -e \"fetch('https://api.github.com/repos/o/r/pulls/7/comments/9/replies',{method:'POST',body:'{}'})\"" \
+  'gh api repos/o/r/pulls/7/comments/9/replies/ -X GET' \
+  "gh api -X GET -f query='mutation{addComment(input:{})}' graphql; echo ok" \
+  "echo \$(gh api -X GET -f query='mutation{addComment(input:{})}' graphql)"; do
   verdict "active: deny $c" deny "$(bash_in "$c")"
 done
 for c in \
@@ -161,7 +165,9 @@ if [ "${NO_MUTANTS:-0}" != 1 ]; then
   mutant mutation-any "[active: allow gh api repos/acme/mutation-testing" 's/\$norm =~ \$gql && //'
   mutant gql-substr   "[active: allow gh api --paginate repos/acme/graphql-mutation-kit" 's/^  gql=.*$/  gql=graphql/'
   mutant replies-any  "[active: allow gh api --paginate repos/acme/replies" 's/\$norm =~ \$rep /\$norm == *\/replies* /'
-  [ "$mut_n" = 12 ] || { echo "FAIL: $mut_n of 12 mutants ran"; mut_bad=1; }
+  mutant replies-loose "[active: deny node -e \"fetch(" 's{^rep=.*$}{rep="/replies([[:space:]?]|\$)"}'
+  mutant gql-loose    "[active: deny gh api -X GET -f query=" 's{^  gql=.*$}{  gql="(^|[[:space:]/])graphql([[:space:]]|\$)"}'
+  [ "$mut_n" = 14 ] || { echo "FAIL: $mut_n of 14 mutants ran"; mut_bad=1; }
   [ "$mut_bad" = 0 ] || fail=$((fail + 1))
 fi
 [ "$fail" = 0 ]

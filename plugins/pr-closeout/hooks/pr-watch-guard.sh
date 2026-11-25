@@ -74,8 +74,10 @@ ws='[[:space:]]+'
 for s in resolvereviewthread addpullrequestreview minimizecomment; do
   [[ $norm == *"$s"* ]] && deny "$s"
 done
-# the reply endpoint ends in /replies; a repo or directory of that name is followed by a slash
-rep='/replies([[:space:]?]|$)'
+# the reply endpoint ends in /replies. Denied unless more of a path or a name follows it: a repo or
+# directory called replies reads on (/replies/pulls/7), anything else (a space, a quote's remains, ',',
+# ')', the end, a bare trailing slash) is the endpoint
+rep='/replies([^[:alnum:]_/-]|/?$|/[^[:alnum:]_.-])'
 [[ $norm =~ $rep ]] && deny "/replies"
 # gh [flags] pr|issue [flags] comment|review
 [[ $norm =~ (^|[^[:alnum:]_-])gh($ws[^[:space:]]+)*$ws(pr|issue)($ws[^[:space:]]+)*$ws(comment|review)([[:space:]]|$) ]] && deny "gh ${BASH_REMATCH[3]} ${BASH_REMATCH[5]}"
@@ -88,7 +90,7 @@ if [[ $norm =~ (^|[^[:alnum:]_-])gh$ws(-[^[:space:]]+$ws)*api([[:space:]]|$) ]];
     get=1; rest=${BASH_REMATCH[4]}
   done
   # a mutation is a GraphQL thing: a repo or path that merely contains the words is a read
-  gql='(^|[[:space:]/])graphql([[:space:]]|$)'
+  gql='(^|[[:space:]/])graphql([^[:alnum:]_/-]|$)'
   [[ $norm =~ $gql && $norm == *mutation* ]] && deny "GraphQL mutation"
   if [ -z "$get" ] && [[ $norm =~ (^|[[:space:]])(-f|--field|--raw-field|--input) ]]; then deny "gh api ${BASH_REMATCH[2]}"; fi
 fi
