@@ -141,7 +141,7 @@
 ## 4. 防護與只分類
 
 ### Task 6: 防護 hook `pr-watch-guard.sh`
-- [ ] 4.1 監看期間擋下對外動作，沒有在監看時立即放行
+- [x] 4.1 監看期間擋下對外動作，沒有在監看時立即放行
 **Files：** 新增 `plugins/pr-closeout/hooks/pr-watch-guard.sh`、`plugins/pr-closeout/tests/pr-watch-guard.test.sh`；修改 `hooks/hooks.json`（Bash matcher 加第二個 hook，另加 MCP matcher）。
 **步驟：**
 1. 寫失敗測試（`CLAUDE_PROJECT_DIR` 指向暫存目錄，stdin 餵 PreToolUse 的 JSON）：
