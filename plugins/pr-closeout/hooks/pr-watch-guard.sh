@@ -52,32 +52,30 @@ pr-watch 不把 thread 標成已解決、不在 PR 上留言、回覆或送出 r
 tool=
 [[ $input =~ \"tool_name\"[[:space:]]*:[[:space:]]*\"([^\"]+)\" ]] && tool=${BASH_REMATCH[1]}
 if [ "$tool" != Bash ]; then
-  # a GitHub MCP tool (the matcher sends only those): reads pass, anything else is a write
+  # an MCP tool the matcher sent here: only names known to read pass, everything else is a write
   op=${tool##*__}
-  case $op in get_*|list_*|search_*|*_read|read_*) exit 0 ;; esac
-  deny "GitHub MCP $op"
+  case $op in get_*|list_*|search_*|pull_request_read|issue_read) exit 0 ;; esac
+  deny "MCP $op"
 fi
 
+# The rules below allow what is known to read and deny the rest, rather than listing ways to write:
+# two review rounds found new spellings of a write each time a list of them was extended.
+# Quotes and backslashes are dropped first, so "-f" "body=x" reads like -f body=x.
+norm=${input//[\"\'\\]/}
 ws='[[:space:]]+'
 for s in resolveReviewThread addPullRequestReview minimizeComment /replies; do
-  [[ $input == *"$s"* ]] && deny "$s"
+  [[ $norm == *"$s"* ]] && deny "$s"
 done
 # gh [flags] pr|issue [flags] comment|review
-[[ $input =~ (^|[^[:alnum:]_-])gh($ws[^[:space:]]+)*$ws(pr|issue)($ws[^[:space:]]+)*$ws(comment|review)([[:space:]]|\"|$) ]] && deny "gh ${BASH_REMATCH[3]} ${BASH_REMATCH[5]}"
-# gh api writing: a method other than GET, a body field, --input, or a GraphQL mutation
-if [[ $input =~ gh$ws(-[^[:space:]]+$ws)*api ]]; then
-  shopt -s nocasematch
-  [[ $input =~ (-X|--method)[[:space:]=]*(POST|PATCH|PUT|DELETE) ]] && deny "gh api ${BASH_REMATCH[2]}"
-  shopt -u nocasematch
-  [[ $input =~ (-f|-F|--field|--raw-field)$ws\'?body= ]] && deny "gh api 帶 body"
-  [[ $input =~ --input([[:space:]=]|$) ]] && deny "gh api --input"
-  [[ $input =~ mutation([[:space:]]|\{|\() ]] && deny "GraphQL mutation"
+[[ $norm =~ (^|[^[:alnum:]_-])gh($ws[^[:space:]]+)*$ws(pr|issue)($ws[^[:space:]]+)*$ws(comment|review)([[:space:]]|$) ]] && deny "gh ${BASH_REMATCH[3]} ${BASH_REMATCH[5]}"
+# gh api: a plain GET only. Any field (-f/-F/--field/--raw-field, attached or not) or --input makes
+# it a write unless the method is given as GET; any other method is a write.
+if [[ $norm =~ (^|[^[:alnum:]_-])gh$ws(-[^[:space:]]+$ws)*api([[:space:]]|$) ]]; then
+  method=
+  [[ $norm =~ (-X|--method)[[:space:]=]*([A-Za-z]+) ]] && method=$(printf '%s' "${BASH_REMATCH[2]}" | tr '[:lower:]' '[:upper:]')
+  [ -n "$method" ] && [ "$method" != GET ] && deny "gh api $method"
+  if [ "$method" != GET ] && [[ $norm =~ (^|[[:space:]])(-[fF]|--field|--raw-field|--input) ]]; then deny "gh api ${BASH_REMATCH[2]}"; fi
 fi
-# curl / wget writing to the GitHub API
-if [[ $input == *api.github.com* ]]; then
-  shopt -s nocasematch
-  [[ $input =~ (-X|--request)[[:space:]=]*(POST|PATCH|PUT|DELETE) ]] && deny "${BASH_REMATCH[2]} api.github.com"
-  shopt -u nocasematch
-  [[ $input =~ (^|[[:space:]])(-d|--data[a-z-]*|--post-data|--post-file|--body-data|--body-file)([[:space:]=]|$) ]] && deny "寫入 api.github.com"
-fi
+# curl and wget have no business with the GitHub API during a watch: pr-watch reads through gh
+if [[ $norm =~ (^|[^[:alnum:]_-])(curl|wget)([[:space:]]|$) ]] && [[ $norm == *api.github.com* ]]; then deny "${BASH_REMATCH[2]} api.github.com"; fi
 exit 0

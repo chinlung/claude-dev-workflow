@@ -28,7 +28,7 @@
         ]
       },
       {
-        "matcher": "mcp__.*[Gg]it[Hh]ub.*__.*",
+        "matcher": "mcp__.*[Gg][Ii][Tt][Hh][Uu][Bb].*__.*|mcp__.*__(add_issue_comment|add_reply_to_pull_request_comment|add_comment_to_pending_review|add_pull_request_review_comment|create_pull_request_review|pull_request_review_write|submit_pending_pull_request_review|resolve_review_thread|update_issue_comment|issue_write|create_issue_comment)",
         "hooks": [
           {
             "type": "command",
