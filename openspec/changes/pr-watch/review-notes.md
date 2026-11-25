@@ -51,3 +51,6 @@ Three confirmed (one Medium, two Low), eight dismissed with rationale; report ke
 
 ## Round 5 - Security Review (security-guidance on faff8a8, 2026-11-25)
 - [CODE] N - Round 4's BUG-003 fix narrowed two guard rules to "followed by a space or the end" and let through spellings they used to deny (`fetch('…/replies',{method:'POST'})`, `gh api -X GET -f query='mutation…' graphql; …`). Both rules now deny unless a path or a name continues (`/replies/<more>`, `graphql-<name>`); four deny cases and two mutants (`replies-loose`, `gql-loose`). A regression of this change's own edit, not a new spelling to chase
+
+## Round 6 - Claude Security scan changes (main..73e4eb9, medium, 2026-11-25)
+19 commits, 34 files, 1,873 lines; three researchers dispatched and returned; one candidate, rejected 0 of 3 by the panel; status verified, no findings. The candidate — a PR comment's text reaches the agent's context through the SKILL's automatic triage step — was confirmed as reaching the context and rejected because no step acts on it (the triage mode has no write or run step). No entry: nothing to fix, nothing for Phase 6.
