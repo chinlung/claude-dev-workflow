@@ -82,7 +82,11 @@ for c in \
   'curl --json "{}" https://api.github.com/repos/o/r/issues/7/comments' \
   'curl -T body.json https://api.github.com/repos/o/r/issues/7/comments' \
   "node -e \"fetch('https://api.github.com/graphql',{method:'POST',body:JSON.stringify({query:'mutation{resolveReviewThread(input:{threadId:1}){clientMutationId}}'})})\"" \
-  'gh pr --repo o/r review 7 --comment -b x'; do
+  'gh pr --repo o/r review 7 --comment -b x' \
+  "gh api repos/o/r/issues/7/comments	-f	body=x" \
+  'curl -s https://API.GITHUB.COM/repos/o/r/pulls/7' \
+  'gh api repos/o/r/issues/7/comments -f body=x -X GET -X POST' \
+  'GH API repos/o/r/issues/7/comments -F body=x'; do
   verdict "active: deny $c" deny "$(bash_in "$c")"
 done
 for c in \
@@ -144,9 +148,10 @@ if [ "${NO_MUTANTS:-0}" != 1 ]; then
   mutant no-mcp       "[active: deny MCP"                     's/  deny "MCP \$op"/  exit 0/'
   mutant no-cwd       "[state under the cwd"                  's/dirs\+=\("\$top"\)/:/'
   mutant no-api-write "[active: deny gh api -X POST"          's/^if \[\[ \$norm =~ \(\^\|\[\^\[:alnum:\]_-\]\)gh\$ws\(/if false \&\& [[ \$norm =~ (^|[^[:alnum:]_-])gh\$ws(/'
-  mutant no-unquote   "[active: deny gh api repos/o/r/issues/7/comments \"-f\""  's/^norm=.*$/norm=\$input/'
+  mutant no-unquote   "[active: deny gh api graphql -f query="  's/^norm=\$\{norm//.*$/:/'
+  mutant no-lower     "[active: deny gh api -XDELETE"        's/\| tr .\[:upper:\]. .\[:lower:\]. //'
   mutant no-curl      "[active: deny curl -X POST"            's/^if \[\[ \$norm =~ \(\^\|\[\^\[:alnum:\]_-\]\)\(curl/if false \&\& [[ \$norm =~ (^|[^[:alnum:]_-])(curl/'
-  [ "$mut_n" = 7 ] || { echo "FAIL: $mut_n of 7 mutants ran"; mut_bad=1; }
+  [ "$mut_n" = 8 ] || { echo "FAIL: $mut_n of 8 mutants ran"; mut_bad=1; }
   [ "$mut_bad" = 0 ] || fail=$((fail + 1))
 fi
 [ "$fail" = 0 ]

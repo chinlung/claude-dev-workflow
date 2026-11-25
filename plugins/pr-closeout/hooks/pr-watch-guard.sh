@@ -58,24 +58,35 @@ if [ "$tool" != Bash ]; then
   deny "MCP $op"
 fi
 
-# The rules below allow what is known to read and deny the rest, rather than listing ways to write:
-# two review rounds found new spellings of a write each time a list of them was extended.
-# Quotes and backslashes are dropped first, so "-f" "body=x" reads like -f body=x.
-norm=${input//[\"\'\\]/}
+# What this guard is: a tripwire for writes the model makes by habit or by following the wrong part of
+# a document (the /review-pr fix-and-reply phases, say), in the spellings a model actually uses. It is
+# not a boundary against a model that sets out to get past it — that model can set the state file's
+# "active" to false with its edit tool. The boundaries are elsewhere: /review-pr --triage-only has no
+# write step, and pr-watch changes nothing a comment asks for until the user confirms the table.
+# So the command is normalised once, generally — decoded from JSON (escapes become real whitespace),
+# lowercased, quotes and backslashes dropped — and the rules allow what is known to read; three review
+# rounds of adding one more spelling each are why it is not a list of ways to write.
+cmd=$input
+command -v jq >/dev/null 2>&1 && cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null)
+norm=$(printf '%s' "$cmd" | tr '[:upper:]' '[:lower:]' | tr '\t\r\n' '   ')
+norm=${norm//[\"\'\\]/}
 ws='[[:space:]]+'
-for s in resolveReviewThread addPullRequestReview minimizeComment /replies; do
+for s in resolvereviewthread addpullrequestreview minimizecomment /replies; do
   [[ $norm == *"$s"* ]] && deny "$s"
 done
 # gh [flags] pr|issue [flags] comment|review
 [[ $norm =~ (^|[^[:alnum:]_-])gh($ws[^[:space:]]+)*$ws(pr|issue)($ws[^[:space:]]+)*$ws(comment|review)([[:space:]]|$) ]] && deny "gh ${BASH_REMATCH[3]} ${BASH_REMATCH[5]}"
-# gh api: a plain GET only. Any field (-f/-F/--field/--raw-field, attached or not) or --input makes
-# it a write unless the method is given as GET; any other method is a write.
+# gh api: a plain GET only. Every method given must be GET; any field (-f/-F/--field/--raw-field,
+# attached or not), --input or GraphQL mutation without an explicit GET is a write.
 if [[ $norm =~ (^|[^[:alnum:]_-])gh$ws(-[^[:space:]]+$ws)*api([[:space:]]|$) ]]; then
-  method=
-  [[ $norm =~ (-X|--method)[[:space:]=]*([A-Za-z]+) ]] && method=$(printf '%s' "${BASH_REMATCH[2]}" | tr '[:lower:]' '[:upper:]')
-  [ -n "$method" ] && [ "$method" != GET ] && deny "gh api $method"
-  if [ "$method" != GET ] && [[ $norm =~ (^|[[:space:]])(-[fF]|--field|--raw-field|--input) ]]; then deny "gh api ${BASH_REMATCH[2]}"; fi
+  rest=$norm; get=
+  while [[ $rest =~ (-x|--method)[[:space:]=]*([a-z]+)(.*)$ ]]; do
+    [ "${BASH_REMATCH[2]}" = get ] || deny "gh api ${BASH_REMATCH[2]}"
+    get=1; rest=${BASH_REMATCH[3]}
+  done
+  [[ $norm == *mutation* ]] && deny "GraphQL mutation"
+  if [ -z "$get" ] && [[ $norm =~ (^|[[:space:]])(-f|--field|--raw-field|--input) ]]; then deny "gh api ${BASH_REMATCH[2]}"; fi
 fi
-# curl and wget have no business with the GitHub API during a watch: pr-watch reads through gh
-if [[ $norm =~ (^|[^[:alnum:]_-])(curl|wget)([[:space:]]|$) ]] && [[ $norm == *api.github.com* ]]; then deny "${BASH_REMATCH[2]} api.github.com"; fi
+# curl and wget have no business with GitHub during a watch: pr-watch reads through gh
+if [[ $norm =~ (^|[^[:alnum:]_-])(curl|wget)([[:space:]]|$) ]] && [[ $norm == *github.com* ]]; then deny "${BASH_REMATCH[2]} github.com"; fi
 exit 0
