@@ -171,7 +171,7 @@
 ## 5. skill 與文件
 
 ### Task 8: `pr-watch` SKILL.md 與 docs 測試
-- [ ] 5.1 SKILL.md 寫好，停止原因與 `STOP_REASONS` 雙向一致，禁止動作只出現在「不做」那一節
+- [x] 5.1 SKILL.md 寫好，停止原因與 `STOP_REASONS` 雙向一致，禁止動作只出現在「不做」那一節
 **Files：** 新增 `plugins/pr-closeout/skills/pr-watch/SKILL.md`、`plugins/pr-closeout/tests/pr-watch-docs.test.sh`。
 **步驟：**
 1. 寫失敗的 docs 測試：
