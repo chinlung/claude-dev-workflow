@@ -16,7 +16,7 @@ pr-watch MUST 只在使用者明確要求監看某個 PR 時開始一段監看�
 - **THEN** 新的一段不會立刻因上限而停止
 
 ### Requirement: 能不能合併只看 pr-closeout 的判定
-pr-watch 每一輪 MUST 以 `pr-closeout` 的判定（exit code 與 `hits[]`）為準，不另寫一套合併判斷。`hits[]` 裡的每一項都要處理，不只 exit code 代表的那一項。
+pr-watch 每一輪 MUST 以 `pr-closeout` 的判定（exit code 與 `hits[]`）為準，不另寫一套合併判斷。`hits[]` 裡的每一項都要處理，不只 exit code 代表的那一項。pr-watch 的「可以合併」只涵蓋 PR 的狀態（衝突、check、thread、閘門），MUST NOT 宣稱審查涵蓋已確認：那由合併前帶 `--repo-dir` 的 `pr-closeout ready` 判定。
 
 #### Scenario: check 還在跑
 - **WHEN** 這一輪的 hits 含 `pending`，也沒有新留言
@@ -26,8 +26,12 @@ pr-watch 每一輪 MUST 以 `pr-closeout` 的判定（exit code 與 `hits[]`）�
 - **WHEN** exit 為 3，`hits[]` 也列出 `checks-failed`，check 都已跑完
 - **THEN** 這一輪也處理 CI 失敗
 
+#### Scenario: 停在可以合併不代表審查涵蓋已確認
+- **WHEN** 監看因「可以合併」停止
+- **THEN** 停止報告說的是 check 都跑完、PR 狀態可以合併；要合併仍走 `pr-closeout`，它的 `ready` 帶 `--repo-dir` 時才會檢查審查涵蓋
+
 ### Requirement: head 剛出現時不下結論
-PR head 第一次被看到後的寬限期（一輪）內，pr-watch MUST NOT 判定「可以合併」或「只剩使用者能處理」。必跑 check 還沒出現時，MUST 視為還沒跑完，而不是失敗。check 都跑完之前，pr-watch MUST NOT 處理 CI 失敗，也 MUST NOT 把新留言交去分類。
+PR head 第一次被看到後的寬限期（一輪）內，pr-watch MUST NOT 判定「可以合併」或「只剩使用者能處理」。必跑 check 還沒出現時，MUST 視為還沒跑完，而不是失敗；這個容忍只算到該 head 第一次出現起的 3 輪（含寬限期那一輪），之後仍缺席的必跑 check MUST 照一般失敗處理，讓監看由「沒有進展」停止，而不是一直停在還沒跑完。check 都跑完之前，pr-watch MUST NOT 處理 CI 失敗，也 MUST NOT 把新留言交去分類。
 
 #### Scenario: 剛 push 就啟動
 - **WHEN** 使用者剛 push 就要求監看，PR 上還沒有任何 check
@@ -36,6 +40,10 @@ PR head 第一次被看到後的寬限期（一輪）內，pr-watch MUST NOT 判
 #### Scenario: 必跑 check 還沒出現
 - **WHEN** head 是新的，必跑 check 名單上的 check 還沒出現
 - **THEN** 這一輪視為還沒跑完，不重跑、不修改
+
+#### Scenario: 必跑 check 一直沒出現
+- **WHEN** 同一個 head 已經過了 3 輪，必跑 check 名單上的 check 仍沒出現
+- **THEN** 它被當成一般的 `checks-failed`：不再算還沒跑完，新留言照常分類，連兩輪沒有變化就以「沒有進展」停止
 
 ### Requirement: 不做對外、不可逆的動作
 pr-watch MUST NOT 合併 PR、MUST NOT 把 review thread 標成已解決、MUST NOT 刪除分支、MUST NOT 在 GitHub 上發留言、回覆或送出 review。使用者明確說 push 之前，MUST NOT push。有 PR 正在監看時，防護 hook MUST 擋下把 thread 標成已解決、在 PR 上留言、回覆或送出 review 的命令與 MCP 工具。
@@ -103,7 +111,7 @@ pr-watch MUST 以「端點＋id＋內文雜湊」比對留言：內文被編輯�
 - **THEN** 只有這則被分類，分類表列出後命令結束
 
 ### Requirement: 只回報不處理的情況
-衝突、changes-requested、behind、blocked-unseen、draft、`unreviewed`，pr-watch MUST 只回報給使用者，不自行處理。回報衝突或 behind 時 MUST 附上 `baseBehind`。
+衝突、changes-requested、behind、blocked-unseen、draft，pr-watch MUST 只回報給使用者，不自行處理。回報衝突或 behind 時 MUST 附上 `baseBehind`。
 
 #### Scenario: 與 base 衝突
 - **WHEN** 這一輪有 `conflict`

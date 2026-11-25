@@ -61,7 +61,7 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/pr-closeout.mjs watch <owner/repo> <pr> --rep
    - 待使用者確認的 thread（`threads[]`）
    
    報告印完之後才送通知、結束迴圈。有 PushNotification 工具就送一則通知，內容只放 PR 編號和停止原因，不放留言或 log 的內容；沒有這個工具就只印報告。最後用 ScheduleWakeup `stop: true` 結束迴圈。
-6. **衝突、behind、changes-requested、blocked-unseen、draft、unreviewed。** 只回報，回報衝突或 behind 時附上 `baseBehind`。寬限期過後，如果只剩這類事項，腳本會停在 `needs-user`。
+6. **衝突、behind、changes-requested、blocked-unseen、draft。** 只回報，回報衝突或 behind 時附上 `baseBehind`。寬限期過後，如果只剩這類事項，腳本會停在 `needs-user`。
 
 ### 下一輪
 
@@ -86,7 +86,7 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/pr-closeout.mjs watch <owner/repo> <pr> --rep
 | `head-not-allowed` | PR head 不是本機 HEAD 的祖先 | 有人從別處推了 commit，請使用者先同步本機 |
 | `query-failed` | GitHub 查詢連續失敗 3 次 | 附上 `detail`，稍後可以重新啟動 |
 | `limit` | 這一段超過 24 小時或 60 輪 | 說「繼續盯」可以開下一段 |
-| `ready` | check 都跑完、沒有新留言、可以合併 | 要合併請說 merge（走 pr-closeout） |
+| `ready` | check 都跑完、沒有新留言、PR 狀態可以合併；不含審查涵蓋（`unreviewed`），那由合併前的 `pr-closeout ready --repo-dir` 判定 | 要合併請說 merge（走 pr-closeout），合併前它會再檢查審查涵蓋 |
 | `needs-user` | 只剩使用者能處理的事 | 逐項列出：未 push 的 commit、待確認的 thread、衝突或閘門 |
 | `no-progress` | check 都跑完後，連兩輪狀態完全相同 | 列出還在失敗的 check 和已經做過的處理 |
 

@@ -41,6 +41,8 @@ Review Focus 1–5 hold (5 checked through `watch` on a 101-comment fixture). Al
 - [CODE] N - M3 lost update between `watch` and `watch-ack` from another session (no lock); deferred to follow-ups, a comment is triaged twice at worst
 - [CODE] N - M5 `--triage-only` takes bare ids, so an id that exists on two endpoints is triaged twice; deferred to follow-ups
 - [CODE] N - M6 an I/O error in saveState/loadState exits 1 with a stack trace and may leave a `.tmp.<pid>` file; deferred to follow-ups
+- [DESIGN] Y - I3 design side (added in Phase 6, C1 correction path: one fact, two artifacts) design.md's `settled` said a missing required check is "not finished" with no bound, which contradicts the rewritten spec and the code; it now states the 3-round bound counted from the head's first round
+- [DESIGN] Y - M1 design side (added in Phase 6, C1 correction path) design.md's `ready` stop now says it covers the PR's state only, because `watch` calls `assess()` without coverage data; the spec and SKILL carry the user-facing wording
 - [CODE] N - M8 tests that guarded less than they claimed: covered by this round's new cases (tick after stop, `--start` while watched, `--stop`, required-missing window, second comment) and their five `w-*` mutants plus two guard mutants; a round-2 null rollup stopping `ready` is the documented one-round grace (design [default])
 
 ## Round 4 - code-audit-rigor (7930ded..4adac41, 2026-11-25)
@@ -55,7 +57,7 @@ Three confirmed (one Medium, two Low), eight dismissed with rationale; report ke
 ## Round 6 - Claude Security scan changes (main..73e4eb9, medium, 2026-11-25)
 19 commits, 34 files, 1,873 lines; three researchers dispatched and returned; one candidate, rejected 0 of 3 by the panel; status verified, no findings. The candidate — a PR comment's text reaches the agent's context through the SKILL's automatic triage step — was confirmed as reaching the context and rejected because no step acts on it (the triage mode has no write or run step). No entry: nothing to fix, nothing for Phase 6.
 
-## Round 7 - Scoped re-review (opus, a54539f..97ba405, 2026-11-25)
+## Round 7 - Scoped re-review (opus, a54539f..97ba405, 2026-11-25, final)
 No Critical or Important; the fixes behave as intended (CLI, watchVerdict and the hook were run, not read). Minor only.
 - [CODE] N - tests that stayed green with the code they guard removed: the `--start --stop` refusal, the required-missing window counted from the head's first round, the end-of-path branch of the `/replies` rule; the `--stop` case ran without `--fixture` (its mutant reached GitHub). Each has a case and a mutant now (`w-start-stop`, `w-req-head`, `replies-end`); the docs test asserts `--stop`, `stopped` and the null-attempt rule, floors raised
 - [CODE] N - `watch-ack --stop` was accepted and ignored; `--start` and `--stop` are now refused outside `watch`
