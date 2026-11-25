@@ -687,7 +687,7 @@ function watchCli(o) {
     throw new QueryError(`wrong-branch: the clone is on ${branch}, the PR's branch is ${verdict.headRefName}`);
   }
   const localHead = git(o.repoDir, ['rev-parse', 'HEAD']).out.trim();
-  const local = { head: localHead, headKnown: false, headAllowed: false, unpushed: null, dirty: git(o.repoDir, ['status', '--porcelain']).out.trim() !== '' };
+  const local = { head: localHead, headKnown: false, headAllowed: false, unpushed: null, dirty: git(o.repoDir, ['status', '--porcelain', '--untracked-files=no']).out.trim() !== '' };
   if (verdict && typeof verdict.head === 'string') {
     local.headKnown = git(o.repoDir, ['cat-file', '-e', `${verdict.head}^{commit}`]).ok;
     local.headAllowed = local.headKnown && git(o.repoDir, ['merge-base', '--is-ancestor', verdict.head, 'HEAD']).ok;

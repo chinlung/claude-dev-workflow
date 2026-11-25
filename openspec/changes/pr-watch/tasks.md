@@ -199,7 +199,7 @@
 5. commit（具名）。
 
 ### Task 10: 沙盒 PR 實測
-- [ ] 5.3 在 private 沙盒 PR 上跑完一段完整流程，結果寫進 review-notes
+- [x] 5.3 在 private 沙盒 PR 上跑完一段完整流程，結果寫進 review-notes
 **步驟：**
 1. 建 private 沙盒 repo：一個 Python 檔加一個會失敗的測試 workflow，開 PR，用 workflow_dispatch 讓 `github-actions[bot]` 留一則 inline 留言。
 2. 在沙盒 repo 用本分支的 plugin 啟動 pr-watch，依序觀察：

@@ -593,9 +593,16 @@ if cmp -s "$ST5" "$tmp/st5"; then ok; else failed "[wrong branch] state changed"
 git -C "$R5" switch -q feat/x
 # a commit on top of the PR head: still allowed, one unpushed; a dirty tree shows
 echo c > "$R5/c.txt"; git -C "$R5" add c.txt; $G -C "$R5" commit -q -m c; echo d > "$R5/d.txt"
+# an untracked file (a triage or review result) is not a dirty tree: the fix commit names its files
 wcli 0 "local commit on top" 2026-11-25T00:15:00Z --start
-jqeq "local commit on top: allowed, one unpushed, dirty" '[.watch.headAllowed, .watch.unpushed, .watch.dirty]' '[true,1,true]'
-rm -f "$R5/d.txt"
+jqeq "local commit on top: allowed, one unpushed, untracked is clean" '[.watch.headAllowed, .watch.unpushed, .watch.dirty]' '[true,1,false]'
+echo changed >> "$R5/a.txt"
+wcli 0 "tracked change" 2026-11-25T00:16:00Z --start
+jqeq "tracked change: dirty" '.watch.dirty' 'true'
+git -C "$R5" checkout -q -- a.txt; git -C "$R5" add d.txt
+wcli 0 "staged new file" 2026-11-25T00:17:00Z --start
+jqeq "staged new file: dirty" '.watch.dirty' 'true'
+git -C "$R5" rm -q --cached d.txt; rm -f "$R5/d.txt"
 # a PR head this clone has never seen
 FX=$(fixture w5-unknown "$P.headRefOid = \"2222222222222222222222222222222222222222\"") wcli 8 "unknown PR head" 2026-11-25T00:20:00Z --start
 jqeq "unknown PR head: stops" '.watch.stop.reason' '"head-not-allowed"'
@@ -696,8 +703,9 @@ if [ "${NO_MUTANTS:-0}" != 1 ]; then
   mutant w-required    "[missing required: not settled]" "s/const requiredMissing = hits\.some/const requiredMissing = false \&\& hits.some/"
   mutant w-progress    "[red r2: one round to act]"        "s/NO_PROGRESS_TO_STOP = 2;/NO_PROGRESS_TO_STOP = 1;/"
   mutant w-head        "[head not in the clone stops]"     "s/w\.headAllowed = !!\(local && local\.headKnown && local\.headAllowed\);/w.headAllowed = true;/"
+  mutant w-untracked  "[local commit on top: allowed, one unpushed, untracked is clean]" "s/, '--untracked-files=no'\]/]/"
   mutants_judged
-  MUT_WANT_N=47
+  MUT_WANT_N=48
   if [ "$mut_n" != "$MUT_WANT_N" ]; then echo "FAIL: $mut_n of $MUT_WANT_N mutants ran"; mut_bad=1; fi
   [ "$mut_bad" = 0 ] || fail=$((fail + 1))
 fi
