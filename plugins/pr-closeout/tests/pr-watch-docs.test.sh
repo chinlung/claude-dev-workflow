@@ -39,7 +39,7 @@ done
 
 # the seams the SKILL must name
 body=$(cat "$SKILL")
-for s in 'watch --start' 'watch-ack' '--triage-only' '--repo-dir' 'PushNotification' '/loop' 'run_attempt' '*.local.json' 'ScheduleWakeup'; do
+for s in 'watch --start' '--stop' '`stopped`' '`attempt` 是 null' 'watch-ack' '--triage-only' '--repo-dir' 'PushNotification' '/loop' 'run_attempt' '*.local.json' 'ScheduleWakeup'; do
   if [[ $body == *"$s"* ]]; then ok; else failed "[SKILL names $s]"; fi
 done
 
@@ -50,4 +50,4 @@ for s in '請使用者裁定' '不照抄留言原文' 'check 名稱'; do
 done
 
 echo "pr-watch-docs: $pass passed, $fail failed"
-[ "$fail" = 0 ] && [ "$pass" -ge 20 ]
+[ "$fail" = 0 ] && [ "$pass" -ge 28 ]

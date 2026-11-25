@@ -562,6 +562,11 @@ stops "a missing required check is unsettled" none; jqeq "missing required: not 
 wround "required check missing r3" "$V_MISSING" 11; jqeq "missing required r3: still unsettled" '.watch.settled' 'false'
 wround "required check missing r4" "$V_MISSING" 16; jqeq "missing required after the window: settled" '.watch.settled' 'true'
 wround "required check missing r5" "$V_MISSING" 26; stops "missing required for good: no-progress" no-progress
+# the window counts from the round a head is first seen, not from the start of the stretch
+V_MISSING_H2=$(mkv missing-h2 "$(fixture wv-missing-h2 "$P.headRefOid = \"2222222222222222222222222222222222222222\"")" PR_CLOSEOUT_CONFIG="$tmp/req.json")
+fresh; wround "pending, then a new head r1" "$V_PENDING" 1; wround "r2" "$V_PENDING" 6; wround "new head missing required r3" "$V_MISSING_H2" 11
+wround "new head missing required r4" "$V_MISSING_H2" 16; wround "new head missing required r5" "$V_MISSING_H2" 21
+jqeq "missing required: window from the head's first round" '.watch.settled' 'false'
 # a second comment arriving after the first was triaged is progress, never no-progress
 fresh; wround "comment then another r1" "$V_COMMENT" 1; wround "comment then another r2" "$V_COMMENT" 6; ackall
 wround "comment then another r3" "$V_COMMENT2" 11; stops "a new comment is not no-progress" none
@@ -601,7 +606,9 @@ wcli 0 "--start right after a stop" 2026-11-25T00:05:10Z --start
 cp "$ST5" "$tmp/st5"; wcli 7 "--start while another session watches" 2026-11-25T00:05:20Z --start
 has "--start while watched: too soon" "$(jq -r '.hits[0].detail' "$tmp/out.json")" "too-soon"
 if cmp -s "$ST5" "$tmp/st5"; then ok; else failed "[--start while watched] state changed"; fi
-run_cli 0 "watch --stop" watch example/repo 1 --repo-dir "$R5" --stop
+run_cli 7 "watch --start --stop" watch example/repo 1 --repo-dir "$tmp/r5none" --fixture "$FX5" --start --stop
+run_cli 7 "watch-ack --stop" watch-ack example/repo 1 --repo-dir "$R5" --stop --comment "issues/comments:1:0123456789abcdef"
+run_cli 0 "watch --stop" watch example/repo 1 --repo-dir "$R5" --fixture "$FX5" --stop
 jqeq "watch --stop: inactive" '.watch.active' 'false'
 if [ "$(jq -r '.active' "$ST5")" = false ]; then ok; else failed "[watch --stop] state still active"; fi
 rm -rf "$tmp/r5none"; mkdir -p "$tmp/r5none"
@@ -726,12 +733,14 @@ if [ "${NO_MUTANTS:-0}" != 1 ]; then
   mutant w-head        "[head not in the clone stops]"     "s/w\.headAllowed = !!\(local && local\.headKnown && local\.headAllowed\);/w.headAllowed = true;/"
   mutant w-untracked  "[local commit on top: allowed, one unpushed, untracked is clean]" "s/, '--untracked-files=no'\]/]/"
   mutant w-stopped     "[a tick after a stop]"             "s/else if \(!s\.active\) throw/else if (false) throw/"
-  mutant w-stop        "[watch --stop: inactive]"                    "s/  if \(o\.stop\) \{/  if (false) {/"
+  mutant w-stop        "[watch --stop]"                    "s/  if \(o\.stop\) \{/  if (false) {/"
   mutant w-soon-start  "[--start while another session watches]" "s/const tooSoon = s && s\.active &&/const tooSoon = !o.start \&\& s \&\& s.active \&\&/"
+  mutant w-req-head    "[missing required: window from the head's first round]" "s/w\.round - s\.headSeen\[verdict\.head\] < REQUIRED_MISSING_ROUNDS/w.round - 1 < REQUIRED_MISSING_ROUNDS/"
+  mutant w-start-stop  "[watch --start --stop]"            "s/  if \(o\.start && o\.stop\) throw/  if (false) throw/"
   mutant w-req-window  "[missing required after the window: settled]" "s/w\.round - s\.headSeen\[verdict\.head\] < REQUIRED_MISSING_ROUNDS && //"
   mutant w-keys        "[a new comment is not no-progress]" "s/\[\.\.\.w\.newComments\]\.sort\(\)\]/w.newComments.length]/"
   mutants_judged
-  MUT_WANT_N=53
+  MUT_WANT_N=55
   if [ "$mut_n" != "$MUT_WANT_N" ]; then echo "FAIL: $mut_n of $MUT_WANT_N mutants ran"; mut_bad=1; fi
   [ "$mut_bad" = 0 ] || fail=$((fail + 1))
 fi

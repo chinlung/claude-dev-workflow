@@ -90,6 +90,7 @@ for c in \
   'GH API repos/o/r/issues/7/comments -F body=x' \
   "node -e \"fetch('https://api.github.com/repos/o/r/pulls/7/comments/9/replies',{method:'POST',body:'{}'})\"" \
   'gh api repos/o/r/pulls/7/comments/9/replies/ -X GET' \
+  'gh api -X GET repos/o/r/pulls/7/comments/9/replies' \
   "gh api -X GET -f query='mutation{addComment(input:{})}' graphql; echo ok" \
   "echo \$(gh api -X GET -f query='mutation{addComment(input:{})}' graphql)"; do
   verdict "active: deny $c" deny "$(bash_in "$c")"
@@ -136,7 +137,7 @@ done
 out=$(bash_in 'gh pr comment 7 -b x' | env -u CLAUDE_PROJECT_DIR bash "$HOOK" 2>/dev/null); rc=$?
 if [ "$rc" = 0 ] && [ -z "$out" ]; then ok; else failed "[no CLAUDE_PROJECT_DIR] rc $rc out $out"; fi
 
-MIN_PASS=75
+MIN_PASS=85
 [ "$pass" -ge "$MIN_PASS" ] || failed "only $pass checks passed, expected at least $MIN_PASS"
 echo "pr-watch-guard: $pass passed, $fail failed"
 
@@ -166,8 +167,9 @@ if [ "${NO_MUTANTS:-0}" != 1 ]; then
   mutant gql-substr   "[active: allow gh api --paginate repos/acme/graphql-mutation-kit" 's/^  gql=.*$/  gql=graphql/'
   mutant replies-any  "[active: allow gh api --paginate repos/acme/replies" 's/\$norm =~ \$rep /\$norm == *\/replies* /'
   mutant replies-loose "[active: deny node -e \"fetch(" 's{^rep=.*$}{rep="/replies([[:space:]?]|\$)"}'
+  mutant replies-end  "[active: deny gh api -X GET repos/o/r/pulls/7/comments/9/replies]" 's{\|/\?\$\|}{|}'
   mutant gql-loose    "[active: deny gh api -X GET -f query=" 's{^  gql=.*$}{  gql="(^|[[:space:]/])graphql([[:space:]]|\$)"}'
-  [ "$mut_n" = 14 ] || { echo "FAIL: $mut_n of 14 mutants ran"; mut_bad=1; }
+  [ "$mut_n" = 15 ] || { echo "FAIL: $mut_n of 15 mutants ran"; mut_bad=1; }
   [ "$mut_bad" = 0 ] || fail=$((fail + 1))
 fi
 [ "$fail" = 0 ]

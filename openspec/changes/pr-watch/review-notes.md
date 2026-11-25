@@ -54,3 +54,10 @@ Three confirmed (one Medium, two Low), eight dismissed with rationale; report ke
 
 ## Round 6 - Claude Security scan changes (main..73e4eb9, medium, 2026-11-25)
 19 commits, 34 files, 1,873 lines; three researchers dispatched and returned; one candidate, rejected 0 of 3 by the panel; status verified, no findings. The candidate — a PR comment's text reaches the agent's context through the SKILL's automatic triage step — was confirmed as reaching the context and rejected because no step acts on it (the triage mode has no write or run step). No entry: nothing to fix, nothing for Phase 6.
+
+## Round 7 - Scoped re-review (opus, a54539f..97ba405, 2026-11-25)
+No Critical or Important; the fixes behave as intended (CLI, watchVerdict and the hook were run, not read). Minor only.
+- [CODE] N - tests that stayed green with the code they guard removed: the `--start --stop` refusal, the required-missing window counted from the head's first round, the end-of-path branch of the `/replies` rule; the `--stop` case ran without `--fixture` (its mutant reached GitHub). Each has a case and a mutant now (`w-start-stop`, `w-req-head`, `replies-end`); the docs test asserts `--stop`, `stopped` and the null-attempt rule, floors raised
+- [CODE] N - `watch-ack --stop` was accepted and ignored; `--start` and `--stop` are now refused outside `watch`
+- [CODE] N - the guard judges `gh api` over the whole command line, not per pipeline segment: an explicit `-X GET` on one call lets a field write on a later call through, and lowercased `grep -F`, `cut -f`, `bash -x` after a read are denied as gh api flags. Deferred to follow-ups (MEDIUM): a fourth round of regex patches for one class, so the fix is per-segment evaluation, designed on its own
+- [CODE] N - rare cases deferred to follow-ups (LOW): query-failed rounds use up the required-missing window; `--stop` cannot clear a state of another version while the guard still reads it as active; a tick before the user confirms the table re-triages the same comments

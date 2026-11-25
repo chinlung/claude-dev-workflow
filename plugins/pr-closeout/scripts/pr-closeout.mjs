@@ -503,6 +503,7 @@ function parseArgs(argv) {
     const val = rest[i + 1];
     if (!['--expect-head', '--repo-dir', '--fixture', '--branch', '--accept-unreviewed', ...watchFlags].includes(flag)) throw new UsageError(`unknown option ${flag}`);
     if (watchFlags.includes(flag) && !cmd.startsWith('watch')) throw new UsageError(`${flag} is for watch only`);
+    if ((flag === '--start' || flag === '--stop') && cmd !== 'watch') throw new UsageError(`${flag} is for watch only`);
     if (flag === '--start') { o.start = true; continue; }
     if (flag === '--stop') { o.stop = true; continue; }
     if (val === undefined) throw new UsageError(`${flag} needs a value`);
