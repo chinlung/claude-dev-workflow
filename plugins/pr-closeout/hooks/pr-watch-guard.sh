@@ -71,9 +71,12 @@ command -v jq >/dev/null 2>&1 && cmd=$(printf '%s' "$input" | jq -r '.tool_input
 norm=$(printf '%s' "$cmd" | tr '[:upper:]' '[:lower:]' | tr '\t\r\n' '   ')
 norm=${norm//[\"\'\\]/}
 ws='[[:space:]]+'
-for s in resolvereviewthread addpullrequestreview minimizecomment /replies; do
+for s in resolvereviewthread addpullrequestreview minimizecomment; do
   [[ $norm == *"$s"* ]] && deny "$s"
 done
+# the reply endpoint ends in /replies; a repo or directory of that name is followed by a slash
+rep='/replies([[:space:]?]|$)'
+[[ $norm =~ $rep ]] && deny "/replies"
 # gh [flags] pr|issue [flags] comment|review
 [[ $norm =~ (^|[^[:alnum:]_-])gh($ws[^[:space:]]+)*$ws(pr|issue)($ws[^[:space:]]+)*$ws(comment|review)([[:space:]]|$) ]] && deny "gh ${BASH_REMATCH[3]} ${BASH_REMATCH[5]}"
 # gh api: a plain GET only. Every method given must be GET; any field (-f/-F/--field/--raw-field,
@@ -84,8 +87,9 @@ if [[ $norm =~ (^|[^[:alnum:]_-])gh$ws(-[^[:space:]]+$ws)*api([[:space:]]|$) ]];
     [ "${BASH_REMATCH[3]}" = get ] || deny "gh api ${BASH_REMATCH[3]}"
     get=1; rest=${BASH_REMATCH[4]}
   done
-  # a mutation is a GraphQL thing: a repo or path that merely contains the word is a read
-  [[ $norm == *graphql* && $norm == *mutation* ]] && deny "GraphQL mutation"
+  # a mutation is a GraphQL thing: a repo or path that merely contains the words is a read
+  gql='(^|[[:space:]/])graphql([[:space:]]|$)'
+  [[ $norm =~ $gql && $norm == *mutation* ]] && deny "GraphQL mutation"
   if [ -z "$get" ] && [[ $norm =~ (^|[[:space:]])(-f|--field|--raw-field|--input) ]]; then deny "gh api ${BASH_REMATCH[2]}"; fi
 fi
 # curl and wget have no business with GitHub during a watch: pr-watch reads through gh

@@ -97,6 +97,8 @@ for c in \
   'gh api repos/acme/react-xterm/pulls/7/comments --paginate' \
   'gh api repos/acme/mutation-testing/pulls/7/comments --paginate' \
   'gh api repos/acme/mutation-testing/issues/7/comments --paginate' \
+  'gh api --paginate repos/acme/replies/pulls/7/comments' \
+  'gh api --paginate repos/acme/graphql-mutation-kit/pulls/7/comments' \
   'gh api -X GET repos/o/r/pulls/7/comments -f per_page=100'; do
   verdict "active: allow $c" allow "$(bash_in "$c")"
 done
@@ -156,8 +158,10 @@ if [ "${NO_MUTANTS:-0}" != 1 ]; then
   mutant no-lower     "[active: deny gh api -XDELETE"        's/\| tr .\[:upper:\]. .\[:lower:\]. //'
   mutant no-curl      "[active: deny curl -X POST"            's/^if \[\[ \$norm =~ \(\^\|\[\^\[:alnum:\]_-\]\)\(curl/if false \&\& [[ \$norm =~ (^|[^[:alnum:]_-])(curl/'
   mutant no-xanchor   "[active: allow gh api repos/acme/react-xterm" 's/\(\^\|\[\[:space:\]\]\)\(-x\|--method\)/()(-x|--method)/'
-  mutant mutation-any "[active: allow gh api repos/acme/mutation-testing" 's/\$norm == \*graphql\* && //'
-  [ "$mut_n" = 10 ] || { echo "FAIL: $mut_n of 10 mutants ran"; mut_bad=1; }
+  mutant mutation-any "[active: allow gh api repos/acme/mutation-testing" 's/\$norm =~ \$gql && //'
+  mutant gql-substr   "[active: allow gh api --paginate repos/acme/graphql-mutation-kit" 's/^  gql=.*$/  gql=graphql/'
+  mutant replies-any  "[active: allow gh api --paginate repos/acme/replies" 's/\$norm =~ \$rep /\$norm == *\/replies* /'
+  [ "$mut_n" = 12 ] || { echo "FAIL: $mut_n of 12 mutants ran"; mut_bad=1; }
   [ "$mut_bad" = 0 ] || fail=$((fail + 1))
 fi
 [ "$fail" = 0 ]

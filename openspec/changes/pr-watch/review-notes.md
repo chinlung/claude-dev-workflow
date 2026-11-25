@@ -42,3 +42,9 @@ Review Focus 1–5 hold (5 checked through `watch` on a 101-comment fixture). Al
 - [CODE] N - M5 `--triage-only` takes bare ids, so an id that exists on two endpoints is triaged twice; deferred to follow-ups
 - [CODE] N - M6 an I/O error in saveState/loadState exits 1 with a stack trace and may leave a `.tmp.<pid>` file; deferred to follow-ups
 - [CODE] N - M8 tests that guarded less than they claimed: covered by this round's new cases (tick after stop, `--start` while watched, `--stop`, required-missing window, second comment) and their five `w-*` mutants plus two guard mutants; a round-2 null rollup stopping `ready` is the documented one-round grace (design [default])
+
+## Round 4 - code-audit-rigor (7930ded..4adac41, 2026-11-25)
+Three confirmed (one Medium, two Low), eight dismissed with rationale; report kept locally, not in the repo.
+- [DESIGN] Y - BUG-001 a triaged comment reached the scope ledger with no rule on its form: an unconfirmed, comment-derived In-scope line is printed back into the context by the scope-ledger Stop and SessionStart hooks, with "已授權自主執行→繼續做". SKILL now writes it as 「請使用者裁定：…」 in the model's words with the comment key and author, never the comment's text, and turns it into a fix item only after the user confirms. design.md threat model row 1 must name the ledger form as part of the control
+- [CODE] N - BUG-002 check names (`hits[].detail`, `checks[].name`, `failedRuns[].name`) are text someone else wrote and the SKILL named only comments and CI logs; the rule names them now
+- [CODE] N - BUG-003 the guard denied the triage's own reads for a repo named `replies` or `*graphql*mutation*` (sibling of Round 3 I5); `/replies` counts only at the end of a path and `graphql` as its own word
