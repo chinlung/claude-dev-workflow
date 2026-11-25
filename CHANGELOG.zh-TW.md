@@ -4,6 +4,13 @@
 
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
+## [1.23.0] - 2026-11-25
+
+### Added
+
+- **pr-closeout 1.1.2 → 1.2.0** — 新增 `pr-watch` skill：push 後由使用者啟動、一段一段監看一個 PR，直到只剩使用者能處理的事。CI 失敗照 pr-closeout 的方式處理，任何人的新留言用 `/review-pr --triage-only` 分類進工作範圍帳本，停止時印報告並送通知。新的 `watch`、`watch-ack` 子命令保存每個 PR 的狀態並判定每一輪；監看期間由 `pr-watch-guard` hook 擋下寫入 GitHub 的動作。留言改為逐頁讀取（每個端點最多 1000 則）。詳見該 plugin 的 CHANGELOG [1.2.0]。
+- **code-audit-rigor 2.3.0 → 2.4.0** — `/review-pr --triage-only [comment-id...]` 分類完就停，不修、不 push、不回覆、不標成已解決。詳見該 plugin 的 CHANGELOG [2.4.0]。
+
 ## [1.22.1] - 2026-11-21
 
 ### Fixed

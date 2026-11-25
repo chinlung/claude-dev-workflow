@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.23.0] - 2026-11-25
+
+### Added
+
+- **pr-closeout 1.1.2 → 1.2.0** — the `pr-watch` skill watches a pushed PR in stretches the user starts, until only the user can act: CI failures handled the pr-closeout way, new comments from anyone triaged with `/review-pr --triage-only` into the scope ledger, a stop report and a notification. New `watch` / `watch-ack` subcommands own the per-PR state and judge each round; the `pr-watch-guard` hook denies writes to GitHub while a watch is active. Comments are now read page by page (up to 1000 per endpoint). See that plugin's CHANGELOG [1.2.0].
+- **code-audit-rigor 2.3.0 → 2.4.0** — `/review-pr --triage-only [comment-id...]` classifies and stops, with no fix, push, reply or resolve. See that plugin's CHANGELOG [2.4.0].
+
 ## [1.22.1] - 2026-11-21
 
 ### Fixed

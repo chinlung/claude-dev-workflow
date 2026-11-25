@@ -185,7 +185,7 @@
 5. commit（具名）。
 
 ### Task 9: 周邊文件與版號
-- [ ] 5.2 README、CHANGELOG、設計文件註記、版號同步，全 repo 測試綠
+- [x] 5.2 README、CHANGELOG、設計文件註記、版號同步，全 repo 測試綠
 **Files：**
 - pr-closeout：SKILL.md 的 exit 5 那一列、`README.md`、`README.zh-TW.md`、`CHANGELOG.md`、`plugin.json`
 - code-audit-rigor：`README.md`、`CHANGELOG.md`、`plugin.json`
