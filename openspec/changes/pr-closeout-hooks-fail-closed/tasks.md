@@ -81,7 +81,7 @@
 ## 4. Release
 
 ### Task 6: Versions, CHANGELOGs, README
-- [ ] 6.1 pr-closeout 1.3.0 / marketplace 1.24.0 everywhere; README states the failure behavior, the CLI floor and the way out
+- [x] 6.1 pr-closeout 1.3.0 / marketplace 1.24.0 everywhere; README states the failure behavior, the CLI floor and the way out
 1. Files: `plugins/pr-closeout/.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` (metadata and the pr-closeout entry), `plugins/pr-closeout/CHANGELOG.md` [1.3.0], `CHANGELOG.md` and `CHANGELOG.zh-TW.md` [1.24.0], `plugins/pr-closeout/README.md`, `plugins/pr-closeout/README.zh-TW.md`.
 2. README: both hooks block when they time out, crash or print unreadable output (Claude Code v2.1.295 or later; older versions let the action through); a broken hook that blocks every Bash call → `/plugin disable pr-closeout`.
 3. `grep -rn '1\.2\.1\|1\.23\.1'` over those files shows only CHANGELOG history lines.

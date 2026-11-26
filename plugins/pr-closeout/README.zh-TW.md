@@ -97,6 +97,7 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/pr-closeout.mjs landed <owner/repo> <pr> \
 - **攔不到什麼。** hook 用自己的掃描器讀命令文字，不是 bash。它防的是代理誤打的 merge，不是刻意繞過它的命令：藏在變數或 alias 後面、寫在腳本檔裡、經 stdin 餵給 shell（`bash <<EOF`、`… | bash`）時可能看不到；bash 因語法錯誤丟棄的那一行上開了 heredoc 時（`a=(-( <<EOF`），其後的行也可能看不到。`gh api` 在某個選項的值裡也放了 merge 路徑時，檢查的是命令裡第一個 merge 路徑，不是 gh 實際合併的端點（`gh api -H repos/o/r/pulls/3/merge repos/o/r/pulls/5/merge` 檢查 PR 3、合併 PR 5）。真的不能發生的合併要靠分支保護。
 - **何時擋下。** 讀不出是哪個 PR 的 merge 一律擋下，包括 GraphQL 的 `mergePullRequest`。缺 jq、node 或腳本時也擋下。`--match-head-commit`（或 MCP 工具的 `sha`）不是字面的 40 碼 sha 時也擋下：hook 讀的是命令文字，變數與 `$( )` 不會展開。同理（1.1.1），PR 號碼、PR 網址、repo、選項名稱或 `gh api` 端點裡夾著 `$( )`、反引號或 `${ }` 時擋下，絕不讀成它的字面部分（`gh pr merge 3$(echo 0)` 合併的是 PR 30）；詞之間有未加引號的替換時也擋下，因為它可能展開成零個詞（`gh pr merge --subject $(x) 3`）。交給 `bash -c`、`sh -c`、`eval` 的字串裡，加了引號的替換也照未加引號算：那個 shell 會把字串重新切詞。
 - **時間。** 讀命令的時間與同一條命令裡所有 `ready` 共用 25 秒的預算（`PR_MERGE_GATE_BUDGET`），在 hook 的 30 秒時限之內；剩餘時間不夠時直接擋下，不交給逾時的 hook 決定。兩種舊讀法的耗時與命令長度成線性；lexer 另有步數上限（讀不完的 merge 擋下）。
+- **hook 自己失效時（1.3.0）。** 本 plugin 的兩個 hook 在 `hooks.json` 都設了 `"onFailure": "block"`：hook 逾時、崩潰或輸出 Claude Code 讀不懂時，擋下動作而不是放行。需要 Claude Code v2.1.295 以上；更舊的版本會忽略這個欄位，照樣放行。hook 由 PATH 上第一個 `bash` 執行，一般 macOS 是 `/bin/bash` 3.2，CI 也用 bash 3.2 跑它們的套件。hook 壞掉、擋住所有 Bash 呼叫時，停用 plugin（`/plugin disable pr-closeout`）並回報；`PR_CLOSEOUT_OK=1` 只在 hook 能正常執行時有效。
 - **略過。** 在命令前加 `PR_CLOSEOUT_OK=1` 可以略過一次。MCP 工具沒有略過的方式，要略過請改用 `gh`。
 - **對其他命令的成本。** 不是 merge 的命令，讀進輸入（一次 `cat`）後在 shell 內建的 `case` 判斷就放行，不啟動 jq、perl 或 node。
 
@@ -108,7 +109,7 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/pr-closeout.mjs landed <owner/repo> <pr> \
 - **停止原因**依序檢查：`not-open`、`fork`、`head-not-allowed`（PR head 不是本機 HEAD 的祖先）、`query-failed`（連續 3 次）、`limit`（24 小時或 60 輪）、`ready`、`needs-user`、`no-progress`（check 跑完後連兩輪沒有變化）。head 第一次出現的那一輪不會被判成 `ready` 或 `needs-user`；必跑 check 還沒出現時視為還在跑。
 - **`watch-ack <owner/repo> <pr> --repo-dir <clone> --comment <key>...`** 把留言標成已處理。key 是 `<endpoint>:<id>:<內文 sha256 的前 16 碼>`，所以被編輯過的留言或 review 會重新算成新留言。
 - **新留言**不論作者，都交給 `/review-pr <pr> --triage-only <ids>`（code-audit-rigor 2.4.0），它分類完就停；使用者確認分類表之前什麼都不修。
-- **`hooks/pr-watch-guard.sh`** 在監看期間擋下寫入 GitHub 的 Bash 命令（`gh pr|issue comment|review`、帶欄位、`--input`、非 GET 方法或 GraphQL mutation 的 `gh api`（欄位或 `--input` 只在同一行每個 `gh api` 自己的參數裡都有不在引號內的 `-X GET` 時才放行）、對 github.com 的 curl 或 wget、`resolveReviewThread` 等）以及所有非讀取的 GitHub MCP 工具。它是攔下習慣性失誤、或照著文件錯誤段落去寫入的絆線，不是對付刻意繞過的安全邊界：那樣的模型可以把狀態檔的 `active` 改成 false。要自己寫入，先停止監看（`watch … --stop`）。
+- **`hooks/pr-watch-guard.sh`** 在監看期間擋下寫入 GitHub 的 Bash 命令（`gh pr|issue comment|review`、帶欄位、`--input`、非 GET 方法或 GraphQL mutation 的 `gh api`（欄位或 `--input` 只在同一行每個 `gh api` 自己的參數裡都有不在引號內的 `-X GET` 時才放行）、對 github.com 的 curl 或 wget、`resolveReviewThread` 等）以及所有非讀取的 GitHub MCP 工具。它是攔下習慣性失誤、或照著文件錯誤段落去寫入的絆線，不是對付刻意繞過的安全邊界：那樣的模型可以把狀態檔的 `active` 改成 false。要自己寫入，先停止監看（`watch … --stop`）。它與 merge 閘門一樣，自己失效時擋下動作（見上方「hook 自己失效時」）。
 
 ## 測試
 

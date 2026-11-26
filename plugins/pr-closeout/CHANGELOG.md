@@ -2,6 +2,18 @@
 
 All notable changes to the `pr-closeout` plugin will be documented in this file.
 
+## [1.3.0] - 2026-11-27
+
+### Changed
+
+- **Both hooks block when they fail.** Every handler of `pr-merge-gate` and `pr-watch-guard` in `hooks.json` carries `"onFailure": "block"` (Claude Code v2.1.295 or later): a timeout, a crash or unreadable output now blocks the action. Before, Claude Code let it through. A broken hook therefore blocks every Bash call; `/plugin disable pr-closeout` is the way out.
+
+### Fixed
+
+- **The hooks crashed under bash 3.2 at the moment they denied.** `hooks.json` runs them with the first `bash` on PATH, `/bin/bash` 3.2 on a stock macOS. There, in a UTF-8 locale, a full-width character glued to a variable name (`$rc）`) is read as part of the name, and `set -u` ended the hook with exit 1 and no decision, which let the action through. The merge gate let a merge through when `ready` reported unresolved threads or a head mismatch. Measured under `/bin/bash` 3.2 with `LC_ALL=en_US.UTF-8`: the guard suite passed 34 of 126 checks, the merge-gate suite 230 of 243. Fixed with `${name}`; a lint in both suites rejects the shape.
+- **The guard under bash 3.2:** a backslash-newline is dropped again (3.2 does not expand `$'…'` inside a double-quoted `${…}`), so a GET on a continued line counts; and a call with no project directory and no `cwd` exits 0 instead of failing on an empty array under `set -u`.
+- **CI runs both hook suites under GNU bash 3.2.57** (new `bash-3-2` job), behind a canary that fails the job unless `bash` on PATH behaves as 3.2. glibc does not read a full-width character into a name, so that one shape is covered by the lint only.
+
 ## [1.2.1] - 2026-11-26
 
 ### Fixed
