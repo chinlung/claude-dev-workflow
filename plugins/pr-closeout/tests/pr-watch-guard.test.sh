@@ -107,6 +107,30 @@ for c in \
   'gh api -X GET repos/o/r/pulls/7/comments -f per_page=100'; do
   verdict "active: allow $c" allow "$(bash_in "$c")"
 done
+# gh api is judged per command segment: a GET clears only its own gh api, another command's -f or -x
+# is no gh api flag, and a separator inside quotes or after a backslash does not end the segment
+for c in \
+  'gh api -X GET repos/o/r/pulls/7 | cat; gh api repos/o/r/issues/7/comments -f body=x' \
+  'gh api --method GET repos/o/r/pulls/7 && gh api repos/o/r/pulls/7/reviews --input r.json' \
+  "gh api repos/o/r/issues/7/comments --jq '.[] | .id' -f body=x" \
+  'echo "$(gh api -X GET repos/o/r/pulls/7; gh api repos/o/r/issues/7/comments -f body=x)"' \
+  "sh -c 'gh api repos/o/r/issues/7/comments -f body=x; gh api -X GET repos/o/r/pulls/7'" \
+  "sh -c 'gh api repos/o/r/issues/7/comments \"-f\" body=x'" \
+  "bash -c \"gh api repos/o/r/issues/7/comments '-f' body=x\"" \
+  "gh api repos/o/r/issues/7/comments \$'\\'|' -f body=x" \
+  'gh api repos/o/r/issues/7/comments \; -f body=x' \
+  'gh api repos/o/r/issues/7/comments \| -f body=x' \
+  'gh api -X GET repos/o/r/pulls/7 $(gh api repos/o/r/issues/7/comments -f body=x)' \
+  $'cat <<\'EOF\'\ndon\'t\nEOF\ngh api -X GET repos/o/r/pulls/7; gh api repos/o/r/issues/7/comments -f body=x'; do
+  verdict "active: deny $c" deny "$(bash_in "$c")"
+done
+for c in \
+  'gh api repos/o/r/pulls/7 --jq .head.sha | cut -f1' \
+  "gh api repos/o/r/pulls/7/comments --paginate | jq -r '.[].id' | rm -f x; bash -x run.sh" \
+  'gh api repos/o/r/pulls/7 --jq .title | grep -F 已修正' \
+  $'gh api repos/o/r/pulls/7\t--jq .title\t|\tcut\t-f1'; do
+  verdict "active: allow $c" allow "$(bash_in "$c")"
+done
 # the watch's state is under the clone the command runs in, not under the session's project dir
 Q="$tmp/other"; mkdir -p "$Q/.claude"; git init -q "$Q"
 printf '{"version":1,"pr":3,"active":true}' > "$Q/.claude/pr-watch.3.local.json"

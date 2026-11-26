@@ -66,6 +66,8 @@ fi
 # So the command is normalised once, generally — decoded from JSON (escapes become real whitespace),
 # lowercased, quotes and backslashes dropped — and the rules allow what is known to read; three review
 # rounds of adding one more spelling each are why it is not a list of ways to write.
+# Two views of the same command: $norm, the whole line, for the rules that ask whether a word occurs
+# anywhere; and the segmented text below, for whose flags belong to which gh api.
 cmd=$input
 command -v jq >/dev/null 2>&1 && cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null)
 norm=$(printf '%s' "$cmd" | tr '[:upper:]' '[:lower:]' | tr '\t\r\n' '   ')
@@ -81,18 +83,54 @@ rep='/replies([^[:alnum:]_/-]|/?$|/[^[:alnum:]_.-])'
 [[ $norm =~ $rep ]] && deny "/replies"
 # gh [flags] pr|issue [flags] comment|review
 [[ $norm =~ (^|[^[:alnum:]_-])gh($ws[^[:space:]]+)*$ws(pr|issue)($ws[^[:space:]]+)*$ws(comment|review)([[:space:]]|$) ]] && deny "gh ${BASH_REMATCH[3]} ${BASH_REMATCH[5]}"
-# gh api: a plain GET only. Every method given must be GET; any field (-f/-F/--field/--raw-field,
-# attached or not), --input or GraphQL mutation without an explicit GET is a write.
-if [[ $norm =~ (^|[^[:alnum:]_-])gh$ws(-[^[:space:]]+$ws)*api([[:space:]]|$) ]]; then
-  rest=$norm; get=
-  while [[ $rest =~ (^|[[:space:]])(-x|--method)[[:space:]=]*([a-z]+)(.*)$ ]]; do
-    [ "${BASH_REMATCH[3]}" = get ] || deny "gh api ${BASH_REMATCH[3]}"
-    get=1; rest=${BASH_REMATCH[4]}
+# gh api: a plain GET only, judged per command segment. Every method given must be GET; any field
+# (-f/-F/--field/--raw-field, attached or not) or --input without a GET of its own is a write.
+# One pass over the command keeps track of quotes: a separator outside them (| ; & ( ) ` newline)
+# starts a new line, i.e. a new segment; one inside quotes or after a backslash becomes $Q, so the
+# segment still shows where it was. Each gh api's write signals are read to its segment's end, and its
+# GET counts only up to the first $Q: a GET of another command, quoted or not, never clears this one,
+# and a quote misread only widens what is read for writes. Quote characters are dropped, as in $norm.
+Q=$'\x1f'
+t=$(printf '%s' "$cmd" | tr '[:upper:]' '[:lower:]' | LC_ALL=C awk -v Q="$Q" '
+  BEGIN { RS = "\001"; sep = "|;&()`\n" }
+  { s = (NR > 1 ? s RS : "") $0 }
+  END {
+    n = length(s); st = 0; out = ""
+    for (i = 1; i <= n; i++) {
+      c = substr(s, i, 1)
+      if (c == "\\" && st != 1) { i++; d = substr(s, i, 1); out = out ((d != "" && index(sep, d)) ? Q : d); continue }
+      if (st == 0) {
+        if (c == "\047") { st = 1; continue }
+        if (c == "\"") { st = 2; continue }
+        if (c == "$" && substr(s, i + 1, 1) == "\047") { st = 3; i++; continue }
+        out = out (index(sep, c) ? "\n" : c); continue
+      }
+      if ((st == 1 || st == 3) && c == "\047") { st = 0; continue }
+      if (st == 2 && c == "\"") { st = 0; continue }
+      if (c == "\\" || c == "\047" || c == "\"") continue
+      out = out (index(sep, c) ? Q : c)
+    }
+    printf "%s", out
+  }')
+# a here-string, not a pipe: the loop runs in this shell, so deny's exit ends the hook
+while IFS= read -r seg; do
+  rest=${seg//[$'\t\r']/ }
+  while [[ $rest =~ (^|[^[:alnum:]_-])gh$ws(-[^[:space:]]+$ws)*api([[:space:]]|$)(.*)$ ]]; do
+    rest=${BASH_REMATCH[4]}; own=${rest%%"$Q"*}; w=${rest//$Q/ }; get=
+    while [[ $w =~ (^|[[:space:]])(-x|--method)[[:space:]=]*([a-z]+)(.*)$ ]]; do
+      [ "${BASH_REMATCH[3]}" = get ] || deny "gh api ${BASH_REMATCH[3]}"
+      w=${BASH_REMATCH[4]}
+    done
+    [[ $own =~ (^|[[:space:]])(-x|--method)[[:space:]=]*get([^a-z]|$) ]] && get=1
+    w=${rest//$Q/ }
+    if [ -z "$get" ] && [[ $w =~ (^|[[:space:]])(-f|--field|--raw-field|--input) ]]; then deny "gh api ${BASH_REMATCH[2]}"; fi
   done
-  # a mutation is a GraphQL thing: a repo or path that merely contains the words is a read
+done <<< "$t"
+# a mutation is a GraphQL thing: a repo or path that merely contains the words is a read. Judged on the
+# whole line, which is stricter than per segment.
+if [[ $norm =~ (^|[^[:alnum:]_-])gh$ws(-[^[:space:]]+$ws)*api([[:space:]]|$) ]]; then
   gql='(^|[[:space:]/])graphql([^[:alnum:]_/-]|$)'
   [[ $norm =~ $gql && $norm == *mutation* ]] && deny "GraphQL mutation"
-  if [ -z "$get" ] && [[ $norm =~ (^|[[:space:]])(-f|--field|--raw-field|--input) ]]; then deny "gh api ${BASH_REMATCH[2]}"; fi
 fi
 # curl and wget have no business with GitHub during a watch: pr-watch reads through gh
 if [[ $norm =~ (^|[^[:alnum:]_-])(curl|wget)([[:space:]]|$) ]] && [[ $norm == *github.com* ]]; then deny "${BASH_REMATCH[2]} github.com"; fi

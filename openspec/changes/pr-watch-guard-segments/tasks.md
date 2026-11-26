@@ -34,7 +34,7 @@
 ## 1. 逐段判斷
 
 ### Task 1: gh api 的旗標只在自己那一段判斷
-- [ ] 1.1 guard 改為逐段判斷 `gh api`，spec 四個情境與邊界案例入測、全綠
+- [x] 1.1 guard 改為逐段判斷 `gh api`，spec 四個情境與邊界案例入測、全綠
 
 **Files:**
 - Modify: `plugins/pr-closeout/hooks/pr-watch-guard.sh:84-96`（`gh api` 區塊）
