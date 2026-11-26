@@ -8,3 +8,8 @@
      Tag by the artifact the fix lands in (spec → REQUIREMENT, design.md → DESIGN, code only → CODE), not by the nature of the problem.
      Never edit proposal.md / specs/ / design.md / tasks.md during review — record here, reconcile in Phase 6.
      Add `final` to the last Round heading only after the user says review has converged — the archive gate checks it. -->
+
+## Round 1 - Implementation deviations + review-branch (2026-11-27)
+- [DESIGN] Y - D4 的金絲雀原訂「`set -u; echo "$a）"` 必須失敗」：ubuntu amd64 容器實測 GNU bash 3.2.57 在 glibc 下（C.UTF-8 與 C）不重現，是 macOS libc 特有的；金絲雀改測兩個在 Linux 重現的 3.2 語意（set -u 空陣列、雙引號 `${…}` 內的 `$'…'`），D1a 型只由兩份套件的 lint 擋。建置另需 bison（`YACC="bison -y"`）與 x86_64 runner（2002 年的 config.guess 不認 aarch64）
+- [CODE] N - CI 快取 key 不含建置方式，改建置步驟時命中舊 binary：key 加 `r1` 標記並註明改建置時遞增（review-branch r1，已修）
+- [CODE] N - guard 突變 `no-continue` 的替換模式跟著 D1b 的寫法更新（Task 3 時發現套不上）
