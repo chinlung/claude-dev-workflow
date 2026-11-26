@@ -81,7 +81,9 @@ jobs:
         id: cache
         with:
           path: ~/bash32
-          key: bash-3.2.57-${{ runner.os }}-${{ runner.arch }}-${{ env.BASH32_SHA256 }}
+          # r1 names the build recipe below: bump it whenever the flags, configure or make line change,
+          # or a cache hit keeps running the old binary (the canary would not notice)
+          key: bash-3.2.57-r1-${{ runner.os }}-${{ runner.arch }}-${{ env.BASH32_SHA256 }}
       # The 2007 sources predate C99 defaults: gnu89 and the relaxed warnings let gcc 13 build them.
       # make runs serially: in parallel, mkbuiltins is compiled before lib/intl has made libintl.h.
       - name: Build GNU bash 3.2.57
