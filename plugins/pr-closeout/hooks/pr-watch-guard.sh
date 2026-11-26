@@ -101,16 +101,24 @@ if [[ $norm =~ (^|[^[:alnum:]_-])gh$ws(-[^[:space:]]+$ws)*api([[:space:]]|$) ]];
   [[ $norm =~ $gql && $norm == *mutation* ]] && deny "GraphQL mutation"
   if [[ $norm =~ (^|[[:space:]])(-f|--field|--raw-field|--input) ]]; then
     wf=${BASH_REMATCH[2]}
-    # the command lowercased, with every separator, then every quote and backslash, turned into $Q
+    # the command lowercased, backslash-newline dropped as bash drops it, then every separator, quote and
+    # backslash turned into $Q. A quoted endpoint before the method (gh api "repos/…" -X GET -f …) is
+    # therefore denied too: the GET is past the first quote.
     Q=$'\x1f'
-    rest=$(printf '%s' "$cmd" | tr '[:upper:]' '[:lower:]' | tr '\t\r' '  ' | tr '|;&()`\n' "$Q$Q$Q$Q$Q$Q$Q" \
+    rest=$(printf '%s' "${cmd//$'\\\n'/}" | tr '[:upper:]' '[:lower:]' | tr '\t\r' '  ' | tr '|;&()`\n' "$Q$Q$Q$Q$Q$Q$Q" \
       | tr "\\\\\"'" "$Q$Q$Q")
+    # every gh api $norm sees must be found here too: a name spelled across quotes or a backslash ("g"h
+    # api, gh "a"pi, g\h api) is gh api to bash and to $norm but not below, so a shortfall is a deny
+    seen=0; r=$norm
+    while [[ $r =~ (^|[^[:alnum:]_-])gh$ws(-[^[:space:]]+$ws)*api([[:space:]]|$)(.*)$ ]]; do seen=$((seen + 1)); r=${BASH_REMATCH[4]}; done
     # find each gh api with $Q read as a space ("gh" api is gh api), then cut the same length from $rest
     while det=${rest//$Q/ }; [[ $det =~ (^|[^[:alnum:]_-])gh$ws(-[^[:space:]]+$ws)*api([[:space:]]|$)(.*)$ ]]; do
+      seen=$((seen - 1))
       n=${#BASH_REMATCH[4]}; if [ "$n" -gt 0 ]; then rest=${rest: -$n}; else rest=; fi
       own=${rest%%"$Q"*}
       [[ $own =~ (^|[[:space:]])(-x|--method)[[:space:]=]*get([^a-z]|$) ]] || deny "gh api $wf"
     done
+    [ "$seen" -le 0 ] || deny "gh api $wf"
   fi
 fi
 # curl and wget have no business with GitHub during a watch: pr-watch reads through gh
