@@ -66,6 +66,8 @@ fi
 # So the command is normalised once, generally — decoded from JSON (escapes become real whitespace),
 # lowercased, quotes and backslashes dropped — and the rules allow what is known to read; three review
 # rounds of adding one more spelling each are why it is not a list of ways to write.
+# Two views of the same command: $norm, the whole line, for every rule; and below, for gh api only, the
+# command with separators, quotes and backslashes marked, to tell which GET belongs to which gh api.
 cmd=$input
 command -v jq >/dev/null 2>&1 && cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null)
 norm=$(printf '%s' "$cmd" | tr '[:upper:]' '[:lower:]' | tr '\t\r\n' '   ')
@@ -81,8 +83,13 @@ rep='/replies([^[:alnum:]_/-]|/?$|/[^[:alnum:]_.-])'
 [[ $norm =~ $rep ]] && deny "/replies"
 # gh [flags] pr|issue [flags] comment|review
 [[ $norm =~ (^|[^[:alnum:]_-])gh($ws[^[:space:]]+)*$ws(pr|issue)($ws[^[:space:]]+)*$ws(comment|review)([[:space:]]|$) ]] && deny "gh ${BASH_REMATCH[3]} ${BASH_REMATCH[5]}"
-# gh api: a plain GET only. Every method given must be GET; any field (-f/-F/--field/--raw-field,
-# attached or not), --input or GraphQL mutation without an explicit GET is a write.
+# gh api: a plain GET only. Every method given must be GET. A field (-f/-F/--field/--raw-field, attached
+# or not) or --input anywhere on the line is a write unless every gh api on the line has a GET of its
+# own: an -X GET or --method GET among its arguments before the first separator, quote, backslash or comment.
+# So a GET of another command never clears a write, and neither does a value such as -f 'body= -X GET'.
+# Write signals stay on the whole line on purpose: narrowing them to a segment needs a shell parser
+# that never sees a boundary bash does not (command substitutions, xargs, nested frames), and three
+# review rounds found ways it did. The cost is that another command's flag (… | cut -f1) still counts.
 if [[ $norm =~ (^|[^[:alnum:]_-])gh$ws(-[^[:space:]]+$ws)*api([[:space:]]|$) ]]; then
   rest=$norm; get=
   while [[ $rest =~ (^|[[:space:]])(-x|--method)[[:space:]=]*([a-z]+)(.*)$ ]]; do
@@ -92,7 +99,31 @@ if [[ $norm =~ (^|[^[:alnum:]_-])gh$ws(-[^[:space:]]+$ws)*api([[:space:]]|$) ]];
   # a mutation is a GraphQL thing: a repo or path that merely contains the words is a read
   gql='(^|[[:space:]/])graphql([^[:alnum:]_/-]|$)'
   [[ $norm =~ $gql && $norm == *mutation* ]] && deny "GraphQL mutation"
-  if [ -z "$get" ] && [[ $norm =~ (^|[[:space:]])(-f|--field|--raw-field|--input) ]]; then deny "gh api ${BASH_REMATCH[2]}"; fi
+  if [[ $norm =~ (^|[[:space:]])(-f|--field|--raw-field|--input) ]]; then
+    wf=${BASH_REMATCH[2]}
+    # as on main, a field needs a GET that $norm sees too: the check below only ever narrows what main allows
+    [ -n "$get" ] || deny "gh api $wf"
+    # the command lowercased, backslash-newline dropped as bash drops it, then every separator, quote and
+    # backslash turned into $Q. A quoted endpoint before the method (gh api "repos/…" -X GET -f …) is
+    # therefore denied too: the GET is past the first quote.
+    Q=$'\x1f'
+    rest=$(printf '%s' "${cmd//$'\\\n'/}" | tr '[:upper:]' '[:lower:]' | tr '\t\r' '  ' | tr '|;&()`\n' "$Q$Q$Q$Q$Q$Q$Q" \
+      | tr "\\\\\"'" "$Q$Q$Q")
+    # every gh api $norm sees must be found here too: a name spelled across quotes or a backslash ("g"h
+    # api, gh "a"pi, g\h api) is gh api to bash and to $norm but not below, so a shortfall is a deny
+    seen=0; r=$norm
+    while [[ $r =~ (^|[^[:alnum:]_-])gh$ws(-[^[:space:]]+$ws)*api([[:space:]]|$)(.*)$ ]]; do seen=$((seen + 1)); r=${BASH_REMATCH[4]}; done
+    # find each gh api with $Q read as a space ("gh" api is gh api), then cut the same length from $rest
+    while det=${rest//$Q/ }; [[ $det =~ (^|[^[:alnum:]_-])gh$ws(-[^[:space:]]+$ws)*api([[:space:]]|$)(.*)$ ]]; do
+      seen=$((seen - 1))
+      n=${#BASH_REMATCH[4]}; if [ "$n" -gt 0 ]; then rest=${rest: -$n}; else rest=; fi
+      own=${rest%%"$Q"*}
+      # a word that starts with # is a comment to bash, not an argument: a GET there is no GET
+      own=${own%%" #"*}
+      [[ $own =~ (^|[[:space:]])(-x|--method)[[:space:]=]*get([^a-z]|$) ]] || deny "gh api $wf"
+    done
+    [ "$seen" -le 0 ] || deny "gh api $wf"
+  fi
 fi
 # curl and wget have no business with GitHub during a watch: pr-watch reads through gh
 if [[ $norm =~ (^|[^[:alnum:]_-])(curl|wget)([[:space:]]|$) ]] && [[ $norm == *github.com* ]]; then deny "${BASH_REMATCH[2]} github.com"; fi

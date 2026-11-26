@@ -107,6 +107,62 @@ for c in \
   'gh api -X GET repos/o/r/pulls/7/comments -f per_page=100'; do
   verdict "active: allow $c" allow "$(bash_in "$c")"
 done
+# a GET clears only its own gh api: one of another command, or past a separator, quote or backslash,
+# does not (a write flag anywhere on the line still counts, so another command's -f such as cut -f1
+# is denied too: a known false deny, deferred until commands are told apart by position)
+for c in \
+  'gh api -X GET repos/o/r/pulls/7 | cat; gh api repos/o/r/issues/7/comments -f body=x' \
+  'gh api --method GET repos/o/r/pulls/7 && gh api repos/o/r/pulls/7/reviews --input r.json' \
+  "gh api repos/o/r/issues/7/comments --jq '.[] | .id' -f body=x" \
+  'echo "$(gh api -X GET repos/o/r/pulls/7; gh api repos/o/r/issues/7/comments -f body=x)"' \
+  "sh -c 'gh api repos/o/r/issues/7/comments -f body=x; gh api -X GET repos/o/r/pulls/7'" \
+  "sh -c 'gh api repos/o/r/issues/7/comments \"-f\" body=x'" \
+  "bash -c \"gh api repos/o/r/issues/7/comments '-f' body=x\"" \
+  "gh api repos/o/r/issues/7/comments \$'\\'|' -f body=x" \
+  'gh api repos/o/r/issues/7/comments \; -f body=x' \
+  'gh api repos/o/r/issues/7/comments \| -f body=x' \
+  'gh api -X GET repos/o/r/pulls/7 $(gh api repos/o/r/issues/7/comments -f body=x)' \
+  'gh api repos/o/r/issues/7/comments -f body=x; curl -s https://api.github.com/repos/o/r/pulls/7' \
+  $'cat <<\'EOF\'\ndon\'t\nEOF\ngh api -X GET repos/o/r/pulls/7; gh api repos/o/r/issues/7/comments -f body=x'; do
+  verdict "active: deny $c" deny "$(bash_in "$c")"
+done
+# a GET counts only as an unquoted, unescaped argument of its own gh api: quoted or escaped text that
+# reads "-X GET" is a value (security-guidance r1)
+for c in \
+  "gh api repos/o/r/issues/7/comments -f 'body= -X GET'" \
+  'gh api repos/o/r/issues/7/comments -f "body= --method GET"' \
+  'gh api repos/o/r/issues/7/comments -f body=\ -X\ GET' \
+  "sh -c 'gh api repos/o/r/issues/7/comments -f \"body= -X GET\"'" \
+  '"gh" api repos/o/r/issues/7/comments -f body=x' \
+  '"g"h api repos/o/r/issues/7/comments -f body=x' \
+  'gh api repos/o/r/issues/7/comments -f body=x # -X GET' \
+  '"g"h api repos/o/r/issues/7/comments -f body=hi; echo gh api"-X GET"' \
+  'g\h api repos/o/r/issues/7/comments -f body=hi; echo gh api\-X GET' \
+  $'gh api repos/o/r/issues/7/comments -f body=hi --jq --me\\\nthod=GET' \
+  '"g"h api repos/o/r/issues/7/comments -f body=hi; gh api -X GET repos/o/r/pulls/7' \
+  'gh "a"pi repos/o/r/issues/7/comments -f body=x' \
+  'g\h api repos/o/r/issues/7/comments -f body=x' \
+  'gh api "repos/o/r/pulls/7/comments" -X GET -f per_page=100' \
+  'gh "pr" "comment" 7 -b x'; do
+  verdict "active: deny $c" deny "$(bash_in "$c")"
+done
+# arguments that reach gh api from a command substitution or through xargs are its own (security-guidance r2)
+for c in \
+  'gh api repos/o/r/issues/7/comments $(echo -f body=x)' \
+  'gh api repos/o/r/issues/7/comments `echo --input r.json`' \
+  'gh api repos/o/r/issues/7/comments -f body=x $(gh api -X GET repos/o/r/pulls/7)' \
+  "printf '%s\\n' -f body=x | xargs gh api repos/o/r/issues/7/comments" \
+  'echo --input=r.json | xargs -n2 gh api repos/o/r/pulls/7/reviews'; do
+  verdict "active: deny $c" deny "$(bash_in "$c")"
+done
+for c in \
+  'gh pr list --json number --jq .[].number | xargs -I{} gh api -X GET repos/o/r/pulls/{}/comments -f per_page=100' \
+  'gh api -X GET "repos/o/r/pulls/7/comments" -f per_page=100' \
+  '"gh" api -X GET repos/o/r/pulls/7/comments -f per_page=100' \
+  'gh api -X GET repos/o/r/pulls/7/comments -f per_page=100 # a note' \
+  $'gh api repos/o/r/pulls/7/comments \\\n  -X GET \\\n  -f per_page=100'; do
+  verdict "active: allow $c" allow "$(bash_in "$c")"
+done
 # the watch's state is under the clone the command runs in, not under the session's project dir
 Q="$tmp/other"; mkdir -p "$Q/.claude"; git init -q "$Q"
 printf '{"version":1,"pr":3,"active":true}' > "$Q/.claude/pr-watch.3.local.json"
@@ -137,7 +193,7 @@ done
 out=$(bash_in 'gh pr comment 7 -b x' | env -u CLAUDE_PROJECT_DIR bash "$HOOK" 2>/dev/null); rc=$?
 if [ "$rc" = 0 ] && [ -z "$out" ]; then ok; else failed "[no CLAUDE_PROJECT_DIR] rc $rc out $out"; fi
 
-MIN_PASS=85
+MIN_PASS=123
 [ "$pass" -ge "$MIN_PASS" ] || failed "only $pass checks passed, expected at least $MIN_PASS"
 echo "pr-watch-guard: $pass passed, $fail failed"
 
@@ -169,7 +225,17 @@ if [ "${NO_MUTANTS:-0}" != 1 ]; then
   mutant replies-loose "[active: deny node -e \"fetch(" 's{^rep=.*$}{rep="/replies([[:space:]?]|\$)"}'
   mutant replies-end  "[active: deny gh api -X GET repos/o/r/pulls/7/comments/9/replies]" 's{\|/\?\$\|}{|}'
   mutant gql-loose    "[active: deny gh api -X GET -f query=" 's{^  gql=.*$}{  gql="(^|[[:space:]/])graphql([[:space:]]|\$)"}'
-  [ "$mut_n" = 15 ] || { echo "FAIL: $mut_n of 15 mutants ran"; mut_bad=1; }
+  # which GET belongs to which gh api
+  mutant own-is-write "[active: deny sh -c 'gh api repos/o/r/issues/7/comments -f body=x;" 's/own=\$\{rest%%"\$Q"\*\}/own=\$rest/'
+  mutant sep-not-q    "[active: deny sh -c 'gh api repos/o/r/issues/7/comments -f body=x;" 's/ \| tr .\|;&\(\)`\\n. "\$Q\$Q\$Q\$Q\$Q\$Q\$Q"//'
+  mutant quote-not-q  "[active: deny gh api repos/o/r/issues/7/comments -f 'body= -X GET'" 's/^      \| tr "\S+" "\$Q\$Q\$Q"\)$/      )/'
+  mutant gh-quoted    "[active: allow \"gh\" api -X GET"                's/while det=\$\{rest\/\/\$Q\/ \}; \[\[ \$det =~/while [[ \$rest =~/'
+  mutant every-get    "[active: deny gh api repos/o/r/issues/7/comments -f body=done" 's/\|\| deny "gh api \$wf"/|| :/'
+  mutant count-check  "[active: deny \"g\"h api repos/o/r/issues/7/comments -f body=hi; gh api -X GET"               's/^    \[ "\$seen" -le 0 \] \|\| deny "gh api \$wf"$/    :/'
+  mutant no-continue  "[active: allow gh api repos/o/r/pulls/7/comments \\" 's/printf .%s. "\$\{cmd\/\/\$.\\\\\\n.\/\}"/printf "%s" "\$cmd"/'
+  mutant comment-get  "[active: deny gh api repos/o/r/issues/7/comments -f body=x # -X GET" 's{^      own=\$\{own%%" #"\*\}$}{      :}'
+  mutant norm-get     "[active: deny \"g\"h api repos/o/r/issues/7/comments -f body=hi; echo gh api" 's/^    \[ -n "\$get" \] \|\| deny "gh api \$wf"$/    :/'
+  [ "$mut_n" = 24 ] || { echo "FAIL: $mut_n of 24 mutants ran"; mut_bad=1; }
   [ "$mut_bad" = 0 ] || fail=$((fail + 1))
 fi
 [ "$fail" = 0 ]
