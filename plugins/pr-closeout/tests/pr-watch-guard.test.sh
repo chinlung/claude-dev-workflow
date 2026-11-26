@@ -107,8 +107,9 @@ for c in \
   'gh api -X GET repos/o/r/pulls/7/comments -f per_page=100'; do
   verdict "active: allow $c" allow "$(bash_in "$c")"
 done
-# gh api is judged per command segment: a GET clears only its own gh api, another command's -f or -x
-# is no gh api flag, and a separator inside quotes or after a backslash does not end the segment
+# a GET clears only its own gh api: one of another command, or past a separator, quote or backslash,
+# does not (a write flag anywhere on the line still counts, so another command's -f such as cut -f1
+# is denied too: a known false deny, deferred until commands are told apart by position)
 for c in \
   'gh api -X GET repos/o/r/pulls/7 | cat; gh api repos/o/r/issues/7/comments -f body=x' \
   'gh api --method GET repos/o/r/pulls/7 && gh api repos/o/r/pulls/7/reviews --input r.json' \
@@ -146,16 +147,8 @@ for c in \
   verdict "active: deny $c" deny "$(bash_in "$c")"
 done
 for c in \
-  'echo "$(gh api repos/o/r/pulls/7 --jq .head.sha | cut -f1)"' \
-  'gh pr list --json number --jq .[].number | xargs -I{} gh api -X GET repos/o/r/pulls/{}/comments -f per_page=100'; do
-  verdict "active: allow $c" allow "$(bash_in "$c")"
-done
-for c in \
-  'gh api repos/o/r/pulls/7 --jq .head.sha | cut -f1' \
-  "gh api repos/o/r/pulls/7/comments --paginate | jq -r '.[].id' | rm -f x; bash -x run.sh" \
-  'gh api repos/o/r/pulls/7 --jq .title | grep -F 已修正' \
-  'gh api -X GET "repos/o/r/pulls/7/comments" -f per_page=100' \
-  $'gh api repos/o/r/pulls/7\t--jq .title\t|\tcut\t-f1'; do
+  'gh pr list --json number --jq .[].number | xargs -I{} gh api -X GET repos/o/r/pulls/{}/comments -f per_page=100' \
+  'gh api -X GET "repos/o/r/pulls/7/comments" -f per_page=100'; do
   verdict "active: allow $c" allow "$(bash_in "$c")"
 done
 # the watch's state is under the clone the command runs in, not under the session's project dir
@@ -188,7 +181,7 @@ done
 out=$(bash_in 'gh pr comment 7 -b x' | env -u CLAUDE_PROJECT_DIR bash "$HOOK" 2>/dev/null); rc=$?
 if [ "$rc" = 0 ] && [ -z "$out" ]; then ok; else failed "[no CLAUDE_PROJECT_DIR] rc $rc out $out"; fi
 
-MIN_PASS=109
+MIN_PASS=111
 [ "$pass" -ge "$MIN_PASS" ] || failed "only $pass checks passed, expected at least $MIN_PASS"
 echo "pr-watch-guard: $pass passed, $fail failed"
 
@@ -209,8 +202,8 @@ if [ "${NO_MUTANTS:-0}" != 1 ]; then
   mutant no-bash      "[active: deny node -e"                 's/\[\[ \$norm == \*"\$s"\* \]\] && deny/false \&\& deny/'
   mutant no-mcp       "[active: deny MCP"                     's/  deny "MCP \$op"/  exit 0/'
   mutant no-cwd       "[state under the cwd"                  's/dirs\+=\("\$top"\)/:/'
-  mutant no-api-write "[active: deny gh api -X POST"          's/^  while \[\[ \$\{rest\/\/\$Q\/ \} =~/  while false \&\& [[ \${rest\/\/\$Q\/ } =~/'
-  mutant no-unquote   "[active: deny gh \"pr\" \"comment\""  's{^norm=\$\{norm//.*$}{:}'
+  mutant no-api-write "[active: deny gh api -X POST"          's/^if \[\[ \$norm =~ \(\^\|\[\^\[:alnum:\]_-\]\)gh\$ws\(/if false \&\& [[ \$norm =~ (^|[^[:alnum:]_-])gh\$ws(/'
+  mutant no-unquote   "[active: deny gh api repos/o/r/issues/7/comments \"-f\""  's{^norm=\$\{norm//.*$}{:}'
   mutant no-lower     "[active: deny gh api -XDELETE"        's/\| tr .\[:upper:\]. .\[:lower:\]. //'
   mutant no-curl      "[active: deny curl -X POST"            's/^if \[\[ \$norm =~ \(\^\|\[\^\[:alnum:\]_-\]\)\(curl/if false \&\& [[ \$norm =~ (^|[^[:alnum:]_-])(curl/'
   mutant no-xanchor   "[active: allow gh api repos/acme/react-xterm" 's/\(\^\|\[\[:space:\]\]\)\(-x\|--method\)/()(-x|--method)/'
@@ -220,18 +213,13 @@ if [ "${NO_MUTANTS:-0}" != 1 ]; then
   mutant replies-loose "[active: deny node -e \"fetch(" 's{^rep=.*$}{rep="/replies([[:space:]?]|\$)"}'
   mutant replies-end  "[active: deny gh api -X GET repos/o/r/pulls/7/comments/9/replies]" 's{\|/\?\$\|}{|}'
   mutant gql-loose    "[active: deny gh api -X GET -f query=" 's{^  gql=.*$}{  gql="(^|[[:space:]/])graphql([[:space:]]|\$)"}'
-  # the per-segment scan and the two ranges of each gh api
-  mutant scan-noquote "[active: deny gh api repos/o/r/issues/7/comments --jq" 's/if \(c == "\\047"\) \{ st = 1; out = out Q; continue \}/if (0) {}/'
-  mutant scan-qsplit  "[active: deny gh api repos/o/r/issues/7/comments --jq" 's/out = out \(index\(sep, c\) \? Q : c\)/out = out (index(sep, c) ? "\\n" : c)/'
+  # which GET belongs to which gh api
   mutant own-is-write "[active: deny sh -c 'gh api repos/o/r/issues/7/comments -f body=x;" 's/own=\$\{rest%%"\$Q"\*\}/own=\$rest/'
-  mutant nested-quote "[active: deny sh -c 'gh api repos/o/r/issues/7/comments \"-f\"" 's/if \(c == "\\047" \|\| c == "\\""\) \{ out = out Q; continue \}/if (0) {}/'
-  mutant no-ansi      "[active: deny gh api repos/o/r/issues/7/comments \$'" 's/if \(c == "\$" && substr/if (0 \&\& substr/'
-  mutant no-escape    "[active: deny gh api repos/o/r/issues/7/comments \\;" 's/if \(c == "\\\\" && st != 1\)/if (0 \&\& st != 1)/'
-  mutant pipe-loop    "[active: deny gh api graphql -f query='mutation { addComment" 's/^while IFS= read -r seg; do/printf "%s\\n" "\$t" | while IFS= read -r seg; do/; s/^done <<< "\$t"/done/'
-  mutant gh-quoted    "[active: deny \"gh\" api"                's/while \[\[ \$\{rest\/\/\$Q\/ \} =~/while [[ \$rest =~/'
-  mutant open-no-q    "[active: deny gh api repos/o/r/issues/7/comments -f 'body= -X GET'" 's/\{ st = 1; out = out Q; continue \}/{ st = 1; continue }/'
-  mutant escape-no-q  "[active: deny gh api repos/o/r/issues/7/comments -f body=\\ -X\\ GET" 's/out = out Q \(\(d == ""/out = out ((d == ""/'
-  [ "$mut_n" = 25 ] || { echo "FAIL: $mut_n of 25 mutants ran"; mut_bad=1; }
+  mutant sep-not-q    "[active: deny sh -c 'gh api repos/o/r/issues/7/comments -f body=x;" 's/ \| tr .\|;&\(\)`\\n. "\$Q\$Q\$Q\$Q\$Q\$Q\$Q"//'
+  mutant quote-not-q  "[active: deny gh api repos/o/r/issues/7/comments -f 'body= -X GET'" 's/^      \| tr "\S+" "\$Q\$Q\$Q"\)$/      )/'
+  mutant gh-quoted    "[active: deny \"gh\" api"                's/while det=\$\{rest\/\/\$Q\/ \}; \[\[ \$det =~/while [[ \$rest =~/'
+  mutant every-get    "[active: deny gh api repos/o/r/issues/7/comments -f body=done" 's/\|\| deny "gh api \$wf"/|| :/'
+  [ "$mut_n" = 20 ] || { echo "FAIL: $mut_n of 20 mutants ran"; mut_bad=1; }
   [ "$mut_bad" = 0 ] || fail=$((fail + 1))
 fi
 [ "$fail" = 0 ]

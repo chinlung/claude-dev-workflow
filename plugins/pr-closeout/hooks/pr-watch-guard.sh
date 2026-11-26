@@ -66,8 +66,8 @@ fi
 # So the command is normalised once, generally — decoded from JSON (escapes become real whitespace),
 # lowercased, quotes and backslashes dropped — and the rules allow what is known to read; three review
 # rounds of adding one more spelling each are why it is not a list of ways to write.
-# Two views of the same command: $norm, the whole line, for the rules that ask whether a word occurs
-# anywhere; and the segmented text below, for whose flags belong to which gh api.
+# Two views of the same command: $norm, the whole line, for every rule; and below, for gh api only, the
+# command with separators, quotes and backslashes marked, to tell which GET belongs to which gh api.
 cmd=$input
 command -v jq >/dev/null 2>&1 && cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null)
 norm=$(printf '%s' "$cmd" | tr '[:upper:]' '[:lower:]' | tr '\t\r\n' '   ')
@@ -83,74 +83,35 @@ rep='/replies([^[:alnum:]_/-]|/?$|/[^[:alnum:]_.-])'
 [[ $norm =~ $rep ]] && deny "/replies"
 # gh [flags] pr|issue [flags] comment|review
 [[ $norm =~ (^|[^[:alnum:]_-])gh($ws[^[:space:]]+)*$ws(pr|issue)($ws[^[:space:]]+)*$ws(comment|review)([[:space:]]|$) ]] && deny "gh ${BASH_REMATCH[3]} ${BASH_REMATCH[5]}"
-# gh api: a plain GET only, judged per command segment. Every method given must be GET; any field
-# (-f/-F/--field/--raw-field, attached or not) or --input without a GET of its own is a write.
-# One pass over the command keeps track of quotes: | ; & or a newline outside them starts a new line,
-# i.e. a new segment. ( ) and backticks do not: what a command substitution prints is this command's
-# arguments ($(echo -f x) is a field), and $( ) or a backtick opens an unquoted command even inside
-# double quotes. Every quote character, every escaped character, every ( ) and backtick and every
-# separator inside quotes becomes $Q. A gh api run by xargs reads the whole line for writes. Each gh api's write signals are read to its segment's end with $Q
-# as a space; its GET counts only up to the first $Q, so only an unquoted, unescaped -X GET of its own
-# clears it: not a GET of another command, and not a value such as -f 'body= -X GET'. A quote misread
-# only widens what is read for writes or narrows what counts as GET.
-Q=$'\x1f'
-t=$(printf '%s' "$cmd" | tr '[:upper:]' '[:lower:]' | LC_ALL=C awk -v Q="$Q" '
-  BEGIN { RS = "\001"; brk = "|;&\n"; sep = brk "()`"; top = 0 }
-  { s = (NR > 1 ? s RS : "") $0 }
-  END {
-    n = length(s); st = 0; out = ""
-    for (i = 1; i <= n; i++) {
-      c = substr(s, i, 1)
-      if (c == "\\" && st != 1) { i++; d = substr(s, i, 1); out = out Q ((d == "" || index(sep, d)) ? "" : d); continue }
-      # $( ) and backticks open an unquoted command inside double quotes too; stk remembers what to return to
-      if (st == 2 && c == "$" && substr(s, i + 1, 1) == "(") { stk[++top] = 2; st = 0; i++; out = out Q; continue }
-      if (st == 2 && c == "`") { stk[++top] = "2b"; st = 0; out = out Q; continue }
-      if (st == 0) {
-        if (c == "\047") { st = 1; out = out Q; continue }
-        if (c == "\"") { st = 2; out = out Q; continue }
-        if (c == "$" && substr(s, i + 1, 1) == "\047") { st = 3; i++; out = out Q; continue }
-        if (c == "(") { stk[++top] = 0; out = out Q; continue }
-        if (c == ")") { if (top > 0) { st = stk[top--] + 0 } out = out Q; continue }
-        if (c == "`") {
-          if (top > 0 && (stk[top] == "2b" || stk[top] == "0b")) { st = (stk[top--] == "2b") ? 2 : 0 } else { stk[++top] = "0b" }
-          out = out Q; continue
-        }
-        out = out (index(brk, c) ? "\n" : c); continue
-      }
-      if ((st == 1 || st == 3) && c == "\047") { st = 0; out = out Q; continue }
-      if (st == 2 && c == "\"") { st = 0; out = out Q; continue }
-      if (c == "\\") continue
-      if (c == "\047" || c == "\"") { out = out Q; continue }
-      out = out (index(sep, c) ? Q : c)
-    }
-    printf "%s", out
-  }')
-# a here-string, not a pipe: the loop runs in this shell, so deny's exit ends the hook
-while IFS= read -r seg; do
-  rest=${seg//[$'\t\r']/ }; xa=
-  # find gh api with $Q read as a space ("gh" api is gh api), then cut the same length from $rest
-  while det=${rest//$Q/ }; [[ $det =~ (^|[^[:alnum:]_-])gh$ws(-[^[:space:]]+$ws)*api([[:space:]]|$)(.*)$ ]]; do
-    n=${#BASH_REMATCH[4]}; pre=${det:0:$((${#det} - ${#BASH_REMATCH[0]}))}
-    # gh api run by xargs takes its arguments from what came before: read the whole line for writes
-    [[ $pre =~ (^|[^[:alnum:]_-])xargs([[:space:]]|$) ]] && xa=1
-    if [ "$n" -gt 0 ]; then rest=${rest: -$n}; else rest=; fi
-    own=${rest%%"$Q"*}; wr=${rest//$Q/ }; get=
-    [ -n "$xa" ] && { wr=${t//$'\n'/ }; wr=${wr//$Q/ }; }
-    w=$wr
-    while [[ $w =~ (^|[[:space:]])(-x|--method)[[:space:]=]*([a-z]+)(.*)$ ]]; do
-      [ "${BASH_REMATCH[3]}" = get ] || deny "gh api ${BASH_REMATCH[3]}"
-      w=${BASH_REMATCH[4]}
-    done
-    [[ $own =~ (^|[[:space:]])(-x|--method)[[:space:]=]*get([^a-z]|$) ]] && get=1
-    w=$wr
-    if [ -z "$get" ] && [[ $w =~ (^|[[:space:]])(-f|--field|--raw-field|--input) ]]; then deny "gh api ${BASH_REMATCH[2]}"; fi
-  done
-done <<< "$t"
-# a mutation is a GraphQL thing: a repo or path that merely contains the words is a read. Judged on the
-# whole line, which is stricter than per segment.
+# gh api: a plain GET only. Every method given must be GET. A field (-f/-F/--field/--raw-field, attached
+# or not) or --input anywhere on the line is a write unless every gh api on the line has a GET of its
+# own: an -X GET or --method GET among its arguments before the first separator, quote or backslash.
+# So a GET of another command never clears a write, and neither does a value such as -f 'body= -X GET'.
+# Write signals stay on the whole line on purpose: narrowing them to a segment needs a shell parser
+# that never sees a boundary bash does not (command substitutions, xargs, nested frames), and three
+# review rounds found ways it did. The cost is that another command's flag (… | cut -f1) still counts.
 if [[ $norm =~ (^|[^[:alnum:]_-])gh$ws(-[^[:space:]]+$ws)*api([[:space:]]|$) ]]; then
+  rest=$norm
+  while [[ $rest =~ (^|[[:space:]])(-x|--method)[[:space:]=]*([a-z]+)(.*)$ ]]; do
+    [ "${BASH_REMATCH[3]}" = get ] || deny "gh api ${BASH_REMATCH[3]}"
+    rest=${BASH_REMATCH[4]}
+  done
+  # a mutation is a GraphQL thing: a repo or path that merely contains the words is a read
   gql='(^|[[:space:]/])graphql([^[:alnum:]_/-]|$)'
   [[ $norm =~ $gql && $norm == *mutation* ]] && deny "GraphQL mutation"
+  if [[ $norm =~ (^|[[:space:]])(-f|--field|--raw-field|--input) ]]; then
+    wf=${BASH_REMATCH[2]}
+    # the command lowercased, with every separator, then every quote and backslash, turned into $Q
+    Q=$'\x1f'
+    rest=$(printf '%s' "$cmd" | tr '[:upper:]' '[:lower:]' | tr '\t\r' '  ' | tr '|;&()`\n' "$Q$Q$Q$Q$Q$Q$Q" \
+      | tr "\\\\\"'" "$Q$Q$Q")
+    # find each gh api with $Q read as a space ("gh" api is gh api), then cut the same length from $rest
+    while det=${rest//$Q/ }; [[ $det =~ (^|[^[:alnum:]_-])gh$ws(-[^[:space:]]+$ws)*api([[:space:]]|$)(.*)$ ]]; do
+      n=${#BASH_REMATCH[4]}; if [ "$n" -gt 0 ]; then rest=${rest: -$n}; else rest=; fi
+      own=${rest%%"$Q"*}
+      [[ $own =~ (^|[[:space:]])(-x|--method)[[:space:]=]*get([^a-z]|$) ]] || deny "gh api $wf"
+    done
+  fi
 fi
 # curl and wget have no business with GitHub during a watch: pr-watch reads through gh
 if [[ $norm =~ (^|[^[:alnum:]_-])(curl|wget)([[:space:]]|$) ]] && [[ $norm == *github.com* ]]; then deny "${BASH_REMATCH[2]} github.com"; fi

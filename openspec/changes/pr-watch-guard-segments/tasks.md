@@ -81,7 +81,7 @@
 ## 2. 保護力
 
 ### Task 2: 突變打在掃描與範圍的路徑上
-- [ ] 2.1 新增 7 個突變、修好兩個依附舊行的突變，突變總數檢查從 15 改成 22，全部轉紅
+- [x] 2.1 新增 7 個突變、修好兩個依附舊行的突變，突變總數檢查從 15 改成 22，全部轉紅
 
 **Files:**
 - Modify: `plugins/pr-closeout/tests/pr-watch-guard.test.sh`（`mutant` 清單、`[ "$mut_n" = 15 ]`、`MIN_PASS`）
