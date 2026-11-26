@@ -85,26 +85,37 @@ rep='/replies([^[:alnum:]_/-]|/?$|/[^[:alnum:]_.-])'
 [[ $norm =~ (^|[^[:alnum:]_-])gh($ws[^[:space:]]+)*$ws(pr|issue)($ws[^[:space:]]+)*$ws(comment|review)([[:space:]]|$) ]] && deny "gh ${BASH_REMATCH[3]} ${BASH_REMATCH[5]}"
 # gh api: a plain GET only, judged per command segment. Every method given must be GET; any field
 # (-f/-F/--field/--raw-field, attached or not) or --input without a GET of its own is a write.
-# One pass over the command keeps track of quotes: a separator outside them (| ; & ( ) ` newline)
-# starts a new line, i.e. a new segment. Every quote character, every escaped character and every
-# separator inside quotes becomes $Q. Each gh api's write signals are read to its segment's end with $Q
+# One pass over the command keeps track of quotes: | ; & or a newline outside them starts a new line,
+# i.e. a new segment. ( ) and backticks do not: what a command substitution prints is this command's
+# arguments ($(echo -f x) is a field), and $( ) or a backtick opens an unquoted command even inside
+# double quotes. Every quote character, every escaped character, every ( ) and backtick and every
+# separator inside quotes becomes $Q. A gh api run by xargs reads the whole line for writes. Each gh api's write signals are read to its segment's end with $Q
 # as a space; its GET counts only up to the first $Q, so only an unquoted, unescaped -X GET of its own
 # clears it: not a GET of another command, and not a value such as -f 'body= -X GET'. A quote misread
 # only widens what is read for writes or narrows what counts as GET.
 Q=$'\x1f'
 t=$(printf '%s' "$cmd" | tr '[:upper:]' '[:lower:]' | LC_ALL=C awk -v Q="$Q" '
-  BEGIN { RS = "\001"; sep = "|;&()`\n" }
+  BEGIN { RS = "\001"; brk = "|;&\n"; sep = brk "()`"; top = 0 }
   { s = (NR > 1 ? s RS : "") $0 }
   END {
     n = length(s); st = 0; out = ""
     for (i = 1; i <= n; i++) {
       c = substr(s, i, 1)
       if (c == "\\" && st != 1) { i++; d = substr(s, i, 1); out = out Q ((d == "" || index(sep, d)) ? "" : d); continue }
+      # $( ) and backticks open an unquoted command inside double quotes too; stk remembers what to return to
+      if (st == 2 && c == "$" && substr(s, i + 1, 1) == "(") { stk[++top] = 2; st = 0; i++; out = out Q; continue }
+      if (st == 2 && c == "`") { stk[++top] = "2b"; st = 0; out = out Q; continue }
       if (st == 0) {
         if (c == "\047") { st = 1; out = out Q; continue }
         if (c == "\"") { st = 2; out = out Q; continue }
         if (c == "$" && substr(s, i + 1, 1) == "\047") { st = 3; i++; out = out Q; continue }
-        out = out (index(sep, c) ? "\n" : c); continue
+        if (c == "(") { stk[++top] = 0; out = out Q; continue }
+        if (c == ")") { if (top > 0) { st = stk[top--] + 0 } out = out Q; continue }
+        if (c == "`") {
+          if (top > 0 && (stk[top] == "2b" || stk[top] == "0b")) { st = (stk[top--] == "2b") ? 2 : 0 } else { stk[++top] = "0b" }
+          out = out Q; continue
+        }
+        out = out (index(brk, c) ? "\n" : c); continue
       }
       if ((st == 1 || st == 3) && c == "\047") { st = 0; out = out Q; continue }
       if (st == 2 && c == "\"") { st = 0; out = out Q; continue }
@@ -116,17 +127,22 @@ t=$(printf '%s' "$cmd" | tr '[:upper:]' '[:lower:]' | LC_ALL=C awk -v Q="$Q" '
   }')
 # a here-string, not a pipe: the loop runs in this shell, so deny's exit ends the hook
 while IFS= read -r seg; do
-  rest=${seg//[$'\t\r']/ }
+  rest=${seg//[$'\t\r']/ }; xa=
   # find gh api with $Q read as a space ("gh" api is gh api), then cut the same length from $rest
-  while [[ ${rest//$Q/ } =~ (^|[^[:alnum:]_-])gh$ws(-[^[:space:]]+$ws)*api([[:space:]]|$)(.*)$ ]]; do
-    n=${#BASH_REMATCH[4]}; if [ "$n" -gt 0 ]; then rest=${rest: -$n}; else rest=; fi
-    own=${rest%%"$Q"*}; w=${rest//$Q/ }; get=
+  while det=${rest//$Q/ }; [[ $det =~ (^|[^[:alnum:]_-])gh$ws(-[^[:space:]]+$ws)*api([[:space:]]|$)(.*)$ ]]; do
+    n=${#BASH_REMATCH[4]}; pre=${det:0:$((${#det} - ${#BASH_REMATCH[0]}))}
+    # gh api run by xargs takes its arguments from what came before: read the whole line for writes
+    [[ $pre =~ (^|[^[:alnum:]_-])xargs([[:space:]]|$) ]] && xa=1
+    if [ "$n" -gt 0 ]; then rest=${rest: -$n}; else rest=; fi
+    own=${rest%%"$Q"*}; wr=${rest//$Q/ }; get=
+    [ -n "$xa" ] && { wr=${t//$'\n'/ }; wr=${wr//$Q/ }; }
+    w=$wr
     while [[ $w =~ (^|[[:space:]])(-x|--method)[[:space:]=]*([a-z]+)(.*)$ ]]; do
       [ "${BASH_REMATCH[3]}" = get ] || deny "gh api ${BASH_REMATCH[3]}"
       w=${BASH_REMATCH[4]}
     done
     [[ $own =~ (^|[[:space:]])(-x|--method)[[:space:]=]*get([^a-z]|$) ]] && get=1
-    w=${rest//$Q/ }
+    w=$wr
     if [ -z "$get" ] && [[ $w =~ (^|[[:space:]])(-f|--field|--raw-field|--input) ]]; then deny "gh api ${BASH_REMATCH[2]}"; fi
   done
 done <<< "$t"
