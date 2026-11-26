@@ -69,7 +69,7 @@
 5. Commit.
 
 ### Task 5: CI job running both suites under GNU bash 3.2.57 (D4)
-- [ ] 5.1 `validate.yml` job builds bash 3.2.57 (cached), passes the canary, runs both suites with `NO_MUTANTS=1`
+- [x] 5.1 `validate.yml` job builds bash 3.2.57 (cached), passes the canary, runs both suites with `NO_MUTANTS=1`
 1. File: `.github/workflows/validate.yml`.
 2. New job on `ubuntu-latest`: cache the built binary keyed by the tarball sha256; on miss, download, verify sha256, configure `--without-bash-malloc`, serial `make` with the Global Constraints flags.
 3. Put a directory with `bash` → the build first on PATH; set `LANG`/`LC_ALL` to `C.UTF-8`.

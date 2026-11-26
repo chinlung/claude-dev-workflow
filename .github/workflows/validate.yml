@@ -63,3 +63,55 @@ jobs:
           exit "$rc"
       - name: Run validate-on-plugin-edit hook tests
         run: bash scripts/hooks/validate-on-plugin-edit.test.sh
+
+  # pr-closeout's hooks.json runs its hooks as `bash <file>`: on a stock macOS that is /bin/bash 3.2, where a
+  # crash lets the action through on a Claude Code older than v2.1.295 and blocks every call on a newer
+  # one. This job runs the two hook suites with GNU bash 3.2.57. One 3.2 difference does not show here:
+  # macOS reads a full-width character glued to $name into the name, glibc does not. The suites' lint
+  # covers that one on every platform.
+  bash-3-2:
+    runs-on: ubuntu-latest
+    env:
+      BASH32_SHA256: 3fa9daf85ebf35068f090ce51283ddeeb3c75eb5bc70b1a4a7cb05868bfe06a4
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: cache
+        with:
+          path: ~/bash32
+          key: bash-3.2.57-${{ runner.os }}-${{ runner.arch }}-${{ env.BASH32_SHA256 }}
+      # The 2007 sources predate C99 defaults: gnu89 and the relaxed warnings let gcc 13 build them.
+      # make runs serially: in parallel, mkbuiltins is compiled before lib/intl has made libintl.h.
+      - name: Build GNU bash 3.2.57
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          command -v bison > /dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq bison; }
+          cd "$RUNNER_TEMP"
+          curl -fsSLO https://ftp.gnu.org/gnu/bash/bash-3.2.57.tar.gz
+          echo "$BASH32_SHA256  bash-3.2.57.tar.gz" | sha256sum -c -
+          tar xzf bash-3.2.57.tar.gz
+          cd bash-3.2.57
+          f="-O2 -std=gnu89 -Wno-implicit-function-declaration -Wno-implicit-int -Wno-int-conversion -Wno-incompatible-pointer-types"
+          ./configure --without-bash-malloc CFLAGS="$f" > configure.log 2>&1 || { tail -30 configure.log; exit 1; }
+          make YACC="bison -y" CFLAGS_FOR_BUILD="$f" > make.log 2>&1 || { tail -30 make.log; exit 1; }
+          mkdir -p ~/bash32
+          cp bash ~/bash32/bash
+      - name: Put bash 3.2 first on PATH
+        run: echo "$HOME/bash32" >> "$GITHUB_PATH"
+      # Prove that `bash` here is the 3.2 that differs from bash 5, so a green run means the suites ran on
+      # it: an empty array under set -u is an error, and $'…' inside a double-quoted ${…} is not expanded.
+      - name: Canary — bash on PATH behaves as 3.2
+        run: |
+          bash --version | head -1
+          if bash -c 'set -u; d=(); for x in "${d[@]}"; do :; done' 2>/dev/null; then
+            echo "::error::bash on PATH accepts an empty array under set -u: not bash 3.2"; exit 1
+          fi
+          if bash -c 'c=$'"'"'a \\\nb'"'"'; r=$(printf %s "${c//$'"'"'\\\n'"'"'/}"); [ "$r" = "a b" ]'; then
+            echo "::error::bash on PATH expands \$'…' inside a double-quoted \${…}: not bash 3.2"; exit 1
+          fi
+      - name: pr-watch-guard suite under bash 3.2
+        run: NO_MUTANTS=1 bash plugins/pr-closeout/tests/pr-watch-guard.test.sh
+      - name: pr-merge-gate suite under bash 3.2
+        run: NO_MUTANTS=1 bash plugins/pr-closeout/tests/pr-merge-gate.test.sh
