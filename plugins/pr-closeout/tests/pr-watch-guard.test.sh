@@ -124,10 +124,22 @@ for c in \
   $'cat <<\'EOF\'\ndon\'t\nEOF\ngh api -X GET repos/o/r/pulls/7; gh api repos/o/r/issues/7/comments -f body=x'; do
   verdict "active: deny $c" deny "$(bash_in "$c")"
 done
+# a GET counts only as an unquoted, unescaped argument of its own gh api: quoted or escaped text that
+# reads "-X GET" is a value (security-guidance r1)
+for c in \
+  "gh api repos/o/r/issues/7/comments -f 'body= -X GET'" \
+  'gh api repos/o/r/issues/7/comments -f "body= --method GET"' \
+  'gh api repos/o/r/issues/7/comments -f body=\ -X\ GET' \
+  "sh -c 'gh api repos/o/r/issues/7/comments -f \"body= -X GET\"'" \
+  '"gh" api repos/o/r/issues/7/comments -f body=x' \
+  'gh "pr" "comment" 7 -b x'; do
+  verdict "active: deny $c" deny "$(bash_in "$c")"
+done
 for c in \
   'gh api repos/o/r/pulls/7 --jq .head.sha | cut -f1' \
   "gh api repos/o/r/pulls/7/comments --paginate | jq -r '.[].id' | rm -f x; bash -x run.sh" \
   'gh api repos/o/r/pulls/7 --jq .title | grep -F 已修正' \
+  'gh api -X GET "repos/o/r/pulls/7/comments" -f per_page=100' \
   $'gh api repos/o/r/pulls/7\t--jq .title\t|\tcut\t-f1'; do
   verdict "active: allow $c" allow "$(bash_in "$c")"
 done

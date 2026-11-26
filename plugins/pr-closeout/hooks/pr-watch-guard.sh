@@ -86,10 +86,11 @@ rep='/replies([^[:alnum:]_/-]|/?$|/[^[:alnum:]_.-])'
 # gh api: a plain GET only, judged per command segment. Every method given must be GET; any field
 # (-f/-F/--field/--raw-field, attached or not) or --input without a GET of its own is a write.
 # One pass over the command keeps track of quotes: a separator outside them (| ; & ( ) ` newline)
-# starts a new line, i.e. a new segment; one inside quotes or after a backslash becomes $Q, so the
-# segment still shows where it was. Each gh api's write signals are read to its segment's end, and its
-# GET counts only up to the first $Q: a GET of another command, quoted or not, never clears this one,
-# and a quote misread only widens what is read for writes. Quote characters are dropped, as in $norm.
+# starts a new line, i.e. a new segment. Every quote character, every escaped character and every
+# separator inside quotes becomes $Q. Each gh api's write signals are read to its segment's end with $Q
+# as a space; its GET counts only up to the first $Q, so only an unquoted, unescaped -X GET of its own
+# clears it: not a GET of another command, and not a value such as -f 'body= -X GET'. A quote misread
+# only widens what is read for writes or narrows what counts as GET.
 Q=$'\x1f'
 t=$(printf '%s' "$cmd" | tr '[:upper:]' '[:lower:]' | LC_ALL=C awk -v Q="$Q" '
   BEGIN { RS = "\001"; sep = "|;&()`\n" }
@@ -98,16 +99,17 @@ t=$(printf '%s' "$cmd" | tr '[:upper:]' '[:lower:]' | LC_ALL=C awk -v Q="$Q" '
     n = length(s); st = 0; out = ""
     for (i = 1; i <= n; i++) {
       c = substr(s, i, 1)
-      if (c == "\\" && st != 1) { i++; d = substr(s, i, 1); out = out ((d != "" && index(sep, d)) ? Q : d); continue }
+      if (c == "\\" && st != 1) { i++; d = substr(s, i, 1); out = out Q ((d == "" || index(sep, d)) ? "" : d); continue }
       if (st == 0) {
-        if (c == "\047") { st = 1; continue }
-        if (c == "\"") { st = 2; continue }
-        if (c == "$" && substr(s, i + 1, 1) == "\047") { st = 3; i++; continue }
+        if (c == "\047") { st = 1; out = out Q; continue }
+        if (c == "\"") { st = 2; out = out Q; continue }
+        if (c == "$" && substr(s, i + 1, 1) == "\047") { st = 3; i++; out = out Q; continue }
         out = out (index(sep, c) ? "\n" : c); continue
       }
-      if ((st == 1 || st == 3) && c == "\047") { st = 0; continue }
-      if (st == 2 && c == "\"") { st = 0; continue }
-      if (c == "\\" || c == "\047" || c == "\"") continue
+      if ((st == 1 || st == 3) && c == "\047") { st = 0; out = out Q; continue }
+      if (st == 2 && c == "\"") { st = 0; out = out Q; continue }
+      if (c == "\\") continue
+      if (c == "\047" || c == "\"") { out = out Q; continue }
       out = out (index(sep, c) ? Q : c)
     }
     printf "%s", out
@@ -115,8 +117,10 @@ t=$(printf '%s' "$cmd" | tr '[:upper:]' '[:lower:]' | LC_ALL=C awk -v Q="$Q" '
 # a here-string, not a pipe: the loop runs in this shell, so deny's exit ends the hook
 while IFS= read -r seg; do
   rest=${seg//[$'\t\r']/ }
-  while [[ $rest =~ (^|[^[:alnum:]_-])gh$ws(-[^[:space:]]+$ws)*api([[:space:]]|$)(.*)$ ]]; do
-    rest=${BASH_REMATCH[4]}; own=${rest%%"$Q"*}; w=${rest//$Q/ }; get=
+  # find gh api with $Q read as a space ("gh" api is gh api), then cut the same length from $rest
+  while [[ ${rest//$Q/ } =~ (^|[^[:alnum:]_-])gh$ws(-[^[:space:]]+$ws)*api([[:space:]]|$)(.*)$ ]]; do
+    n=${#BASH_REMATCH[4]}; if [ "$n" -gt 0 ]; then rest=${rest: -$n}; else rest=; fi
+    own=${rest%%"$Q"*}; w=${rest//$Q/ }; get=
     while [[ $w =~ (^|[[:space:]])(-x|--method)[[:space:]=]*([a-z]+)(.*)$ ]]; do
       [ "${BASH_REMATCH[3]}" = get ] || deny "gh api ${BASH_REMATCH[3]}"
       w=${BASH_REMATCH[4]}
