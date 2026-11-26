@@ -10,7 +10,7 @@ All notable changes to the `pr-closeout` plugin will be documented in this file.
   - `gh api -X GET … | cat; gh api …/comments -f body=x`
   - `-f 'body= -X GET'`, where the GET is only a value
 
-  Now a field or `--input` on the line is a write unless every `gh api` on it has an unquoted, unescaped `-X GET` or `--method GET` among its own arguments, before the first separator, quote or backslash. A backslash-newline is dropped first, as bash drops it, so a GET on a continued line counts. Methods, fields and `--input` are still read on the whole line. So arguments a `gh api` gets through `$( )`, backticks or `xargs` still count. A `gh api` spelled across quotes or a backslash (`"g"h api`, `gh "a"pi`) is denied whenever it carries a field.
+  Now a field or `--input` on the line is a write unless every `gh api` on it has an unquoted, unescaped `-X GET` or `--method GET` among its own arguments, before the first separator, quote, backslash or `#` comment. A backslash-newline is dropped first, as bash drops it, so a GET on a continued line counts. Methods, fields and `--input` are still read on the whole line. So arguments a `gh api` gets through `$( )`, backticks or `xargs` still count. A `gh api` spelled across quotes or a backslash (`"g"h api`, `gh "a"pi`) is denied whenever it carries a field.
 
   The guard does not try to tell which command a flag belongs to. Three review rounds found ways a hand-written segment scanner would let a write through. As a result, another command's flag on the same line still counts: for example `gh api … | cut -f1` is denied, as before. That case stays a follow-up, together with text that merely mentions a write. So does a quoted endpoint written before the method (`gh api "repos/…" -X GET -f …`): its GET is past the first quote, and it is denied.
 
@@ -18,7 +18,7 @@ All notable changes to the `pr-closeout` plugin will be documented in this file.
   - No denial was lifted.
   - Three scripts are now denied. Their text holds a `gh api … -f` with no GET of its own, which a GET elsewhere on the line used to clear.
 
-  Seven new mutants cover the per-`gh api` GET, 22 in all.
+  Eight new mutants cover the per-`gh api` GET, 23 in all.
 
 ## [1.2.0] - 2026-11-25
 

@@ -26,3 +26,7 @@
 - [CODE] N - codex P2 (introduced): a gh api spelled across quotes or a backslash ("g"h api, gh "a"pi, g\h api) was found by $norm but not by the per-gh-api loop, so its field write was allowed (main denied it). Fixed fail-closed: the loop must find as many gh api as $norm, else deny; tests + mutant count-check.
 - [CODE] N - review-branch S1 (PASS 80, LOW, introduced): a quoted endpoint before the method (gh api "repos/…" -X GET -f per_page=100) is denied, the cost of cutting the GET range at the first quote. Kept (reintroducing partial parsing is what Round 3 ruled out); documented in the hook comment and CHANGELOG, pinned by a deny test.
 - [DESIGN] Y - design.md Trade-offs must list the known false denies of the chosen design: another command's flag on the same line (cut -f1, rm -f, grep -F, bash -x), a quoted endpoint before the method, and the slower worst case measured under load (corpus max ≈1.5 s vs main ≈0.9 s on the same run).
+
+## Round 5 - Code Review: review-branch r2 + codex r2 (2026-11-26)
+- [CODE] N - codex r2 (base main): no findings. It reviewed the tree before the fix below.
+- [CODE] N - review-branch r2 (own read of the final hook): a GET inside a shell comment (gh api …/comments -f body=x # -X GET) cleared the field write; main has the same hole. Sibling of Round 1 (a GET must be an argument of its own gh api). Fixed: the GET range ends at a word that starts with #; test + mutant comment-get.

@@ -85,7 +85,7 @@ rep='/replies([^[:alnum:]_/-]|/?$|/[^[:alnum:]_.-])'
 [[ $norm =~ (^|[^[:alnum:]_-])gh($ws[^[:space:]]+)*$ws(pr|issue)($ws[^[:space:]]+)*$ws(comment|review)([[:space:]]|$) ]] && deny "gh ${BASH_REMATCH[3]} ${BASH_REMATCH[5]}"
 # gh api: a plain GET only. Every method given must be GET. A field (-f/-F/--field/--raw-field, attached
 # or not) or --input anywhere on the line is a write unless every gh api on the line has a GET of its
-# own: an -X GET or --method GET among its arguments before the first separator, quote or backslash.
+# own: an -X GET or --method GET among its arguments before the first separator, quote, backslash or comment.
 # So a GET of another command never clears a write, and neither does a value such as -f 'body= -X GET'.
 # Write signals stay on the whole line on purpose: narrowing them to a segment needs a shell parser
 # that never sees a boundary bash does not (command substitutions, xargs, nested frames), and three
@@ -116,6 +116,8 @@ if [[ $norm =~ (^|[^[:alnum:]_-])gh$ws(-[^[:space:]]+$ws)*api([[:space:]]|$) ]];
       seen=$((seen - 1))
       n=${#BASH_REMATCH[4]}; if [ "$n" -gt 0 ]; then rest=${rest: -$n}; else rest=; fi
       own=${rest%%"$Q"*}
+      # a word that starts with # is a comment to bash, not an argument: a GET there is no GET
+      own=${own%%" #"*}
       [[ $own =~ (^|[[:space:]])(-x|--method)[[:space:]=]*get([^a-z]|$) ]] || deny "gh api $wf"
     done
     [ "$seen" -le 0 ] || deny "gh api $wf"
