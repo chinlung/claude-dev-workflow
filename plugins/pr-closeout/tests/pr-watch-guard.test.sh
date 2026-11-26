@@ -236,7 +236,7 @@ if [ "${NO_MUTANTS:-0}" != 1 ]; then
   mutant gh-quoted    "[active: allow \"gh\" api -X GET"                's/while det=\$\{rest\/\/\$Q\/ \}; \[\[ \$det =~/while [[ \$rest =~/'
   mutant every-get    "[active: deny gh api repos/o/r/issues/7/comments -f body=done" 's/\|\| deny "gh api \$wf"/|| :/'
   mutant count-check  "[active: deny \"g\"h api repos/o/r/issues/7/comments -f body=hi; gh api -X GET"               's/^    \[ "\$seen" -le 0 \] \|\| deny "gh api \$wf"$/    :/'
-  mutant no-continue  "[active: allow gh api repos/o/r/pulls/7/comments \\" 's/printf .%s. "\$\{cmd\/\/\$.\\\\\\n.\/\}"/printf "%s" "\$cmd"/'
+  mutant no-continue  "[active: allow gh api repos/o/r/pulls/7/comments \\" 's/printf .%s. "\$\{cmd\/\/"\$bsnl"\/\}"/printf "%s" "\$cmd"/'
   mutant comment-get  "[active: deny gh api repos/o/r/issues/7/comments -f body=x # -X GET" 's{^      own=\$\{own%%" #"\*\}$}{      :}'
   mutant norm-get     "[active: deny \"g\"h api repos/o/r/issues/7/comments -f body=hi; echo gh api" 's/^    \[ -n "\$get" \] \|\| deny "gh api \$wf"$/    :/'
   [ "$mut_n" = 24 ] || { echo "FAIL: $mut_n of 24 mutants ran"; mut_bad=1; }

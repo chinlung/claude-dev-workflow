@@ -43,14 +43,14 @@
 ## 2. Hook fixes
 
 ### Task 2: `${name}` before full-width characters (D1a)
-- [ ] 2.1 guard line 42 `${active}`, merge gate 494 `${sha}` and 501 `${rc}`; lint green; deny reasons intact under 3.2
+- [x] 2.1 guard line 42 `${active}`, merge gate 494 `${sha}` and 501 `${rc}`; lint green; deny reasons intact under 3.2
 1. Files: `plugins/pr-closeout/hooks/pr-watch-guard.sh`, `plugins/pr-closeout/hooks/pr-merge-gate.sh`.
 2. Apply the three rewrites.
 3. Run both suites under bash 5 (rc 0) and under local 3.2 (merge gate rc 0; guard leaves only the two Task 3 failures).
 4. Commit.
 
 ### Task 3: guard under 3.2 — continuation and no directories (D1b, D1c)
-- [ ] 3.1 guard suite rc 0 under local bash 3.2 and bash 5
+- [x] 3.1 guard suite rc 0 under local bash 3.2 and bash 5
 1. File: `plugins/pr-closeout/hooks/pr-watch-guard.sh`.
 2. RED: run the guard suite under 3.2; expected FAIL `[active: allow gh api repos/o/r/pulls/7/comments \ …]` and `[no CLAUDE_PROJECT_DIR] rc 1`.
 3. Store `$'\\\n'` in a variable and use `"${cmd//"$nl"/}"` at line 110 (D1b).
