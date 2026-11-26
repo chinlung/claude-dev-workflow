@@ -91,16 +91,18 @@ rep='/replies([^[:alnum:]_/-]|/?$|/[^[:alnum:]_.-])'
 # that never sees a boundary bash does not (command substitutions, xargs, nested frames), and three
 # review rounds found ways it did. The cost is that another command's flag (… | cut -f1) still counts.
 if [[ $norm =~ (^|[^[:alnum:]_-])gh$ws(-[^[:space:]]+$ws)*api([[:space:]]|$) ]]; then
-  rest=$norm
+  rest=$norm; get=
   while [[ $rest =~ (^|[[:space:]])(-x|--method)[[:space:]=]*([a-z]+)(.*)$ ]]; do
     [ "${BASH_REMATCH[3]}" = get ] || deny "gh api ${BASH_REMATCH[3]}"
-    rest=${BASH_REMATCH[4]}
+    get=1; rest=${BASH_REMATCH[4]}
   done
   # a mutation is a GraphQL thing: a repo or path that merely contains the words is a read
   gql='(^|[[:space:]/])graphql([^[:alnum:]_/-]|$)'
   [[ $norm =~ $gql && $norm == *mutation* ]] && deny "GraphQL mutation"
   if [[ $norm =~ (^|[[:space:]])(-f|--field|--raw-field|--input) ]]; then
     wf=${BASH_REMATCH[2]}
+    # as on main, a field needs a GET that $norm sees too: the check below only ever narrows what main allows
+    [ -n "$get" ] || deny "gh api $wf"
     # the command lowercased, backslash-newline dropped as bash drops it, then every separator, quote and
     # backslash turned into $Q. A quoted endpoint before the method (gh api "repos/…" -X GET -f …) is
     # therefore denied too: the GET is past the first quote.

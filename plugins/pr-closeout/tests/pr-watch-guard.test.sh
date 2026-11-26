@@ -136,6 +136,10 @@ for c in \
   '"gh" api repos/o/r/issues/7/comments -f body=x' \
   '"g"h api repos/o/r/issues/7/comments -f body=x' \
   'gh api repos/o/r/issues/7/comments -f body=x # -X GET' \
+  '"g"h api repos/o/r/issues/7/comments -f body=hi; echo gh api"-X GET"' \
+  'g\h api repos/o/r/issues/7/comments -f body=hi; echo gh api\-X GET' \
+  $'gh api repos/o/r/issues/7/comments -f body=hi --jq --me\\\nthod=GET' \
+  '"g"h api repos/o/r/issues/7/comments -f body=hi; gh api -X GET repos/o/r/pulls/7' \
   'gh "a"pi repos/o/r/issues/7/comments -f body=x' \
   'g\h api repos/o/r/issues/7/comments -f body=x' \
   'gh api "repos/o/r/pulls/7/comments" -X GET -f per_page=100' \
@@ -189,7 +193,7 @@ done
 out=$(bash_in 'gh pr comment 7 -b x' | env -u CLAUDE_PROJECT_DIR bash "$HOOK" 2>/dev/null); rc=$?
 if [ "$rc" = 0 ] && [ -z "$out" ]; then ok; else failed "[no CLAUDE_PROJECT_DIR] rc $rc out $out"; fi
 
-MIN_PASS=119
+MIN_PASS=123
 [ "$pass" -ge "$MIN_PASS" ] || failed "only $pass checks passed, expected at least $MIN_PASS"
 echo "pr-watch-guard: $pass passed, $fail failed"
 
@@ -227,10 +231,11 @@ if [ "${NO_MUTANTS:-0}" != 1 ]; then
   mutant quote-not-q  "[active: deny gh api repos/o/r/issues/7/comments -f 'body= -X GET'" 's/^      \| tr "\S+" "\$Q\$Q\$Q"\)$/      )/'
   mutant gh-quoted    "[active: allow \"gh\" api -X GET"                's/while det=\$\{rest\/\/\$Q\/ \}; \[\[ \$det =~/while [[ \$rest =~/'
   mutant every-get    "[active: deny gh api repos/o/r/issues/7/comments -f body=done" 's/\|\| deny "gh api \$wf"/|| :/'
-  mutant count-check  "[active: deny \"g\"h api"               's/^    \[ "\$seen" -le 0 \] \|\| deny "gh api \$wf"$/    :/'
+  mutant count-check  "[active: deny \"g\"h api repos/o/r/issues/7/comments -f body=hi; gh api -X GET"               's/^    \[ "\$seen" -le 0 \] \|\| deny "gh api \$wf"$/    :/'
   mutant no-continue  "[active: allow gh api repos/o/r/pulls/7/comments \\" 's/printf .%s. "\$\{cmd\/\/\$.\\\\\\n.\/\}"/printf "%s" "\$cmd"/'
   mutant comment-get  "[active: deny gh api repos/o/r/issues/7/comments -f body=x # -X GET" 's{^      own=\$\{own%%" #"\*\}$}{      :}'
-  [ "$mut_n" = 23 ] || { echo "FAIL: $mut_n of 23 mutants ran"; mut_bad=1; }
+  mutant norm-get     "[active: deny \"g\"h api repos/o/r/issues/7/comments -f body=hi; echo gh api" 's/^    \[ -n "\$get" \] \|\| deny "gh api \$wf"$/    :/'
+  [ "$mut_n" = 24 ] || { echo "FAIL: $mut_n of 24 mutants ran"; mut_bad=1; }
   [ "$mut_bad" = 0 ] || fail=$((fail + 1))
 fi
 [ "$fail" = 0 ]
