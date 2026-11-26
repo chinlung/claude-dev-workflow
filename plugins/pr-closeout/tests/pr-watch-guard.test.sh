@@ -192,8 +192,12 @@ done
 # no CLAUDE_PROJECT_DIR and no cwd: nothing to read, nothing to deny
 out=$(bash_in 'gh pr comment 7 -b x' | env -u CLAUDE_PROJECT_DIR bash "$HOOK" 2>/dev/null); rc=$?
 if [ "$rc" = 0 ] && [ -z "$out" ]; then ok; else failed "[no CLAUDE_PROJECT_DIR] rc $rc out $out"; fi
+# A $name glued to a non-ASCII byte: bash 3.2 in a UTF-8 locale reads the byte into the name, and
+# set -u ends the hook with exit 1 and no decision. Write ${name} before full-width text.
+glued=$(LC_ALL=C perl -ne 'print "$. " if /\$[A-Za-z_][A-Za-z0-9_]*[\x80-\xff]/' "$HOOK")
+if [ -z "$glued" ]; then ok; else failed "[no \$name glued to a non-ASCII byte] hook lines: $glued"; fi
 
-MIN_PASS=123
+MIN_PASS=124
 [ "$pass" -ge "$MIN_PASS" ] || failed "only $pass checks passed, expected at least $MIN_PASS"
 echo "pr-watch-guard: $pass passed, $fail failed"
 

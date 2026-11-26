@@ -32,7 +32,7 @@
 ## 1. Tests that run under bash 3.2
 
 ### Task 1: Suites run under bash 3.2; lint for `$name` followed by non-ASCII
-- [ ] 1.1 Both suites build their inputs in a 3.2-safe way and carry the D3 lint; the lint is red on today's hooks
+- [x] 1.1 Both suites build their inputs in a 3.2-safe way and carry the D3 lint; the lint is red on today's hooks
 1. Files: `plugins/pr-closeout/tests/pr-merge-gate.test.sh`, `plugins/pr-closeout/tests/pr-watch-guard.test.sh`.
 2. In the merge-gate suite, replace every MCP input written as an escaped JSON string inside `"$(mcp_in "…")"` with one built by `jq -n --arg`/`--argjson` (design D1d); keep labels and expectations.
 3. Add to each suite one check `[no $name glued to a non-ASCII byte in <hook>]`: `LC_ALL=C perl -ne 'print "$.\n" if /\$[A-Za-z_][A-Za-z0-9_]*[\x80-\xff]/' "$HOOK"` prints nothing; raise `MIN_PASS` by one in each.
