@@ -109,7 +109,7 @@
 ## 3. 文件與版本
 
 ### Task 3: 版本 1.2.1 與文件同步
-- [ ] 3.1 plugin.json、marketplace 兩處版本、兩份 CHANGELOG、兩份 plugin README 的 guard 段落同步
+- [x] 3.1 plugin.json、marketplace 兩處版本、兩份 CHANGELOG、兩份 plugin README 的 guard 段落同步
 
 **Files:**
 - Modify:

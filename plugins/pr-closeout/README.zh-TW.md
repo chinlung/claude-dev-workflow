@@ -108,7 +108,7 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/pr-closeout.mjs landed <owner/repo> <pr> \
 - **停止原因**依序檢查：`not-open`、`fork`、`head-not-allowed`（PR head 不是本機 HEAD 的祖先）、`query-failed`（連續 3 次）、`limit`（24 小時或 60 輪）、`ready`、`needs-user`、`no-progress`（check 跑完後連兩輪沒有變化）。head 第一次出現的那一輪不會被判成 `ready` 或 `needs-user`；必跑 check 還沒出現時視為還在跑。
 - **`watch-ack <owner/repo> <pr> --repo-dir <clone> --comment <key>...`** 把留言標成已處理。key 是 `<endpoint>:<id>:<內文 sha256 的前 16 碼>`，所以被編輯過的留言或 review 會重新算成新留言。
 - **新留言**不論作者，都交給 `/review-pr <pr> --triage-only <ids>`（code-audit-rigor 2.4.0），它分類完就停；使用者確認分類表之前什麼都不修。
-- **`hooks/pr-watch-guard.sh`** 在監看期間擋下寫入 GitHub 的 Bash 命令（`gh pr|issue comment|review`、帶欄位、`--input`、非 GET 方法或 GraphQL mutation 的 `gh api`、對 github.com 的 curl 或 wget、`resolveReviewThread` 等）以及所有非讀取的 GitHub MCP 工具。它是攔下習慣性失誤、或照著文件錯誤段落去寫入的絆線，不是對付刻意繞過的安全邊界：那樣的模型可以把狀態檔的 `active` 改成 false。要自己寫入，先停止監看（`watch … --stop`）。
+- **`hooks/pr-watch-guard.sh`** 在監看期間擋下寫入 GitHub 的 Bash 命令（`gh pr|issue comment|review`、帶欄位、`--input`、非 GET 方法或 GraphQL mutation 的 `gh api`（欄位或 `--input` 只在同一行每個 `gh api` 自己的參數裡都有不在引號內的 `-X GET` 時才放行）、對 github.com 的 curl 或 wget、`resolveReviewThread` 等）以及所有非讀取的 GitHub MCP 工具。它是攔下習慣性失誤、或照著文件錯誤段落去寫入的絆線，不是對付刻意繞過的安全邊界：那樣的模型可以把狀態檔的 `active` 改成 false。要自己寫入，先停止監看（`watch … --stop`）。
 
 ## 測試
 

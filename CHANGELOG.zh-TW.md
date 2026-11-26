@@ -4,6 +4,12 @@
 
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
+## [1.23.1] - 2026-11-26
+
+### Fixed
+
+- **pr-closeout 1.2.0 → 1.2.1** — `pr-watch-guard`：`-X GET` 只替它所屬的那個 `gh api` 放行，而且必須是那個呼叫自己、不在引號內的參數。別的命令裡的 GET，或 `-f 'body= -X GET'` 這種值，不再讓欄位寫入過關。詳見該 plugin 的 CHANGELOG [1.2.1]。
+
 ## [1.23.0] - 2026-11-25
 
 ### Added

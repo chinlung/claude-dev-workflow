@@ -2,6 +2,24 @@
 
 All notable changes to the `pr-closeout` plugin will be documented in this file.
 
+## [1.2.1] - 2026-11-26
+
+### Fixed
+
+- **`pr-watch-guard`: a GET clears only its own `gh api`.** It used to let a `-X GET` anywhere on the line clear every `gh api` that sends fields:
+  - `gh api -X GET … | cat; gh api …/comments -f body=x`
+  - `-f 'body= -X GET'`, where the GET is only a value
+
+  Now a field or `--input` on the line is a write unless every `gh api` on it has an unquoted, unescaped `-X GET` or `--method GET` among its own arguments, before the first separator, quote or backslash. Methods, fields and `--input` are still read on the whole line. So arguments a `gh api` gets through `$( )`, backticks or `xargs` still count.
+
+  The guard does not try to tell which command a flag belongs to. Three review rounds found ways a hand-written segment scanner would let a write through. As a result, another command's flag on the same line still counts: for example `gh api … | cut -f1` is denied, as before. That case stays a follow-up, together with text that merely mentions a write.
+
+  Replaying 317 `gh api` commands from real sessions:
+  - No denial was lifted.
+  - Three scripts are now denied. Their text holds a `gh api … -f` with no GET of its own, which a GET elsewhere on the line used to clear.
+
+  Five new mutants cover the per-`gh api` GET, 20 in all.
+
 ## [1.2.0] - 2026-11-25
 
 ### Added
