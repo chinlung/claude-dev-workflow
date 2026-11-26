@@ -37,3 +37,6 @@
 - [CODE] N - Known false-deny costs recorded in design Trade-offs (see Round 4): quoted endpoint before the method, another command's flag on the line; and a continuation that splits the method flag itself is denied (the whole-line view does not see it).
 - [DESIGN] Y - design.md Trade-offs must also say: the per-gh-api check can only narrow what main allowed, because a field first needs a GET visible to the whole-line view; the two views are a conjunction, not alternatives.
 - [CODE] N - Deferred to follow-ups (LOW): a 200 KB -f body takes the guard 11.6 s (main 0.6 s) against the 10 s hook timeout; what Claude Code does on a PreToolUse timeout is not checked. /bin/bash 3.2 under a UTF-8 locale aborts in deny() on an unbound variable (same on main).
+
+## Round 7 - Cross-vendor Review: codex r3 (2026-11-26)
+- [CODE] N - codex r3 (base main, tree at 8288187 with every fix landed): no findings. It compared the GET decision against main's.
