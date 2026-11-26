@@ -350,6 +350,13 @@ lexer_case "a shift inside \$[ … ]"                  $'echo $[1<<2]\ngh pr mer
 # set -u ends the hook with exit 1 and no decision. Write ${name} before full-width text.
 glued=$(LC_ALL=C perl -ne 'print "$. " if /\$[A-Za-z_][A-Za-z0-9_]*[\x80-\xff]/' "$HOOK")
 if [ -z "$glued" ]; then ok; else failed "[no \$name glued to a non-ASCII byte] hook lines: $glued"; fi
+# Both hooks block the action when they fail (time out, crash, print unreadable output): every handler
+# that runs one of them carries onFailure "block". Derived from hooks.json, with a floor, so a new
+# handler without it, or a jq path that matches nothing, goes red.
+hj="$here/../hooks/hooks.json"
+nh=$(jq '[.hooks.PreToolUse[].hooks[] | select(.command | test("pr-(merge-gate|watch-guard)\\.sh"))] | length' "$hj")
+nb=$(jq '[.hooks.PreToolUse[].hooks[] | select(.command | test("pr-(merge-gate|watch-guard)\\.sh")) | select(.onFailure == "block")] | length' "$hj")
+if [ "${nh:-0}" -ge 4 ] && [ "$nh" = "$nb" ]; then ok; else failed "[every pr-merge-gate / pr-watch-guard handler has onFailure block] $nb of $nh"; fi
 
 # Only the two older readings find this one, and bash runs none of it: the reading from before the
 # comment rules takes merge words in a comment as a merge (the safe side). It shows that reading is
@@ -357,7 +364,7 @@ if [ -z "$glued" ]; then ok; else failed "[no \$name glued to a non-ASCII byte] 
 FAKE_RC=0 gate allow "merge words in a comment are still checked" "$(bash_in '# gh pr merge 3 --repo o/r')"
 called "ready o/r 3" "comment text: args"
 
-MIN_PASS=243
+MIN_PASS=244
 if [ "$pass" -lt "$MIN_PASS" ] && [ "${STOP_ON_FAIL:-0}" != 1 ]; then failed "only $pass checks passed, expected at least $MIN_PASS"; fi
 echo "pr-merge-gate: $pass passed, $fail failed"
 

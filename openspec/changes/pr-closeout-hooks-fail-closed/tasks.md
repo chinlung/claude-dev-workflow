@@ -61,7 +61,7 @@
 ## 3. Fail closed and CI
 
 ### Task 4: `onFailure: "block"` on every handler of both hooks (D2)
-- [ ] 4.1 hooks.json carries it on all 4 handlers; a derived check with a floor of 4 guards it
+- [x] 4.1 hooks.json carries it on all 4 handlers; a derived check with a floor of 4 guards it
 1. Files: `plugins/pr-closeout/hooks/hooks.json`, `plugins/pr-closeout/tests/pr-merge-gate.test.sh`.
 2. RED: add check `[every pr-merge-gate / pr-watch-guard handler has onFailure block]`: jq over `.hooks.PreToolUse[].hooks[]` selecting `command` matching `pr-(merge-gate|watch-guard)\.sh`; count ≥ 4 and every `.onFailure == "block"`; raise `MIN_PASS`. Run: FAIL.
 3. Add `"onFailure": "block"` to the 4 handlers.
