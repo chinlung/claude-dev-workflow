@@ -25,7 +25,7 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/pr-closeout.mjs ready <owner/repo> <pr> --exp
 | 2 | 與 base 衝突 | 回報，不自行解衝突 |
 | 3 | 有未解決的 review thread（含 outdated） | 把 `threads[]` 逐條列給使用者（路徑、行號、作者），不自行 resolve |
 | 4 | check 失敗，或必跑的 check 沒出現 | 照下方「CI 失敗的分類」判斷 |
-| 5 | check 還在跑，或 GitHub 還在計算 | 用背景 until-loop 等一段時間後再跑一次，不要前景 sleep |
+| 5 | check 還在跑，或 GitHub 還在計算 | 用背景 until-loop 等一段時間後再跑一次，不要前景 sleep；要長時間盯著改用 pr-watch skill |
 | 6 | 被閘門擋住，看 `gate` | 見下表 |
 | 7 | 查詢失敗、出現不認得的值或用法錯誤 | 看 `hits[0].detail`；不要當成可合併 |
 

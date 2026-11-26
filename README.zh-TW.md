@@ -19,7 +19,7 @@
 | [Session Reflect](#session-reflect-插件) | Session 收尾回顧，提出最多 5 個經驗證的可執行改進建議 | `/session-reflect:reflect` + Stop hook |
 | [Scope Ledger](#scope-ledger-插件) | 每 goal 一份工作範圍帳本 + follow-ups backlog + 六個 fail-open hook，review finding 依 mode（converge／harvest）先 triage 再動手，擋住 review 驅動的範圍擴張又不跳過真 bug | `/scope-ledger:scope` + PreToolUse（Edit＋Bash）／UserPromptSubmit／PostToolUse／Stop／SessionStart hooks |
 | [PR](#pr-插件) | 好審的 PR body 模板：視覺化 Summary、before／after Evidence、Merge Danger（door＋blast radius） | `/pr:pr` + 自動觸發 skill |
-| [PR Closeout](#pr-closeout-插件) | fail-closed 的合併就緒判定（衝突、未解決 thread、check 失敗或必跑 check 沒跑、看不見的合併閘門、最後一輪 review 沒看過的檔）、合併後驗證，以及任何 merge 前先跑判定的閘門 | `/pr-closeout:pr-closeout` + PreToolUse（Bash＋GitHub MCP merge）hook |
+| [PR Closeout](#pr-closeout-插件) | fail-closed 的合併就緒判定（衝突、未解決 thread、check 失敗或必跑 check 沒跑、看不見的合併閘門、最後一輪 review 沒看過的檔）、合併後驗證，任何 merge 前先跑判定的閘門，以及 push 後盯著 PR 直到只剩你能處理的 `pr-watch` | `/pr-closeout:pr-closeout`、`pr-watch` skill + PreToolUse（Bash＋GitHub MCP）hook |
 
 ## 安裝方式
 
@@ -675,7 +675,7 @@ Session 收尾回顧系統。fail-open 的 Stop hook 閘門先廉價 triage（ro
 
 # PR Closeout 插件
 
-把 PR 收尾從手打查詢變成讀事實。`ready` 從 GitHub 讀一個 PR（一次 GraphQL 加三個 review endpoint），以 exit code 回答：衝突、未解決的 review thread（含 outdated）、check 失敗或必跑的 check 沒跑、還在等、被合併閘門擋住（已關閉、draft、要求修改、head 不是你推的那一版、BLOCKED 卻看不出原因、落後 base），或查詢讀不懂；它是 fail-closed，不認得的值絕不判為可合併。給它本機 clone 時，還會逐檔確認最後一輪 review-branch 看過的正是要合併的位元組，並列出 PR 帶著、尚未歸檔的 openspec change。`landed` 在合併後驗證：merged_at、head、merge commit 在 base 上（不看 squash 掉的分支 tip），以及分支已全部刪除。一個 PreToolUse hook 在 `gh pr merge`、`gh api …/merge` 與 GitHub MCP 的 merge 工具之前先跑 `ready`，只放行就緒的 PR（`PR_CLOSEOUT_OK=1` 可略過一次）。各 repo 必須出現哪些 check 是個人設定，不放在插件裡。詳見 [`plugins/pr-closeout/README.zh-TW.md`](plugins/pr-closeout/README.zh-TW.md)。
+把 PR 收尾從手打查詢變成讀事實。`ready` 從 GitHub 讀一個 PR（一次 GraphQL 加三個 review endpoint），以 exit code 回答：衝突、未解決的 review thread（含 outdated）、check 失敗或必跑的 check 沒跑、還在等、被合併閘門擋住（已關閉、draft、要求修改、head 不是你推的那一版、BLOCKED 卻看不出原因、落後 base），或查詢讀不懂；它是 fail-closed，不認得的值絕不判為可合併。給它本機 clone 時，還會逐檔確認最後一輪 review-branch 看過的正是要合併的位元組，並列出 PR 帶著、尚未歸檔的 openspec change。`landed` 在合併後驗證：merged_at、head、merge commit 在 base 上（不看 squash 掉的分支 tip），以及分支已全部刪除。一個 PreToolUse hook 在 `gh pr merge`、`gh api …/merge` 與 GitHub MCP 的 merge 工具之前先跑 `ready`，只放行就緒的 PR（`PR_CLOSEOUT_OK=1` 可略過一次）。各 repo 必須出現哪些 check 是個人設定，不放在插件裡。`pr-watch` skill（「盯 PR」）用 `/loop` 一輪一輪盯著已 push 的 PR：CI 失敗照收尾的方式處理，任何人的新留言交給 `/review-pr --triage-only`（code-audit-rigor）分類進工作範圍帳本，只剩你能處理時停下來回報；監看期間有 guard hook 擋下對 GitHub 的寫入。詳見 [`plugins/pr-closeout/README.zh-TW.md`](plugins/pr-closeout/README.zh-TW.md)。
 
 ---
 

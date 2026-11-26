@@ -5,10 +5,14 @@
 //   ready  <owner/repo> <pr> [--expect-head <sha>] [--repo-dir <path>] [--fixture <dir>]
 //          [--accept-unreviewed <path>=<reason>]...
 //   landed <owner/repo> <pr> --expect-head <sha> --repo-dir <path> [--branch <name>] [--fixture <dir>]
+//   watch  <owner/repo> <pr> --repo-dir <path> [--start | --stop] [--fixture <dir>]
+//   watch-ack <owner/repo> <pr> --repo-dir <path> --comment <key>...
 //
 // stdout is one JSON object; the exit code is the verdict:
 //   0 ready · 2 conflict · 3 unresolved review threads · 4 checks failed · 5 pending
 //   6 merge gate (field `gate` says which) · 7 query failed, unknown value or usage error
+// watch (one round of the pr-watch skill; state in <repo-dir>/.claude/pr-watch.<pr>.local.json):
+//   0 go on · 8 stop (watch.stop.reason) · 7 refused (not-started, stopped, too-soon, wrong-branch)
 // Every check runs; `hits[]` lists every condition met and the exit is the most urgent of them.
 // Fail-closed: a value this script does not know, a missing field or a failed query is never ready.
 //
@@ -18,23 +22,26 @@
 // compare.json, prev-pulls.json, prev-commit.json) — the tests use it; nothing else should.
 // Design: docs/pr-closeout-skill-design-2026-11-09.md. Tests: tests/pr-closeout.test.sh
 import { spawnSync } from 'node:child_process';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
 const USAGE = `Usage:
   pr-closeout.mjs ready  <owner/repo> <pr> [--expect-head <sha>] [--repo-dir <path>] [--fixture <dir>] [--accept-unreviewed <path>=<reason>]...
-  pr-closeout.mjs landed <owner/repo> <pr> --expect-head <sha> --repo-dir <path> [--branch <name>] [--fixture <dir>]`;
+  pr-closeout.mjs landed <owner/repo> <pr> --expect-head <sha> --repo-dir <path> [--branch <name>] [--fixture <dir>]
+  pr-closeout.mjs watch  <owner/repo> <pr> --repo-dir <path> [--start | --stop]
+  pr-closeout.mjs watch-ack <owner/repo> <pr> --repo-dir <path> --comment <key>...`;
 
 export class QueryError extends Error {}
 class UsageError extends Error {}
 
 const PAGE = 100;
 const GQL = `query($owner:String!,$name:String!,$n:Int!){repository(owner:$owner,name:$name){pullRequest(number:$n){
-state isDraft mergeable mergeStateStatus reviewDecision headRefOid headRefName baseRefName
+state isDraft isCrossRepository mergeable mergeStateStatus reviewDecision headRefOid headRefName baseRefName
 reviewThreads(first:${PAGE}){pageInfo{hasNextPage} nodes{isResolved isOutdated path line comments(first:1){nodes{author{login}}}}}
 commits(last:1){nodes{commit{oid statusCheckRollup{state contexts(first:${PAGE}){pageInfo{hasNextPage} nodes{__typename
-... on CheckRun{name status conclusion startedAt completedAt} ... on StatusContext{context state}}}}}}}}}}`;
+... on CheckRun{name status conclusion startedAt completedAt detailsUrl} ... on StatusContext{context state}}}}}}}}}}`;
 
 // ── query layer ──────────────────────────────────────────────────────────────────────────────────
 // One deadline for every query of a run (PR_CLOSEOUT_DEADLINE_MS, default 20 s), under the merge
@@ -79,16 +86,25 @@ function rest(apiPath) {
   if (!r.ok) throw new QueryError(`REST ${apiPath.split('?')[0]} failed (gh and curl)`);
   return parse(r.stdout, `REST ${apiPath.split('?')[0]}`);
 }
-function fullPage(list, what) {
-  if (!Array.isArray(list)) throw new QueryError(`${what}: not a list`);
-  if (list.length >= PAGE) throw new QueryError(`${what}: ${PAGE} or more entries, not read in full`);
-  return list;
+// Every page of a list endpoint: page n+1 is asked for only while page n came back full. One loop
+// for the network and the fixtures (pageOf differs), so the tests run the code a real PR runs.
+const MAX_PAGES = 10;
+function allPages(pageOf, what) {
+  const all = [];
+  for (let n = 1; n <= MAX_PAGES; n++) {
+    const list = pageOf(n);
+    if (!Array.isArray(list)) throw new QueryError(`${what}: not a list`);
+    all.push(...list);
+    if (list.length < PAGE) return all;
+  }
+  throw new QueryError(`${what}: more than ${MAX_PAGES * PAGE} entries, not read in full`);
 }
 
 const FIXTURE_FILES = {
   graphql: 'graphql.json', pullsComments: 'pulls-comments.json', pullsReviews: 'pulls-reviews.json',
   issuesComments: 'issues-comments.json', compare: 'compare.json', prevPulls: 'prev-pulls.json', prevCommit: 'prev-commit.json',
 };
+const PAGED = new Set(['pullsComments', 'pullsReviews', 'issuesComments']);
 function readFixture(dir) {
   const raw = {};
   for (const [key, file] of Object.entries(FIXTURE_FILES)) {
@@ -96,6 +112,12 @@ function readFixture(dir) {
     if (!fs.existsSync(f)) {
       if (key === 'prevCommit') { raw[key] = null; continue; }   // no merged PR before this one
       throw new QueryError(`fixture ${file} missing`);
+    }
+    if (PAGED.has(key)) {
+      // <name>.json is page 1, <name>.<n>.json page n; a page with no file is an empty page
+      const pageFile = (n) => path.join(dir, n === 1 ? file : file.replace(/\.json$/, `.${n}.json`));
+      raw[key] = allPages((n) => (fs.existsSync(pageFile(n)) ? parse(fs.readFileSync(pageFile(n), 'utf8'), `fixture ${file} page ${n}`) : []), `fixture ${file}`);
+      continue;
     }
     raw[key] = parse(fs.readFileSync(f, 'utf8'), `fixture ${file}`);
   }
@@ -117,9 +139,10 @@ export function fetchAll({ owner, repo, pr, fixture }) {
   const raw = { graphql: graphql(owner, repo, pr) };
   const p = prOf(raw.graphql);
   const base = `repos/${owner}/${repo}`;
-  raw.pullsComments = fullPage(rest(`${base}/pulls/${pr}/comments?per_page=${PAGE}`), 'review comments');
-  raw.pullsReviews = fullPage(rest(`${base}/pulls/${pr}/reviews?per_page=${PAGE}`), 'reviews');
-  raw.issuesComments = fullPage(rest(`${base}/issues/${pr}/comments?per_page=${PAGE}`), 'issue comments');
+  const paged = (p, what) => allPages((n) => rest(`${p}?per_page=${PAGE}&page=${n}`), what);
+  raw.pullsComments = paged(`${base}/pulls/${pr}/comments`, 'review comments');
+  raw.pullsReviews = paged(`${base}/pulls/${pr}/reviews`, 'reviews');
+  raw.issuesComments = paged(`${base}/issues/${pr}/comments`, 'issue comments');
   raw.compare = rest(`${base}/compare/${encodeURIComponent(p.baseRefName)}...${p.headRefOid}`);
   raw.prevPulls = rest(`${base}/pulls?state=closed&sort=updated&direction=desc&per_page=20`);
   const prev = Array.isArray(raw.prevPulls) ? raw.prevPulls.find((x) => x && x.merged_at && x.number !== Number(pr)) : null;
@@ -289,15 +312,28 @@ function extras(raw, pr) {
   const method = !prev || parents === null ? 'unknown' : parents === 1 ? 'squash' : parents === 2 ? 'merge' : 'unknown';
   const list = (x) => (Array.isArray(x) ? x : []);
   const authors = new Set();
-  for (const k of ['pullsComments', 'pullsReviews', 'issuesComments']) {
-    for (const c of list(raw[k])) if (c && c.user && c.user.login) authors.add(c.user.login);
+  const items = [];
+  // one entry per comment, for pr-watch to tell a new or edited comment from one it already handled;
+  // a review has no updated_at, so its submitted_at stands in, and only a review can be empty
+  const ENDPOINTS = [['pullsComments', 'pulls/comments', 'updated_at'], ['pullsReviews', 'pulls/reviews', 'submitted_at'], ['issuesComments', 'issues/comments', 'updated_at']];
+  for (const [k, endpoint, stamp] of ENDPOINTS) {
+    for (const c of list(raw[k])) {
+      if (c && c.user && c.user.login) authors.add(c.user.login);
+      if (!c) continue;
+      items.push({
+        endpoint, id: c.id ?? null, updatedAt: c[stamp] ?? null, author: (c.user && c.user.login) || null,
+        emptyBody: endpoint === 'pulls/reviews' && String(c.body ?? '').trim() === '',
+        // an edit changes the hash; a review has no updated_at, so the hash is how its edits show
+        bodyHash: crypto.createHash('sha256').update(String(c.body ?? '')).digest('hex').slice(0, 16),
+      });
+    }
   }
   return {
     precedent: { pr: prev ? prev.number : null, parents: prev ? parents : null, method },
     baseBehind: raw.compare && Number.isInteger(raw.compare.behind_by) ? raw.compare.behind_by : null,
     comments: {
       pullsComments: list(raw.pullsComments).length, pullsReviews: list(raw.pullsReviews).length,
-      issuesComments: list(raw.issuesComments).length, authors: [...authors].sort(),
+      issuesComments: list(raw.issuesComments).length, authors: [...authors].sort(), items,
     },
   };
 }
@@ -358,7 +394,7 @@ export function assess(raw, { expectHead, owner, repo, pr, config, cover } = {})
     else {
       if (cx.pageInfo.hasNextPage) hits.push({ code: 'query-failed', detail: `more than ${PAGE} check contexts` });
       checks = cx.nodes.map((c) => ({
-        name: c && (c.name || c.context), state: contextState(c),
+        name: c && (c.name || c.context), state: contextState(c), detailsUrl: (c && c.detailsUrl) || null,
         conclusion: c && (c.conclusion || c.state || null), startedAt: c && c.startedAt, completedAt: c && c.completedAt,
       }));
     }
@@ -401,6 +437,8 @@ export function assess(raw, { expectHead, owner, repo, pr, config, cover } = {})
     head: p.headRefOid ?? null,
     headRefName: p.headRefName ?? null,
     baseRefName: p.baseRefName ?? null,
+    // reported, never judged here: ready's verdict does not depend on it (pr-watch's watch does)
+    isCrossRepository: typeof p.isCrossRepository === 'boolean' ? p.isCrossRepository : null,
     threads,
     checks,
     suspectedSkip,
@@ -454,18 +492,29 @@ export function landed(o) {
 // ── CLI ──────────────────────────────────────────────────────────────────────────────────────────
 function parseArgs(argv) {
   const [cmd, slug, prArg, ...rest] = argv;
-  if (!['ready', 'landed'].includes(cmd)) throw new UsageError('unknown subcommand');
+  if (!['ready', 'landed', 'watch', 'watch-ack'].includes(cmd)) throw new UsageError('unknown subcommand');
   const m = /^([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)$/.exec(slug || '');
   if (!m) throw new UsageError('<owner/repo> expected');
   if (!/^[1-9][0-9]*$/.test(prArg || '')) throw new UsageError('<pr> must be a number');
-  const o = { cmd, owner: m[1], repo: m[2], pr: Number(prArg), accept: [] };
+  const o = { cmd, owner: m[1], repo: m[2], pr: Number(prArg), accept: [], comments: [], start: false, stop: false };
+  const watchFlags = ['--start', '--stop', '--now', '--comment'];
   for (let i = 0; i < rest.length; i++) {
     const flag = rest[i];
     const val = rest[i + 1];
-    if (!['--expect-head', '--repo-dir', '--fixture', '--branch', '--accept-unreviewed'].includes(flag)) throw new UsageError(`unknown option ${flag}`);
+    if (!['--expect-head', '--repo-dir', '--fixture', '--branch', '--accept-unreviewed', ...watchFlags].includes(flag)) throw new UsageError(`unknown option ${flag}`);
+    if (watchFlags.includes(flag) && !cmd.startsWith('watch')) throw new UsageError(`${flag} is for watch only`);
+    if ((flag === '--start' || flag === '--stop') && cmd !== 'watch') throw new UsageError(`${flag} is for watch only`);
+    if (flag === '--start') { o.start = true; continue; }
+    if (flag === '--stop') { o.stop = true; continue; }
     if (val === undefined) throw new UsageError(`${flag} needs a value`);
     i++;
-    if (flag === '--expect-head') {
+    if (flag === '--now') {
+      if (Number.isNaN(Date.parse(val))) throw new UsageError('--now must be an ISO time');
+      o.now = new Date(val);
+    } else if (flag === '--comment') {
+      if (!COMMENT_KEY.test(val)) throw new UsageError(`--comment must look like <endpoint>:<id>:<16 hex>, got ${val}`);
+      o.comments.push(val);
+    } else if (flag === '--expect-head') {
       if (!/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(val)) throw new UsageError('--expect-head must be a full commit sha');
       o.expectHead = val;
     } else if (flag === '--repo-dir') o.repoDir = val;
@@ -482,6 +531,205 @@ function parseArgs(argv) {
   return o;
 }
 
+// ── pr-watch: the per-PR state file (only watch and watch-ack write it) ──────────────────────────
+const COMMENT_KEY = /^(pulls\/comments|pulls\/reviews|issues\/comments):[0-9]+:[0-9a-f]{16}$/;
+export const STATE_VERSION = 1;
+export const statePath = (repoDir, pr) => path.join(repoDir, '.claude', `pr-watch.${pr}.local.json`);
+
+// The state of a PR's watch, null when there is none yet. Anything else that is not a state this
+// version wrote is refused, never rebuilt: a rebuilt state forgets which comments were handled.
+export function loadState(file, pr) {
+  if (!fs.existsSync(file)) return null;
+  const s = parse(fs.readFileSync(file, 'utf8'), `state ${file}`);
+  const bad = (why) => new QueryError(`state ${file}: ${why}`);
+  if (!s || typeof s !== 'object' || Array.isArray(s)) throw bad('not an object');
+  if (s.version !== STATE_VERSION) throw bad(`version ${JSON.stringify(s.version)}, this script writes ${STATE_VERSION}`);
+  if (s.pr !== pr) throw bad(`it is the state of PR ${JSON.stringify(s.pr)}, not ${pr}`);
+  if (!Array.isArray(s.seen) || !s.seen.every((k) => typeof k === 'string')) throw bad('seen is not a list of keys');
+  if (!s.headSeen || typeof s.headSeen !== 'object' || Array.isArray(s.headSeen)) throw bad('headSeen is not an object');
+  for (const k of ['round', 'noProgressRounds', 'unchangedRounds', 'queryFailures']) {
+    if (!Number.isInteger(s[k]) || s[k] < 0) throw bad(`${k} is not a count`);
+  }
+  if (typeof s.active !== 'boolean' || Number.isNaN(Date.parse(s.startedAt))) throw bad('active or startedAt is missing');
+  return s;
+}
+
+// A new stretch of watching: what was handled stays handled, everything else starts over.
+export function startState(prev, pr, now) {
+  return {
+    version: STATE_VERSION, pr, active: true, startedAt: now.toISOString(), round: 0,
+    seen: prev ? [...prev.seen] : [], headSeen: {}, lastSignature: null,
+    noProgressRounds: 0, unchangedRounds: 0, queryFailures: 0, lastTickAt: prev ? prev.lastTickAt ?? null : null,
+  };
+}
+
+export function saveState(file, s) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const tmpFile = `${file}.tmp.${process.pid}`;
+  fs.writeFileSync(tmpFile, `${JSON.stringify(s, null, 2)}\n`);
+  fs.renameSync(tmpFile, file);
+}
+
+// Why a stretch of watching ends, in the order watchVerdict checks them; the first that holds wins.
+// The pr-watch SKILL names exactly these (its docs test reads this list).
+export const STOP_REASONS = ['not-open', 'fork', 'head-not-allowed', 'query-failed', 'limit', 'ready', 'needs-user', 'no-progress'];
+const LIMIT_MS = 24 * 3600 * 1000;
+const LIMIT_ROUNDS = 60;
+const QUERY_FAILURES_TO_STOP = 3;
+const NO_PROGRESS_TO_STOP = 2;
+const REQUIRED_MISSING = 'required check missing:';
+// rounds, counted from the one a head is first seen in, that a missing required check may still be on its way
+const REQUIRED_MISSING_ROUNDS = 3;
+
+// One round of a watch, without I/O: verdict is ready's answer (null when the query threw), local the
+// clone's facts about that head, extra the run attempts of failed checks. Returns the next state, the
+// round's facts and exit 0 (go on) or 8 (stop, reason in watch.stop).
+export function watchVerdict(verdict, queryError, state, local, extra, now) {
+  const s = { ...state, seen: [...state.seen], headSeen: { ...state.headSeen } };
+  const w = {
+    round: s.round + 1, inGrace: false, settled: false, newComments: [], headAllowed: null, unpushed: null,
+    dirty: local ? !!local.dirty : null, staleRemote: false, failedRuns: [], unchangedRounds: s.unchangedRounds,
+    noProgressRounds: s.noProgressRounds, queryFailed: false, stop: null,
+  };
+  const finish = (reason, detail) => {
+    if (reason) { w.stop = { reason, detail: detail || '' }; s.active = false; }
+    s.round = w.round;
+    s.lastTickAt = now.toISOString();
+    return { state: s, watch: w, exit: reason ? 8 : 0 };
+  };
+
+  // a round that could not read the PR judges nothing else; only the third in a row stops
+  let qerr = queryError;
+  const items = (verdict && verdict.comments && verdict.comments.items) || [];
+  if (!qerr && verdict.exit === 7) qerr = (verdict.hits[0] && verdict.hits[0].detail) || 'query failed';
+  if (!qerr && typeof verdict.isCrossRepository !== 'boolean') qerr = 'isCrossRepository missing from the answer';
+  if (!qerr && items.some((i) => i.id === null || i.id === undefined)) qerr = 'a comment has no id';
+  if (qerr) {
+    s.queryFailures += 1;
+    w.queryFailed = true;
+    return finish(s.queryFailures >= QUERY_FAILURES_TO_STOP ? 'query-failed' : null, qerr);
+  }
+  s.queryFailures = 0;
+
+  const hits = verdict.hits || [];
+  if (hits.some((h) => h.code === 'merge-gate' && h.gate === 'not-open')) return finish('not-open', 'the PR is merged or closed');
+  if (verdict.isCrossRepository) return finish('fork', 'the PR comes from a fork');
+  w.headAllowed = !!(local && local.headKnown && local.headAllowed);
+  if (!w.headAllowed) return finish('head-not-allowed', `PR head ${verdict.head} is not an ancestor of the local HEAD`);
+  w.unpushed = local.unpushed;
+  if (now - Date.parse(s.startedAt) > LIMIT_MS || s.round >= LIMIT_ROUNDS) return finish('limit', `started ${s.startedAt}, ${s.round} rounds`);
+
+  // a head is in its grace round the first time it is seen: GitHub may not have started its checks
+  if (s.headSeen[verdict.head] === undefined) s.headSeen[verdict.head] = w.round;
+  w.inGrace = s.headSeen[verdict.head] === w.round;
+  const pending = hits.some((h) => h.code === 'pending');
+  const requiredMissing = w.round - s.headSeen[verdict.head] < REQUIRED_MISSING_ROUNDS && hits.some((h) => h.code === 'checks-failed' && String(h.detail).startsWith(REQUIRED_MISSING));
+  w.settled = !w.inGrace && !pending && !requiredMissing;
+  w.newComments = items.filter((i) => !i.emptyBody).map((i) => `${i.endpoint}:${i.id}:${i.bodyHash}`).filter((k) => !s.seen.includes(k));
+  w.staleRemote = w.unpushed > 0;
+  if (w.settled && !w.staleRemote) {
+    const attempts = (extra && extra.runAttempts) || {};
+    w.failedRuns = (verdict.checks || []).filter((c) => c.state === 'failed').map((c) => {
+      const m = /\/actions\/runs\/([0-9]+)/.exec(c.detailsUrl || '');
+      const runId = m ? m[1] : null;
+      return { name: c.name, runId, attempt: runId && attempts[runId] !== undefined ? attempts[runId] : null };
+    });
+  }
+
+  const signature = JSON.stringify([hits.map((h) => `${h.code}|${h.gate || ''}|${h.detail}`).sort(), verdict.head, local.head, [...w.newComments].sort()]);
+  const unchanged = signature === s.lastSignature;
+  s.lastSignature = signature;
+  s.unchangedRounds = w.unchangedRounds = unchanged ? s.unchangedRounds + 1 : 0;
+  // only settled rounds count: while checks run nothing is expected to move
+  s.noProgressRounds = w.noProgressRounds = w.settled && unchanged ? s.noProgressRounds + 1 : 0;
+
+  const quiet = !w.inGrace && w.newComments.length === 0;
+  if (quiet && w.settled && verdict.exit === 0 && w.unpushed === 0) return finish('ready', 'mergeable, every check done');
+  if (quiet && (w.staleRemote || (w.settled && hits.length > 0 && !hits.some((h) => h.code === 'checks-failed')))) {
+    return finish('needs-user', w.staleRemote ? `${w.unpushed} local commit(s) not pushed` : hits.map((h) => h.code).join(', '));
+  }
+  if (s.noProgressRounds >= NO_PROGRESS_TO_STOP) return finish('no-progress', `${s.noProgressRounds} settled rounds without change`);
+  return finish(null);
+}
+
+// The attempt number of each failed Actions run (the run id is in a check's detailsUrl). A run whose
+// attempt cannot be read is left out: the skill then only reports it, never reruns it blind.
+function runAttempts(o, checks) {
+  const ids = [...new Set(checks.filter((c) => c.state === 'failed').map((c) => (/\/actions\/runs\/([0-9]+)/.exec(c.detailsUrl || '') || [])[1]).filter(Boolean))];
+  const out = {};
+  if (o.fixture) {
+    const f = path.join(o.fixture, 'runs.json');
+    const all = fs.existsSync(f) ? parse(fs.readFileSync(f, 'utf8'), 'fixture runs.json') : {};
+    for (const id of ids) if (Number.isInteger(all[id])) out[id] = all[id];
+    return out;
+  }
+  for (const id of ids) {
+    try {
+      const run = rest(`repos/${o.owner}/${o.repo}/actions/runs/${id}`);
+      if (Number.isInteger(run && run.run_attempt)) out[id] = run.run_attempt;
+    } catch (e) { if (!(e instanceof QueryError)) throw e; }
+  }
+  return out;
+}
+
+// One round of `watch`: read the state (or start one), ask GitHub and the clone, judge, write. Every
+// refusal before the judgement (not started, too soon, wrong branch, a state it did not write) is
+// exit 7 with the state file untouched.
+function watchCli(o) {
+  if (!o.repoDir) throw new UsageError('watch needs --repo-dir');
+  const now = o.now || new Date();
+  const file = statePath(o.repoDir, o.pr);
+  let s = loadState(file, o.pr);
+  if (!s && !o.start) throw new QueryError(`not-started: no watch state at ${file}; start one with watch --start`);
+  if (o.start && o.stop) throw new UsageError('--start and --stop together');
+  if (o.stop) {
+    s.active = false;
+    saveState(file, s);
+    return { exit: 0, gate: null, hits: [], watch: { active: false, round: s.round } };
+  }
+  const tooSoon = s && s.active && s.lastTickAt && now - Date.parse(s.lastTickAt) < 30000;
+  if (tooSoon) throw new QueryError(`too-soon: the last round of PR ${o.pr} was at ${s.lastTickAt}; is another session watching it?`);
+  if (o.start) s = startState(s, o.pr, now);
+  else if (!s.active) throw new QueryError(`stopped: this watch of PR ${o.pr} stopped at round ${s.round}; start a new one with watch --start`);
+
+  let verdict = null;
+  let queryError = null;
+  try {
+    verdict = assess(fetchAll(o), { ...o, config: loadConfig(), cover: null });
+  } catch (e) {
+    if (!(e instanceof QueryError)) throw e;
+    queryError = e.message;
+  }
+  const branch = git(o.repoDir, ['rev-parse', '--abbrev-ref', 'HEAD']).out.trim();
+  if (verdict && verdict.headRefName && branch !== verdict.headRefName) {
+    throw new QueryError(`wrong-branch: the clone is on ${branch}, the PR's branch is ${verdict.headRefName}`);
+  }
+  const localHead = git(o.repoDir, ['rev-parse', 'HEAD']).out.trim();
+  const local = { head: localHead, headKnown: false, headAllowed: false, unpushed: null, dirty: git(o.repoDir, ['status', '--porcelain', '--untracked-files=no']).out.trim() !== '' };
+  if (verdict && typeof verdict.head === 'string') {
+    local.headKnown = git(o.repoDir, ['cat-file', '-e', `${verdict.head}^{commit}`]).ok;
+    local.headAllowed = local.headKnown && git(o.repoDir, ['merge-base', '--is-ancestor', verdict.head, 'HEAD']).ok;
+    if (local.headAllowed) local.unpushed = Number(git(o.repoDir, ['rev-list', '--count', `${verdict.head}..HEAD`]).out.trim());
+  }
+  const extra = { runAttempts: verdict ? runAttempts(o, verdict.checks || []) : {} };
+  const r = watchVerdict(verdict, queryError, s, local, extra, now);
+  saveState(file, r.state);
+  const stateIgnored = spawnSync('git', ['-C', o.repoDir, 'check-ignore', '-q', '--', file]).status === 0;
+  const base = verdict || { gate: null, hits: [{ code: 'query-failed', detail: queryError }] };
+  return { ...base, readyExit: verdict ? verdict.exit : 7, exit: r.exit, watch: { ...r.watch, stateIgnored } };
+}
+
+function watchAck(o) {
+  if (!o.repoDir) throw new UsageError('watch-ack needs --repo-dir');
+  if (!o.comments.length) throw new UsageError('watch-ack needs at least one --comment');
+  const file = statePath(o.repoDir, o.pr);
+  const s = loadState(file, o.pr);
+  if (!s) throw new QueryError(`no watch state at ${file}: start one with watch --start`);
+  s.seen = [...new Set([...s.seen, ...o.comments])];
+  saveState(file, s);
+  return { exit: 0, state: s };
+}
+
 function emit(obj) {
   process.stdout.write(`${JSON.stringify(obj, null, 2)}\n`);
   return obj.exit;
@@ -496,6 +744,8 @@ export function main(argv) {
   const head = { pr: { owner: o.owner, repo: o.repo, number: o.pr } };
   try {
     if (o.cmd === 'landed') return emit({ ...head, ...landed(o) });
+    if (o.cmd === 'watch-ack') return emit({ ...head, ...watchAck(o) });
+    if (o.cmd === 'watch') return emit({ ...head, ...watchCli(o) });
     const raw = fetchAll(o);
     const p = prOf(raw.graphql);
     const cover = o.repoDir

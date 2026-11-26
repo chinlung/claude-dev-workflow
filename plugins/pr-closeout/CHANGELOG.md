@@ -2,6 +2,18 @@
 
 All notable changes to the `pr-closeout` plugin will be documented in this file.
 
+## [1.2.0] - 2026-11-25
+
+### Added
+
+- **`pr-watch` skill.** Watches one PR after a push, in stretches started by the user, until only the user can act: CI failures handled the four-step way (one rerun of a likely flake by `run_attempt`, a local fix as a local commit only when the failing command reproduces and the tree is clean), new comments from anyone sent to `/review-pr --triage-only` and the scope ledger, a stop report and a notification. Never merges, resolves a thread, comments on GitHub or pushes without the user's word.
+- **`watch` and `watch-ack` subcommands.** `watch` owns the per-PR state file (`<clone>/.claude/pr-watch.<pr>.local.json`) and judges each round: a grace round for a head first seen, a missing required check counted as still running for the first three rounds of a head, comments keyed by endpoint, id and body hash, the PR head checked as an ancestor of the local HEAD, three query failures in a row before `query-failed`, a 24 h / 60 round limit, and the stop reasons in `STOP_REASONS`. `--start` begins a new stretch keeping what was handled, `--stop` ends one (the guard then lets writes through), and a round on a stopped watch is refused as `stopped`. Seventeen mutants guard the judgement, fifteen the guard.
+- **`pr-watch-guard` hook.** While a watch is active, denies Bash commands that write to GitHub and every GitHub MCP tool that is not a read. A tripwire against habitual or misdirected writes, not a boundary against a model set on getting past it.
+
+### Changed
+
+- **Comments are read page by page**, up to 1000 per endpoint; `ready` no longer returns 7 at 100 comments. Each comment in `comments.items[]` carries its id, `updatedAt`, `emptyBody` and `bodyHash`; each check carries its `detailsUrl`; `isCrossRepository` is reported (never judged by `ready`).
+
 ## [1.1.2] - 2026-11-14
 
 ### Fixed

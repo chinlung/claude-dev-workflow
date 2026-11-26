@@ -2,6 +2,12 @@
 
 All notable changes to the `code-audit-rigor` plugin will be documented in this file.
 
+## [2.4.0] - 2026-11-25
+
+### Added
+
+- **`/review-pr --triage-only [comment-id...]`.** Fetches and classifies, writes and validates `review-pr-comments.json`, prints the table and stops: no fix, commit, push, reply or resolve. With ids, only those comments are kept. The stop is written where Phase 3 and Phase 4 begin, since a caller loading the file sees those steps too; `tests/review-pr-triage.test.sh` holds the doc to it. pr-closeout's pr-watch uses it for new PR comments.
+
 ## [2.3.0] - 2026-11-02
 
 ### Changed

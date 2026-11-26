@@ -7,6 +7,7 @@ PR closeout as facts instead of hand-typed queries:
 - **`ready` before the merge.** It reads a PR's merge readiness from GitHub and returns a fail-closed, exit-coded verdict.
 - **`landed` after the merge.** It proves the merge happened as reviewed and that the branch is gone.
 - **A merge gate.** A PreToolUse hook runs `ready` before any merge Claude attempts.
+- **`pr-watch` after the push (1.2.0).** A skill that watches one PR until only the user can act, with `watch` judging each round and a guard hook keeping it from writing to GitHub.
 
 ## Install
 
@@ -44,7 +45,7 @@ It prints one JSON object. Every check runs and `hits[]` lists each condition me
 | `blocked-unseen` | GitHub reports BLOCKED and nothing visible explains it (a required review, a ruleset) |
 | `behind` | The base requires the branch to be up to date |
 
-**Fail-closed.** An unknown enum value, a missing field, a failed query or a list of 100 or more entries is exit 7, never ready. All queries share one 20 s deadline (`PR_CLOSEOUT_DEADLINE_MS`), so `ready` ends before the merge gate hook's 30 s timeout.
+**Fail-closed.** An unknown enum value, a missing field, a failed query, 100 or more review threads or check contexts, or more than 1000 comments on one endpoint is exit 7, never ready. Comments are read page by page (1.2.0; before, 100 on one endpoint was exit 7). All queries share one 20 s deadline (`PR_CLOSEOUT_DEADLINE_MS`), so `ready` ends before the merge gate hook's 30 s timeout.
 
 **Queries.** `gh api` runs first. If it fails, the token from `gh auth token` is passed to curl on stdin, so it never appears in argv or output.
 
@@ -98,6 +99,16 @@ It checks four things and exits 0 or 6 (gates `not-merged`, `head-mismatch`, `no
 - **Time.** Reading the command and all `ready` runs of it share a 25 s budget (`PR_MERGE_GATE_BUDGET`) under the hook's 30 s timeout; when too little is left the merge is denied rather than left to a timed-out hook. The two older readings take time linear in the command's length; the lexer stops at a step limit (a merge it cannot read is denied).
 - **Bypass.** Put `PR_CLOSEOUT_OK=1` in the command to bypass once. The MCP tool has no bypass; use `gh`.
 - **Cost for other commands.** A command that is not a merge leaves at a builtin `case` on the input, after one `cat` to read it: no jq, perl or node starts.
+
+## pr-watch
+
+The `pr-watch` skill watches one PR after a push, in stretches: started when the user asks ("盯 PR"), run round by round with the built-in `/loop`, stopped when only the user can act, then started again. It never merges, resolves a thread, comments on GitHub or pushes without the user's word.
+
+- **`watch <owner/repo> <pr> --repo-dir <clone> [--start | --stop] [--fixture <dir>] [--now <iso>]`** runs `ready`'s queries, judges the round and writes the state file `<clone>/.claude/pr-watch.<pr>.local.json` (add `*.local.json` to `.gitignore`). Exit 0 goes on, 8 stops (`watch.stop.reason`), 7 is a usage error or a refusal before judging (`not-started`, `stopped` — a round on a watch that has stopped —, `too-soon` — under 30 s since the last round of an active watch —, `wrong-branch`, a state file it did not write), with the state file untouched. `--stop` only writes `"active": false` and exits 0.
+- **Stop reasons**, checked in this order: `not-open`, `fork`, `head-not-allowed` (the PR head is not an ancestor of the local HEAD), `query-failed` (three in a row), `limit` (24 h or 60 rounds), `ready`, `needs-user`, `no-progress` (two settled rounds without change). A head is never judged `ready` or `needs-user` in the round it is first seen, and a missing required check counts as still running.
+- **`watch-ack <owner/repo> <pr> --repo-dir <clone> --comment <key>...`** marks comments as handled. A key is `<endpoint>:<id>:<16 hex of the body's sha256>`, so an edited comment or review is new again.
+- **New comments** from anyone go to `/review-pr <pr> --triage-only <ids>` (code-audit-rigor 2.4.0), which classifies and stops; nothing is fixed before the user confirms the table.
+- **`hooks/pr-watch-guard.sh`** denies, while a watch is active, Bash commands that write to GitHub (`gh pr|issue comment|review`, `gh api` with a field, `--input`, a non-GET method or a GraphQL mutation, curl or wget to github.com, `resolveReviewThread` and kin) and every GitHub MCP tool that is not a read. It is a tripwire for writes made by habit or by following the wrong part of a document, not a boundary against a model set on getting past it: that model could set the state's `active` to false. Stop the watch (`watch … --stop`) to write yourself.
 
 ## Tests
 
