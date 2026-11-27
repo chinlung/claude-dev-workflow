@@ -2,6 +2,16 @@
 
 All notable changes to the `pr-closeout` plugin will be documented in this file.
 
+## [1.4.0] - 2026-11-27
+
+### Added
+
+- **`watch --stop --force`.** When the state file of a watch is one this version cannot read (another version wrote it, it is damaged, or the path is not a file), `--force` moves it to `foreign-pr-watch.<pr>.<time>.local.json` in the same directory: bytes unchanged, a name `pr-watch-guard` no longer reads, still covered by `*.local.json`. A state it can read is only stopped, as before. `--force` is accepted with `watch --stop` alone.
+
+### Changed
+
+- **An unreadable state file is refused as `foreign-state:`.** Every form of `watch` and `watch-ack` refuses it with exit 7 and the file untouched, and the message names `watch --stop --force` and upgrading the plugin. Before, `watch --stop` failed on it while the guard, which reads `"active": true` from the text, kept blocking. The pr-watch skill reports `foreign-state` to the user instead of stopping on its own, and never adds `--force`.
+
 ## [1.3.0] - 2026-11-27
 
 ### Changed
