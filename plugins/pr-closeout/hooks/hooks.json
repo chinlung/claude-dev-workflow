@@ -8,12 +8,14 @@
           {
             "type": "command",
             "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/pr-merge-gate.sh\"",
-            "timeout": 30
+            "timeout": 30,
+            "onFailure": "block"
           },
           {
             "type": "command",
             "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/pr-watch-guard.sh\"",
-            "timeout": 10
+            "timeout": 10,
+            "onFailure": "block"
           }
         ]
       },
@@ -23,7 +25,8 @@
           {
             "type": "command",
             "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/pr-merge-gate.sh\"",
-            "timeout": 30
+            "timeout": 30,
+            "onFailure": "block"
           }
         ]
       },
@@ -33,7 +36,8 @@
           {
             "type": "command",
             "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/pr-watch-guard.sh\"",
-            "timeout": 10
+            "timeout": 10,
+            "onFailure": "block"
           }
         ]
       }

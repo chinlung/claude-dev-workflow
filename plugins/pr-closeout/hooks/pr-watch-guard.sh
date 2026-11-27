@@ -29,6 +29,8 @@ if [[ $input =~ \"cwd\"[[:space:]]*:[[:space:]]*\"([^\"]+)\" ]]; then
     top=$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null) && [ "$top" != "${CLAUDE_PROJECT_DIR:-}" ] && dirs+=("$top")
   fi
 fi
+# no directory to read means no watch; bash 3.2 also fails on an empty array under set -u
+[ ${#dirs[@]} -gt 0 ] || exit 0
 active=
 for d in "${dirs[@]}"; do
   for f in "$d"/.claude/pr-watch.*.local.json; do
@@ -39,7 +41,7 @@ done
 [ -n "$active" ] || exit 0
 
 deny() {
-  local r="⛔ pr-watch 防護：監看中不做「$1」（狀態檔 $active）。
+  local r="⛔ pr-watch 防護：監看中不做「$1」（狀態檔 ${active}）。
 pr-watch 不把 thread 標成已解決、不在 PR 上留言、回覆或送出 review，這些交給使用者自己做。
 確定要做：先請 Claude 停止監看（pr-closeout.mjs watch … --stop，狀態檔的 active 會變成 false），或自己把狀態檔的 \"active\" 改成 false。"
   if command -v jq >/dev/null 2>&1; then
@@ -106,8 +108,9 @@ if [[ $norm =~ (^|[^[:alnum:]_-])gh$ws(-[^[:space:]]+$ws)*api([[:space:]]|$) ]];
     # the command lowercased, backslash-newline dropped as bash drops it, then every separator, quote and
     # backslash turned into $Q. A quoted endpoint before the method (gh api "repos/…" -X GET -f …) is
     # therefore denied too: the GET is past the first quote.
-    Q=$'\x1f'
-    rest=$(printf '%s' "${cmd//$'\\\n'/}" | tr '[:upper:]' '[:lower:]' | tr '\t\r' '  ' | tr '|;&()`\n' "$Q$Q$Q$Q$Q$Q$Q" \
+    # $'…' sits in a variable: bash 3.2 does not expand it inside a double-quoted ${…}
+    Q=$'\x1f'; bsnl=$'\\\n'
+    rest=$(printf '%s' "${cmd//"$bsnl"/}" | tr '[:upper:]' '[:lower:]' | tr '\t\r' '  ' | tr '|;&()`\n' "$Q$Q$Q$Q$Q$Q$Q" \
       | tr "\\\\\"'" "$Q$Q$Q")
     # every gh api $norm sees must be found here too: a name spelled across quotes or a backslash ("g"h
     # api, gh "a"pi, g\h api) is gh api to bash and to $norm but not below, so a shortfall is a deny

@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.24.0] - 2026-11-27
+
+### Changed
+
+- **pr-closeout 1.2.1 → 1.3.0** — `pr-merge-gate` and `pr-watch-guard` block the action when they time out, crash or print unreadable output (`onFailure: "block"`, Claude Code v2.1.295 or later). Both crashed with exit 1 under macOS `/bin/bash` 3.2 in a UTF-8 locale at the moment they denied, so the merge gate let a merge through that `ready` had refused; fixed, and CI now runs both suites under bash 3.2. See that plugin's CHANGELOG [1.3.0].
+
 ## [1.23.1] - 2026-11-26
 
 ### Fixed

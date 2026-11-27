@@ -491,14 +491,14 @@ while read -r repo num sha; do
   # or a substitution arrives here unexpanded, a branch name or a short sha is not a head oid) would
   # only come back as head-mismatch, with nothing saying why.
   if [ "$sha" != - ] && [[ ! $sha =~ ^[0-9a-f]{40}$ ]]; then
-    deny "$repo#$num 的 --match-head-commit（MCP 的 sha）不是字面的 40 碼 commit sha：「$sha」。hook 看到的是命令文字，變數與 \$( ) 不會展開；請先取得 sha，直接寫進命令。"
+    deny "$repo#$num 的 --match-head-commit（MCP 的 sha）不是字面的 40 碼 commit sha：「${sha}」。hook 看到的是命令文字，變數與 \$( ) 不會展開；請先取得 sha，直接寫進命令。"
   fi
   args=(ready "$repo" "$num")
   [ "$sha" = - ] || args+=(--expect-head "$sha")
   out=$(PR_CLOSEOUT_DEADLINE_MS=$left node "$script" "${args[@]}" 2>/dev/null); rc=$?
   [ "$rc" = 0 ] && continue
   summary=$(printf '%s' "$out" | jq -r '"gate: \(.gate // "-")\n" + ([.hits[]? | "  - \(.code)\(if .gate then " (" + .gate + ")" else "" end)：\(.detail)"] | join("\n"))' 2>/dev/null)
-  deny "$repo#$num 還不能合併（pr-closeout ready exit $rc）。
+  deny "$repo#$num 還不能合併（pr-closeout ready exit ${rc}）。
 ${summary:-（ready 沒有輸出可讀的結果）}
 先處理上面列的項目，或照 pr-closeout skill 的收尾步驟走。"
 done <<< "$targets"

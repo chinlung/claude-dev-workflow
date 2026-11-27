@@ -4,6 +4,12 @@
 
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 並遵循 [語意化版本](https://semver.org/spec/v2.0.0.html)。
+## [1.24.0] - 2026-11-27
+
+### Changed
+
+- **pr-closeout 1.2.1 → 1.3.0** — `pr-merge-gate` 與 `pr-watch-guard` 逾時、崩潰或輸出讀不懂時擋下動作（`onFailure: "block"`，需 Claude Code v2.1.295 以上）。兩個 hook 在 macOS 的 `/bin/bash` 3.2、UTF-8 locale 下會在正要擋下時以 exit 1 崩潰，merge 閘門因此放行了 `ready` 已拒絕的合併；已修正，CI 也改用 bash 3.2 跑兩份套件。詳見該 plugin 的 CHANGELOG [1.3.0]。
+
 ## [1.23.1] - 2026-11-26
 
 ### Fixed

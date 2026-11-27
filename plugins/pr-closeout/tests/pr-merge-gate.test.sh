@@ -66,7 +66,10 @@ FAKE_RC=0 gate allow "gh api merge, leading slash" "$(bash_in 'gh api -X PUT /re
 called "ready o/r 5" "gh api slash: args"
 FAKE_RC=0 gate allow "MCP merge" "$(mcp_in '{"owner":"o","repo":"r","pullNumber":3}')"
 called "ready o/r 3" "MCP: args"
-FAKE_RC=0 gate allow "MCP merge with sha" "$(mcp_in "{\"owner\":\"o\",\"repo\":\"r\",\"pullNumber\":8,\"sha\":\"$SHA\"}")"
+# built by jq, not as an escaped string: bash 3.2 mis-parses escaped quotes inside "$( )" after an
+# assignment prefix, and the hook would get an empty input
+mcp_sha=$(jq -cn --arg s "$SHA" '{owner:"o",repo:"r",pullNumber:8,sha:$s}')
+FAKE_RC=0 gate allow "MCP merge with sha" "$(mcp_in "$mcp_sha")"
 called "ready o/r 8 --expect-head $SHA" "MCP sha: args"
 gate deny "MCP sha is not a full sha" "$(mcp_in '{"owner":"o","repo":"r","pullNumber":8,"sha":"main"}')"
 called "" "MCP ref name: ready not called"
@@ -343,13 +346,25 @@ lexer_case "double quotes in \$( … ) in double quotes" 'echo "x $(echo "a"; gh
 lexer_case "a substitution inside \$(( … ))"         'echo $(( $(gh pr merge 3 --repo o/r) 0 ))'
 lexer_case "a shift inside \$[ … ]"                  $'echo $[1<<2]\ngh pr merge 3 --repo o/r'
 
+# A $name glued to a non-ASCII byte: bash 3.2 in a UTF-8 locale reads the byte into the name, and
+# set -u ends the hook with exit 1 and no decision. Write ${name} before full-width text.
+glued=$(LC_ALL=C perl -ne 'print "$. " if /\$[A-Za-z_][A-Za-z0-9_]*[\x80-\xff]/' "$HOOK")
+if [ -z "$glued" ]; then ok; else failed "[no \$name glued to a non-ASCII byte] hook lines: $glued"; fi
+# Both hooks block the action when they fail (time out, crash, print unreadable output): every handler
+# that runs one of them carries onFailure "block". Derived from hooks.json, with a floor, so a new
+# handler without it, or a jq path that matches nothing, goes red.
+hj="$here/../hooks/hooks.json"
+nh=$(jq '[.hooks.PreToolUse[].hooks[] | select(.command | test("pr-(merge-gate|watch-guard)\\.sh"))] | length' "$hj")
+nb=$(jq '[.hooks.PreToolUse[].hooks[] | select(.command | test("pr-(merge-gate|watch-guard)\\.sh")) | select(.onFailure == "block")] | length' "$hj")
+if [ "${nh:-0}" -ge 4 ] && [ "$nh" = "$nb" ]; then ok; else failed "[every pr-merge-gate / pr-watch-guard handler has onFailure block] $nb of $nh"; fi
+
 # Only the two older readings find this one, and bash runs none of it: the reading from before the
 # comment rules takes merge words in a comment as a merge (the safe side). It shows that reading is
 # still there. Keep it last: the mutants below run on a copy with the lexer alone, where it fails.
 FAKE_RC=0 gate allow "merge words in a comment are still checked" "$(bash_in '# gh pr merge 3 --repo o/r')"
 called "ready o/r 3" "comment text: args"
 
-MIN_PASS=242
+MIN_PASS=244
 if [ "$pass" -lt "$MIN_PASS" ] && [ "${STOP_ON_FAIL:-0}" != 1 ]; then failed "only $pass checks passed, expected at least $MIN_PASS"; fi
 echo "pr-merge-gate: $pass passed, $fail failed"
 
