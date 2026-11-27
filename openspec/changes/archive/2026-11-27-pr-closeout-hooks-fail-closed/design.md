@@ -68,12 +68,12 @@ merge gate 的 `"${args[@]}"` 至少含 `ready repo num` 三個元素，不會�
 
 `.github/workflows/validate.yml` 加一個 job（ubuntu-latest）：
 1. 下載 `https://ftp.gnu.org/gnu/bash/bash-3.2.57.tar.gz`，比對 sha256 `3fa9daf85ebf35068f090ce51283ddeeb3c75eb5bc70b1a4a7cb05868bfe06a4`，不符就失敗。
-2. `./configure --without-bash-malloc`，接著序列化 `make`（不加 `-j`，平行建置會在 `libintl.h` 產生前就編 `mkbuiltins`），`CFLAGS` 與 `CFLAGS_FOR_BUILD` 都加 `-std=gnu89` 和放寬隱式宣告的旗標。本機 clang 實測約 21 秒。
-3. 建一個目錄，把編出的 `bash` 連結進去並放到 PATH 最前，讓套件裡的 `bash "$HOOK"` 用到它。
-4. **金絲雀**：先在選定的 UTF-8 locale 下用它跑 `set -u; a=1; echo "$a）"`，預期失敗；沒失敗就讓 job 失敗。這證明 runner 上的 locale 與 shell 真的是會出事的組合，避免 job 什麼都沒測就綠燈。locale 先用 `C.UTF-8`，ubuntu 預設就有；金絲雀不過再改裝 `en_US.UTF-8`。
+2. `./configure --without-bash-malloc`，接著序列化 `make`（不加 `-j`，平行建置會在 `libintl.h` 產生前就編 `mkbuiltins`），`CFLAGS` 與 `CFLAGS_FOR_BUILD` 都加 `-std=gnu89` 和放寬隱式宣告的旗標。ubuntu 上另需 `YACC="bison -y"`（沒有 yacc 就先裝 bison），且 runner 要是 x86_64（2002 年的 `config.guess` 不認 aarch64）。ubuntu amd64 容器實測可建。
+3. 建一個目錄，把編出的 `bash` 放進去並加到 PATH 最前，讓套件裡的 `bash "$HOOK"` 用到它。
+4. **金絲雀**：證明 PATH 上的 `bash` 真的是 3.2，job 不會什麼都沒測就綠燈。檢查兩個在 glibc 上重現的 3.2 語意，任一不成立就讓 job 失敗：空陣列在 `set -u` 下展開必須報錯；雙引號內 `${…}` 裡的 `$'…'` 必須不展開。D1a 型（`$name` 後接全形字元）是 macOS libc 特有，GNU bash 3.2 在 glibc 下（`C.UTF-8` 與 `C` 都）不重現，所以不拿來當金絲雀，由 D3 的 lint 在每個平台擋。locale 用 `C.UTF-8`，ubuntu 預設就有。
 5. 以 `NO_MUTANTS=1` 跑兩份套件，各自以 exit code 判定。突變仍由現有的 bash 5 job 跑，3.2 job 只負責語意差異。
 
-編好的 bash 以 tarball 的 sha256 為 key 快取（actions/cache），之後的執行跳過步驟 1–2。
+編好的 bash 以 actions/cache 快取，key 含 runner 的 OS 與架構、tarball 的 sha256，以及一個手動遞增的 recipe 標記（`r1`）；改 flags、configure 或 make 那幾行時要遞增它，否則命中快取會沿用舊 binary，而金絲雀分辨不出建置方式的差別。命中快取時跳過步驟 1–2。
 
 ### D5 文件與版本
 
@@ -83,13 +83,14 @@ merge gate 的 `"${args[@]}"` 至少含 `ready repo num` 三個元素，不會�
 ## Risks / Trade-offs
 
 - **plugin hooks.json 是否讀 `onFailure`**：文件沒寫。證據來自 Claude Code 2.1.332 binary 的程式碼：command hook 一律讀 `hook.onFailure`，而處理帶 `pluginId` 的 hook 的同一段程式也比對 `onFailure!=="block"`。沒有實測：裝一個探針 hook 寫進設定檔，被 auto mode 以 Undermining Oversight 擋下。殘餘風險是欄位被忽略、維持放行，等於沒有比現況更差。
-- **hook 有 bug 時擋住所有 Bash**（使用者選 B 時已知的代價）：guard 掛在每一次 Bash 呼叫上。D1c 把唯一已知會在 allow 路徑崩潰的情況修掉，D4 讓 3.2 下的崩潰在 CI 現形；剩下的出路是停用 plugin。
+- **hook 有 bug 時擋住所有 Bash**（使用者選 B 時已知的代價）：guard 掛在每一次 Bash 呼叫上。D1c 把唯一已知會在 allow 路徑崩潰的情況修掉，D3 的 lint 與 D4 的 3.2 job 讓兩型 3.2 崩潰在 CI 現形；剩下的出路是停用 plugin。
 - **DESIGN-RED-FLAGS #8（手動同步清單）**：「哪些 handler 要 block」若寫死在測試裡，新增 handler 時會漏。D2 的測試從 hooks.json 依 command 推導，並設最少 4 個的地板。
 - **CI 建置依賴 ftp.gnu.org**：來源掛掉時 job 失敗（方向正確），有快取時不受影響；以 sha256 鎖定內容。
 
 ## Open Questions
 
 - [default] 其他 plugin 的 gate hook 在 3.2 下沒有實跑，不納入本次；列進 follow-ups（使用者可要求併入）。
-- [default] 3.2 job 用 `C.UTF-8`，以金絲雀證明它會重現 bug；不行再改 `en_US.UTF-8`。
+- [default] 3.2 job 用 `C.UTF-8`；金絲雀證明 PATH 上是 3.2，D1a 型由 lint 負責，不靠 locale。
+- [default] 快取命中時跳過 sha256 檢查，binary 的完整性只靠 GitHub 的快取範圍規則；此 job 無 secret、token 唯讀，不另處理。
 - [default] 3.2 job 不跑突變，突變由 bash 5 job 負責。
 - [default] D1c 在沒有可讀目錄時 `exit 0`，與現有「沒有監看就放行」的語意一致。

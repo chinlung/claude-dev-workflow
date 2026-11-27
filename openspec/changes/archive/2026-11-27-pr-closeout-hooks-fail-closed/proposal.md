@@ -14,7 +14,7 @@ CI 跑在 ubuntu 的 bash 5 上，以上都看不到。
 
 - 兩個 hook 在 bash 3.2、UTF-8 locale 下行為正確：兩份套件在 `/bin/bash` 3.2 下揭露的崩潰全部修掉（`${var}` 那一型，以及其餘 allow 路徑上的失敗）。
 - `plugins/pr-closeout/hooks/hooks.json` 裡這兩個 hook 的每個 handler 都加 `"onFailure": "block"`：逾時、崩潰或輸出讀不懂時擋下，不再放行。
-- CI 加一個 job：從 GNU 原始碼編 bash 3.2.57，在 UTF-8 locale 下用它跑 guard 與 merge gate 兩份套件。
+- CI 加一個 job：從 GNU 原始碼編 bash 3.2.57，通過金絲雀（確認 PATH 上是 3.2）後用它跑 guard 與 merge gate 兩份套件；`$name` 後接全形字元那一型只在 macOS 重現，由兩份套件各加的 lint 在每個平台擋。
 - pr-closeout 1.2.1 → 1.3.0、marketplace 1.23.1 → 1.24.0；README 與 CHANGELOG 寫明 hook 失效時現在的行為與脫困方式。
 
 ## Capabilities
@@ -34,9 +34,9 @@ CI 跑在 ubuntu 的 bash 5 上，以上都看不到。
 
 ## Decisions
 
-- [default] 兩個 hook 都加 `onFailure: "block"`，不只 merge gate——使用者 2026-11-27 裁定（方案 B）：放行一次不該合的 merge，代價遠大於多擋一次 Bash。
-- [default] CI 從 GNU 原始碼編 bash 3.2.57，不只靠靜態檢查——使用者 2026-11-27 裁定；同一份測試可另加一條便宜的 lint（`$name` 後接非 ASCII 字元）當第一道防線。
-- [default] 200 KB 逾時不另設長度上限：有 `onFailure: "block"` 後逾時就是擋下，方向正確。
-- [default] 早於 v2.1.295 的 Claude Code 會忽略 `onFailure`，仍舊放行；README 寫明最低版本，hook 不自行偵測。
-- [default] hook 壞掉、擋住所有 Bash 時的脫困方式：停用 plugin（`/plugin disable pr-closeout`）再回報；README 寫明。`PR_CLOSEOUT_OK=1` 只在 hook 能正常執行時有效。
-- [default] 版本走 minor（1.3.0）：hook 失效時由放行改為擋下，是使用者會察覺的行為變更。
+- 兩個 hook 都加 `onFailure: "block"`，不只 merge gate——使用者 2026-11-27 裁定（方案 B）：放行一次不該合的 merge，代價遠大於多擋一次 Bash。
+- CI 從 GNU 原始碼編 bash 3.2.57，不只靠靜態檢查——使用者 2026-11-27 裁定；金絲雀驗 PATH 上真的是 3.2（空陣列在 `set -u` 下報錯、`$'…'` 不在雙引號 `${…}` 內展開），`$name` 後接全形字元那一型 glibc 不重現，由兩份套件的 lint 擋。編好的 bash 以快取保存，key 帶手動遞增的 recipe 標記。
+- 200 KB 逾時不另設長度上限：有 `onFailure: "block"` 後逾時就是擋下，方向正確。
+- 早於 v2.1.295 的 Claude Code 會忽略 `onFailure`，仍舊放行；README 寫明最低版本，hook 不自行偵測。
+- hook 壞掉、擋住所有 Bash 時的脫困方式：停用 plugin（`/plugin disable pr-closeout`）再回報；README 寫明。`PR_CLOSEOUT_OK=1` 只在 hook 能正常執行時有效。
+- 版本走 minor（1.3.0）：hook 失效時由放行改為擋下，是使用者會察覺的行為變更。

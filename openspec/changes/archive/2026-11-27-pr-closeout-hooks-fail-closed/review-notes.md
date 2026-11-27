@@ -17,5 +17,5 @@
 ## Round 2 - Codex cross-vendor review (2026-11-27)
 - [CODE] N - 無 finding（bash 3.2／5 探測、CI canary、腳本語法、YAML 解析通過；唯讀 sandbox 未跑完整套件）
 
-## Round 3 - /security-review (2026-11-27)
+## Round 3 - /security-review (2026-11-27, final)
 - [CODE] N - 無 HIGH／MEDIUM finding：提早 exit 0 不是新的放行（main 在同條件也放行）；`"$bsnl"` 以字面比對、與舊寫法在 bash 5 下位元組相同；onFailure block 只會收緊；CI job 的 run 步驟沒有內插、不用 secrets。非安全觀察：cache hit 時跳過 sha256 檢查，binary 的完整性只靠快取範圍
