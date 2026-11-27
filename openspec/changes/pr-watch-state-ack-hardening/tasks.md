@@ -69,7 +69,7 @@
 ## 2. pr-watch skill and docs
 
 ### Task 3: The SKILL reports `foreign-state` and never forces
-- [ ] 2.1 `SKILL.md` stops and reports on `foreign-state`, adds `--force` only after the user asks, and the docs test pins both.
+- [x] 2.1 `SKILL.md` stops and reports on `foreign-state`, adds `--force` only after the user asks, and the docs test pins both.
 
 **Files:**
 - Modify: `plugins/pr-closeout/skills/pr-watch/SKILL.md` (exit 7 step :38; the stop paragraph :105-107; the `## 不做` list)
