@@ -656,8 +656,9 @@ for v in "version 2|$V2" 'not JSON|{' 'empty file|' 'whitespace|  ' 'null|null' 
   name=${v%%|*}; alien "${v#*|}"
   run_cli 7 "$name: --stop" watch example/repo 1 --repo-dir "$W7" --stop
   d=$(jq -r '.hits[0].detail' "$tmp/out.json")
-  has "$name: says foreign-state" "$d" "foreign-state:"
+  if [[ $d == "foreign-state:"* ]]; then ok; else failed "[$name: says foreign-state] does not start with foreign-state: $d"; fi
   has "$name: names --force" "$d" "--stop --force"
+  has "$name: names the upgrade" "$d" "upgrade the plugin"
   if cmp -s "$ST7" "$tmp/st7"; then ok; else failed "[$name: refused, file untouched] changed"; fi
 done
 rm -rf "$ST7"; mkdir "$ST7"
@@ -696,7 +697,7 @@ rm -rf "$ST7"; mkdir "$ST7"; rm -rf "$MOVED7"
 force 0 "a directory: moved aside"
 if [ -d "$MOVED7" ] && [ ! -e "$ST7" ]; then ok; else failed "[a directory: moved aside, original gone]"; fi
 rm -rf "$MOVED7"
-b7=$(basename "$MOVED7")
+b7=$(basename "$(jq -r '.watch.movedAside' "$tmp/out.json")")   # the name the script reported, not this suite's constant
 if [[ $b7 == pr-watch.*.local.json ]]; then failed "[moved name: inside the guard's glob]"; else ok; fi
 if [[ $b7 == *.local.json ]]; then ok; else failed "[moved name: outside *.local.json]"; fi
 # a state this script can read is only stopped: it stays, and what was seen stays
@@ -710,13 +711,27 @@ alien '{"version":1,"pr":1,"active":true,"startedAt":"2026-11-25T00:00:00Z","rou
 run_cli 7 "--force with watch-ack" watch-ack example/repo 1 --repo-dir "$W7" --force --comment "issues/comments:1:0123456789abcdef"
 has "--force with watch-ack: says so" "$(jq -r '.hits[0].detail' "$tmp/out.json")" "--force is for watch --stop only"
 if cmp -s "$ST7" "$tmp/st7"; then ok; else failed "[--force with watch-ack: state untouched] changed"; fi
+run_cli 7 "--force with --start" watch example/repo 1 --repo-dir "$W7" --fixture "$FX5" --now "$NOW7" --start --force
+has "--force with --start: says so" "$(jq -r '.hits[0].detail' "$tmp/out.json")" "--force is for watch --stop only"
 run_cli 7 "--force with ready" ready example/repo 1 --fixture "$BASE" --force
+has "--force with ready: says so" "$(jq -r '.hits[0].detail' "$tmp/out.json")" "--force is for watch --stop only"
+run_cli 7 "--force with landed" landed example/repo 1 --expect-head 0000000000000000000000000000000000000000 --repo-dir "$W7" --force
+has "--force with landed: says so" "$(jq -r '.hits[0].detail' "$tmp/out.json")" "--force is for watch --stop only"
 run_cli 7 "--force without --stop" watch example/repo 1 --repo-dir "$W7" --fixture "$FX5" --now "$NOW7" --force
 has "--force without --stop: says so" "$(jq -r '.hits[0].detail' "$tmp/out.json")" "--force is for watch --stop only"
+# --start and --stop together are refused before anything is read or moved, foreign state or not
+alien "$V2"
+run_cli 7 "--start --stop --force on a foreign state" watch example/repo 1 --repo-dir "$W7" --now "$NOW7" --start --stop --force
+has "--start --stop --force on a foreign state: says so" "$(jq -r '.hits[0].detail' "$tmp/out.json")" "--start and --stop together"
+if cmp -s "$ST7" "$tmp/st7" && [ ! -e "$MOVED7" ]; then ok; else failed "[--start --stop --force on a foreign state: nothing moved]"; fi
 # the destination is never overwritten
 alien "$V2"; printf 'taken' > "$MOVED7"
 force 7 "dest exists: refused"
 if cmp -s "$ST7" "$tmp/st7" && [ "$(cat "$MOVED7")" = taken ]; then ok; else failed "[dest exists: nothing changed]"; fi
+rm -f "$MOVED7"
+alien "$V2"; ln -s "$W7/nowhere" "$MOVED7"   # a dangling symlink is an entry too: fs.existsSync follows it and says no
+force 7 "dest is a dangling symlink: refused"
+if cmp -s "$ST7" "$tmp/st7" && [ -L "$MOVED7" ]; then ok; else failed "[dest is a dangling symlink: nothing changed]"; fi
 rm -f "$MOVED7"
 # nothing to move
 rm -rf "$ST7"
@@ -830,12 +845,13 @@ if [ "${NO_MUTANTS:-0}" != 1 ]; then
   mutant w-keys        "[a new comment is not no-progress]" "s/\[\.\.\.w\.newComments\]\.sort\(\)\]/w.newComments.length]/"
   # an unreadable state: refused as foreign-state, moved aside only by watch --stop --force
   mutant f-class       "[--force moves a version 2 state aside]" "s/e instanceof ForeignStateError/false/"
-  mutant f-overwrite   "[dest exists: refused]"            "s/if \(fs\.existsSync\(dest\)\) throw/if (false) throw/"
+  mutant f-overwrite   "[dest exists: refused]"            "s/if \(taken\) throw/if (false) throw/"
   mutant f-prefix      "[moved name: foreign-pr-watch"     "s/foreign-pr-watch\./pr-watch.foreign./"
-  mutant f-usage       "[--force with watch-ack]"          "s/if \(o\.force && !\(o\.cmd === 'watch' && o\.stop\)\) throw/if (false) throw/"
+  mutant f-usage       "[--force with --start: says so]" "s/if \(o\.force && !\(o\.cmd === 'watch' && o\.stop\)\) throw/if (false) throw/"
+  mutant f-usage-cmd   "[--force with ready: says so]"    "s/if \(flag === '--force' && cmd !== 'watch'\) throw/if (false) throw/"
   mutant f-json        "[not JSON: says foreign-state]"    "s/throw foreign\(file, 'not JSON'\)/throw new QueryError('x')/"
   mutants_judged
-  MUT_WANT_N=60
+  MUT_WANT_N=61
   if [ "$mut_n" != "$MUT_WANT_N" ]; then echo "FAIL: $mut_n of $MUT_WANT_N mutants ran"; mut_bad=1; fi
   [ "$mut_bad" = 0 ] || fail=$((fail + 1))
 fi

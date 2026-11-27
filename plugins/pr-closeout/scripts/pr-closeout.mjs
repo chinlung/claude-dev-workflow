@@ -508,6 +508,7 @@ function parseArgs(argv) {
     const flag = rest[i];
     const val = rest[i + 1];
     if (!['--expect-head', '--repo-dir', '--fixture', '--branch', '--accept-unreviewed', ...watchFlags].includes(flag)) throw new UsageError(`unknown option ${flag}`);
+    if (flag === '--force' && cmd !== 'watch') throw new UsageError('--force is for watch --stop only');
     if (watchFlags.includes(flag) && !cmd.startsWith('watch')) throw new UsageError(`${flag} is for watch only`);
     if ((flag === '--start' || flag === '--stop') && cmd !== 'watch') throw new UsageError(`${flag} is for watch only`);
     if (flag === '--start') { o.start = true; continue; }
@@ -536,6 +537,8 @@ function parseArgs(argv) {
     }
   }
   if (o.force && !(o.cmd === 'watch' && o.stop)) throw new UsageError('--force is for watch --stop only');
+  // here, not in watchCli: an unreadable state would otherwise be moved aside before this was checked
+  if (o.start && o.stop) throw new UsageError('--start and --stop together');
   return o;
 }
 
@@ -690,7 +693,9 @@ function runAttempts(o, checks) {
 function moveAside(file, o) {
   const stamp = (o.now || new Date()).toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '');
   const dest = path.join(path.dirname(file), `foreign-pr-watch.${o.pr}.${stamp}.local.json`);
-  if (fs.existsSync(dest)) throw new QueryError(`${dest} already exists; not overwriting it`);
+  // lstat, not existsSync: existsSync follows a symlink, so a dangling one reads as absent and would be replaced
+  const taken = (() => { try { fs.lstatSync(dest); return true; } catch { return false; } })();
+  if (taken) throw new QueryError(`${dest} already exists; not overwriting it`);
   try { fs.renameSync(file, dest); } catch (e) { throw new QueryError(`could not move ${file} aside: ${e.message}`); }
   return { exit: 0, gate: null, hits: [], watch: { active: false, movedAside: dest } };
 }
@@ -708,7 +713,6 @@ function watchCli(o) {
     throw e;
   }
   if (!s && !o.start) throw new QueryError(`not-started: no watch state at ${file}; start one with watch --start`);
-  if (o.start && o.stop) throw new UsageError('--start and --stop together');
   if (o.stop) {
     s.active = false;
     saveState(file, s);
