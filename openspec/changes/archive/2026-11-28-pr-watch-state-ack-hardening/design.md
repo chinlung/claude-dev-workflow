@@ -26,7 +26,7 @@ pr-watch 把一段監看的狀態存在 `<repo>/.claude/pr-watch.<pr>.local.json
 
 ## Approaches
 
-Phase 1 已定案，這裡只留紀錄：
+考慮過的做法：
 
 | 方案 | 取捨 | 結論 |
 |---|---|---|
@@ -52,7 +52,7 @@ foreign-state: state <file>: <why>; upgrade the plugin, or run `watch --stop --f
 
 ### D2：`--force` 是 `watch --stop` 專用的布林旗標
 
-`parseArgs` 加 `--force`：只允許 `cmd === 'watch'` 且同時有 `--stop`，否則 `UsageError`（exit 7，訊息 `--force is for watch --stop only`）。`ready`、`landed`、`watch-ack`、`watch --start` 都不接受。
+`parseArgs` 加 `--force`：只允許 `cmd === 'watch'` 且同時有 `--stop`，否則 `UsageError`（exit 7，訊息一律是 `--force is for watch --stop only`，不論搭配的是 `ready`、`landed`、`watch-ack` 或 `watch --start`）。`--start` 與 `--stop` 同時出現的互斥檢查（`--start and --stop together`）也在 `parseArgs`：它必須早於讀任何狀態檔，否則讀不懂的狀態檔搭配 `--start --stop --force` 會在互斥檢查之前就被移開。
 
 ### D3：`watchCli` 的 `--stop --force` 路徑
 
@@ -63,7 +63,7 @@ catch (e) { if (o.stop && o.force && e instanceof ForeignStateError) return move
 
 - 狀態檔不存在：`loadState` 回 null，走原本的 `not-started`（沒有東西可移）。
 - 狀態檔讀得懂：`--force` 不起作用，照一般 `--stop`（`active` 設為 false、檔案留在原處、`seen` 保留）。`--force` 只為讀不懂的檔案存在，不能變成「丟掉一份好的狀態」的捷徑。
-- `moveAside(file, o)`：目的地 `path.join(dirname(file), 'foreign-pr-watch.<pr>.<時間>.local.json')`，時間取 `o.now ?? new Date()` 的 ISO 去掉 `-`、`:`、毫秒（例 `20261127T012044Z`）。名稱以 `foreign-` 開頭，所以不符合 hook 的 `pr-watch.*.local.json`；以 `.local.json` 結尾，所以專案既有的 `*.local.json` 忽略規則涵蓋它。目的地已存在就拒絕（`QueryError`），不覆蓋——`renameSync` 在 POSIX 上會無聲覆蓋。`renameSync` 丟出的 I/O 錯誤包成 `QueryError('could not move … aside: …')`，exit 7，不讓例外外洩成堆疊。
+- `moveAside(file, o)`：目的地 `path.join(dirname(file), 'foreign-pr-watch.<pr>.<時間>.local.json')`，時間取 `o.now ?? new Date()` 的 ISO 去掉 `-`、`:`、毫秒（例 `20261127T012044Z`）。名稱以 `foreign-` 開頭，所以不符合 hook 的 `pr-watch.*.local.json`；以 `.local.json` 結尾，所以專案既有的 `*.local.json` 忽略規則涵蓋它。目的地是否已被占用以 `fs.lstatSync` 判斷（懸空的 symlink 也算占用；`existsSync` 會跟隨連結，把懸空連結當成不存在，`renameSync` 就會把它換掉），占用就拒絕（`QueryError`），不覆蓋——`renameSync` 在 POSIX 上會無聲覆蓋。`renameSync` 丟出的 I/O 錯誤包成 `QueryError('could not move … aside: …')`，exit 7，不讓例外外洩成堆疊。
 - 回傳 `{ exit: 0, gate: null, hits: [], watch: { active: false, movedAside: <新路徑> } }`，與正常 `--stop` 的形狀一致（多一個欄位）。
 
 `loadState` 的註解（:539-540「refused, never rebuilt」）改寫成：讀不懂的狀態只有 `watch --stop --force` 能動，而且是移開、不是改寫。
@@ -81,14 +81,14 @@ catch (e) { if (o.stop && o.force && e instanceof ForeignStateError) return move
 3. 不是 JSON（如 `{`、陣列、空檔）加 `--force` → 同樣移開。
 4. `pr` 欄位與檔名不符加 `--force` → 移開。
 5. 讀得懂的狀態加 `--force` → 一般停止：檔案在原處、`active` false、`seen` 不變、輸出無 `movedAside`。
-6. 讀不懂的檔案上 `--start`、一輪 `watch`、`watch-ack` → exit 7、`foreign-state`、檔案位元組不變。
-7. `--force` 搭 `--start`／`ready`／`watch-ack` → exit 7、`UsageError`。
+6. 讀不懂的檔案上 `--start`、一輪 `watch`、`watch-ack` → exit 7、`foreign-state`、檔案位元組不變；拒絕訊息以 `foreign-state:` 開頭，並同時指出 `--stop --force` 與 `upgrade the plugin`。
+7. `--force` 搭 `--start`／`ready`／`landed`／`watch-ack`／沒有 `--stop` 的 `watch` → exit 7、訊息 `--force is for watch --stop only`；`--start --stop --force` 遇到讀不懂的狀態檔 → exit 7、訊息 `--start and --stop together`、檔案不動。
 8. 沒有狀態檔加 `--stop --force` → `not-started`。
-9. 目的地已存在（用 `--now` 固定時間，預先建好同名檔）→ 拒絕、原檔不動。
+9. 目的地已存在（用 `--now` 固定時間，預先建好同名檔；另測目的地是懸空 symlink）→ 拒絕、原檔不動、既有的檔或連結不變。
 10. **接線測試**：用 guard 套件的方式在同一個暫存目錄跑 `pr-watch-guard.sh`：`"active": true` 的讀不懂狀態檔 → guard 擋；`--stop --force` 之後 → guard 放行。這證明「新檔名不被 glob 命中」是 hook 的實際行為，不只是字串斷言。
 11. docs：SKILL 提到 `foreign-state`（用匯出的 `FOREIGN_STATE`）與「不自動加 `--force`」；README 兩個語言版本提到 `--stop --force`。
 
-突變（沿用套件的 red 計數）：拿掉 `instanceof ForeignStateError` 判斷、讓 `--force` 對讀得懂的檔案也移開、移開時覆蓋既有檔、改名不改檔名前綴（讓 glob 命中）——每一個都必須讓上面至少一個測試變紅。
+突變（沿用套件的 red 計數）：`f-class`（拿掉 `instanceof ForeignStateError` 判斷）、`f-overwrite`（移開時不檢查目的地）、`f-prefix`（改名不改檔名前綴，讓 glob 命中）、`f-usage`（拿掉 `parseArgs` 的 `--force` 用法檢查）、`f-usage-cmd`（拿掉 `--force` 對非 `watch` 命令的檢查）、`f-json`（JSON 解析失敗不算 foreign）——每一個都必須讓指定的案例最先變紅。「讀得懂的檔案也被移開」沒有做成永久突變，由「讀得懂的狀態加 `--force` 留在原處」那個案例守住。
 
 ### D6：文件與版本
 
@@ -103,9 +103,9 @@ catch (e) { if (o.stop && o.force && e instanceof ForeignStateError) return move
 - **`--start` 在移開後重新開始**：新的一段不帶舊的 `seen`，已處理過的留言會重新被當成新留言。這是 `--force` 的已知代價，訊息與文件寫明；使用者若要保留，應升級 plugin 而不是強制。
 - 已知限制：時間戳只到秒，同一秒內第二次移開會因目的地已存在而被拒絕（D3）；實務上原檔已被移走，第二次根本找不到要移的檔案。
 
-## Open Questions
+## Minor Decisions
 
-- [default] `--force` 的輸出欄位叫 `watch.movedAside`，值是移開後的路徑（相對於傳入的 `--repo-dir`）：不另設布林。
-- [default] 讀得懂的狀態檔加 `--force` 不報錯、不警告，照一般停止：多一個警告欄位換不到什麼，使用者看輸出沒有 `movedAside` 就知道沒移。
-- [default] 目的地已存在時拒絕而不是加序號：這情況實務上不會發生，序號邏輯是沒人用的分支。
-- [default] 時間戳取 `--now`（有給時）否則現在：沿用 `watch` 既有的測試用時間注入。
+- `--force` 的輸出欄位叫 `watch.movedAside`，值是移開後的路徑（相對於傳入的 `--repo-dir`）：不另設布林。
+- 讀得懂的狀態檔加 `--force` 不報錯、不警告，照一般停止：多一個警告欄位換不到什麼，使用者看輸出沒有 `movedAside` 就知道沒移。
+- 目的地已被占用時拒絕而不是加序號：這情況實務上不會發生，序號邏輯是沒人用的分支。
+- 時間戳取 `--now`（有給時）否則現在：沿用 `watch` 既有的測試用時間注入。

@@ -30,13 +30,16 @@ pr-watch 在 #75 的審查（`scoped-rereview@r7` 的 M-a、`final-review@r3` �
 - `plugins/pr-closeout/scripts/pr-closeout.mjs`（`watchCli` 的 `--stop` 路徑、`loadState` 的錯誤訊息與註解）、`plugins/pr-closeout/tests/`（watch 套件）、`plugins/pr-closeout/skills/pr-watch/SKILL.md`、`plugins/pr-closeout/README.md`、`plugins/pr-closeout/README.zh-TW.md`、`plugins/pr-closeout/CHANGELOG.md`、`plugins/pr-closeout/.claude-plugin/plugin.json`
 - `.claude-plugin/marketplace.json`、根目錄 `CHANGELOG.md`、`CHANGELOG.zh-TW.md`
 - 不碰 `pr-watch-guard.sh`、`hooks.json` 與 code-audit-rigor；第三項（guard 的內容誤擋）本次不做，留在 follow-ups。
-- change 名稱含 `ack-hardening` 是開 change 時 M5 還在範圍內，M5 撤出後名稱不改，歸檔後以目錄名查也不影響。
+- change 名稱中的 `ack` 對應 M5（不做，見 Why），名稱保留，才對得上 #75 留下的 follow-ups 與帳本紀錄。
 
 ## Decisions
 
-- [default] M5 不做（使用者 2026-11-27 裁定）：理由見 Why，關成 won't-fix 寫進 follow-ups。
-- [default] 讀不懂的狀態檔要 `--stop --force` 才停（使用者 2026-11-27 裁定），一般 `--stop` 仍拒絕，SKILL 不自動加 `--force`：避免舊版 session 無聲停掉另一個 session 用較新版本進行中的監看。
-- [default] `--force` 用改名移開狀態檔，不改寫內容：改寫只改最上層 `active`，未來格式若在別處也有 `"active": true`，hook（整份檔案比對文字）仍會擋；parse 再 stringify 也做不到位元組不變（超過 2^53 的整數失精度、重複 key 合併）。改名後 hook 的 glob 不再命中，原檔完整留著供新版或人工讀回。
-- [default] `--force` 不檢查檔案內的 `pr` 欄位：路徑本身以 PR 號碼命名，`--force` 只認路徑。
-- [default] 只有 `--stop` 有 `--force`；`watch --start`、一輪 `watch`、`watch-ack` 遇到讀不懂的檔案照舊拒絕、不重建（`pr-closeout.mjs:539-540` 的「refused, never rebuilt」對它們仍成立，註解改寫成涵蓋 `--force` 的例外）。
-- [default] 版本號：pr-closeout 1.3.0 → 1.4.0（`--force` 是新旗標）；marketplace 1.24.0 → 1.25.0。
+- M5 不做（使用者 2026-11-27 裁定）：理由見 Why，關成 won't-fix 寫進 follow-ups。
+- 讀不懂的狀態檔要 `watch --stop --force` 才停（使用者 2026-11-27 裁定），一般 `--stop` 仍拒絕，pr-watch SKILL 不自動加 `--force`：避免舊版 session 無聲停掉另一個 session 用較新版本進行中的監看。
+- `--force` 用改名移開狀態檔，不改寫內容：改寫只改最上層 `active`，未來格式若在別處也有 `"active": true`，hook（整份檔案比對文字）仍會擋；parse 再 stringify 也做不到位元組不變（超過 2^53 的整數失精度、重複 key 合併）。改名後 hook 的 glob 不再命中，原檔完整留著供新版或人工讀回。
+- 目的地已被占用（含懸空 symlink）時拒絕，不加序號、不覆蓋。
+- `--force` 不檢查檔案內的 `pr` 欄位：路徑本身以 PR 號碼命名，`--force` 只認路徑。
+- 只有 `watch --stop` 接受 `--force`，其他命令一律拒絕並給同一句訊息；`--start` 與 `--stop` 同時出現的互斥檢查在讀任何狀態檔之前。
+- `--force` 對讀得懂的狀態檔只是一般停止，不移動檔案。
+- `watch --start`、一輪 `watch`、`watch-ack` 遇到讀不懂的檔案照舊拒絕、不重建。
+- 版本號：pr-closeout 1.3.0 → 1.4.0（`--force` 是新旗標）；marketplace 1.24.0 → 1.25.0。

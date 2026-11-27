@@ -18,5 +18,5 @@
 - [CODE] N - 拒絕訊息只做子字串比對：補「以 `foreign-state:` 開頭」與「upgrade the plugin」兩個斷言
 - [DESIGN] Y - D5 的突變清單與實際不符：沒有「讀得懂也移開」那個永久突變（由 `[readable state: stays in place]` 守住、審查者的同型突變被殺），實際為 f-class、f-overwrite、f-prefix、f-usage、f-usage-cmd、f-json；`--start`／`--stop` 互斥改在 parseArgs 檢查也寫進 D2/D3
 
-## Round 2 - Codex cross-vendor (2026-11-27)
+## Round 2 - Codex cross-vendor (2026-11-27, final)
 - [CODE] N - P2：`--start --stop --force` 遇到讀不懂的狀態檔時繞過互斥檢查而移開檔案（與 Round 1 第 2 條相同，已修）
