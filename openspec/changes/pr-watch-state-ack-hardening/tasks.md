@@ -31,7 +31,7 @@
 ## 1. Script
 
 ### Task 1: Unreadable state files are refused as `foreign-state`
-- [ ] 1.1 `loadState` raises `ForeignStateError` with a `foreign-state:` message for every unreadable state, and `watch`, `watch --start`, `watch --stop`, `watch-ack` refuse it with exit 7 and the file untouched.
+- [x] 1.1 `loadState` raises `ForeignStateError` with a `foreign-state:` message for every unreadable state, and `watch`, `watch --start`, `watch --stop`, `watch-ack` refuse it with exit 7 and the file untouched.
 
 **Files:**
 - Modify: `plugins/pr-closeout/scripts/pr-closeout.mjs` (`loadState`, :539-555; add the class and helper next to `QueryError`, :36)
