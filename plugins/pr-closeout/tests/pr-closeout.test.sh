@@ -676,7 +676,65 @@ foreign_case "version 2: --start" watch example/repo 1 --repo-dir "$W7" --fixtur
 foreign_case "version 2: a round" watch example/repo 1 --repo-dir "$W7" --fixture "$FX5" --now 2026-11-25T00:40:00Z
 foreign_case "version 2: watch-ack" watch-ack example/repo 1 --repo-dir "$W7" --comment "issues/comments:1:0123456789abcdef"
 
-# ── summary and mutants──────────────────────────────────────────────────────────────────────────
+# `watch --stop --force` moves such a file aside, in the same directory, under a name the guard's glob misses
+NOW7=2026-11-25T00:40:00Z; MOVED7="$W7/.claude/foreign-pr-watch.1.20261125T004000Z.local.json"
+force() { run_cli "$1" "$2" watch example/repo 1 --repo-dir "$W7" --now "$NOW7" --stop --force; }   # <want exit> <label>
+moved_case() {   # <label> <state text>: moved aside, bytes kept, reported
+  local label=$1; alien "$2"; rm -f "$MOVED7"
+  force 0 "$label"
+  if [ -f "$MOVED7" ]; then ok; else failed "[moved name: foreign-pr-watch.1.20261125T004000Z.local.json missing for $label] $(ls "$W7/.claude" | tr '\n' ' ')"; fi
+  if [ ! -e "$ST7" ] && cmp -s "$MOVED7" "$tmp/st7"; then ok; else failed "[$label: original gone, copy identical]"; fi
+  jqeq "$label: reports it" '.watch.movedAside' "\"${MOVED7//\/\//\/}\"" # path.join collapses the // that a TMPDIR ending in / leaves
+  jqeq "$label: inactive" '.watch.active' 'false'
+  rm -f "$MOVED7"
+}
+moved_case "--force moves a version 2 state aside" "$V2"
+moved_case "not JSON: moved aside" '{'
+moved_case "empty file: moved aside" ''
+moved_case "other PR: moved aside" "$OTHER_PR"
+rm -rf "$ST7"; mkdir "$ST7"; rm -rf "$MOVED7"
+force 0 "a directory: moved aside"
+if [ -d "$MOVED7" ] && [ ! -e "$ST7" ]; then ok; else failed "[a directory: moved aside, original gone]"; fi
+rm -rf "$MOVED7"
+b7=$(basename "$MOVED7")
+if [[ $b7 == pr-watch.*.local.json ]]; then failed "[moved name: inside the guard's glob]"; else ok; fi
+if [[ $b7 == *.local.json ]]; then ok; else failed "[moved name: outside *.local.json]"; fi
+# a state this script can read is only stopped: it stays, and what was seen stays
+alien '{"version":1,"pr":1,"active":true,"startedAt":"2026-11-25T00:00:00Z","round":3,"seen":["issues/comments:1:0123456789abcdef"],"headSeen":{},"noProgressRounds":0,"unchangedRounds":0,"queryFailures":0}'
+force 0 "readable state: --force is a plain stop"
+if [ -f "$ST7" ] && [ ! -e "$MOVED7" ]; then ok; else failed "[readable state: stays in place]"; fi
+if [ "$(jq -c '[.active, .seen]' "$ST7")" = '[false,["issues/comments:1:0123456789abcdef"]]' ]; then ok; else failed "[readable state: stopped, seen kept] $(cat "$ST7")"; fi
+jqeq "readable state: nothing moved" '.watch.movedAside // "none"' '"none"'
+# --force belongs to watch --stop alone (a readable state, so a wrongly accepted flag would show)
+alien '{"version":1,"pr":1,"active":true,"startedAt":"2026-11-25T00:00:00Z","round":3,"seen":[],"headSeen":{},"noProgressRounds":0,"unchangedRounds":0,"queryFailures":0}'
+run_cli 7 "--force with watch-ack" watch-ack example/repo 1 --repo-dir "$W7" --force --comment "issues/comments:1:0123456789abcdef"
+has "--force with watch-ack: says so" "$(jq -r '.hits[0].detail' "$tmp/out.json")" "--force is for watch --stop only"
+if cmp -s "$ST7" "$tmp/st7"; then ok; else failed "[--force with watch-ack: state untouched] changed"; fi
+run_cli 7 "--force with ready" ready example/repo 1 --fixture "$BASE" --force
+run_cli 7 "--force without --stop" watch example/repo 1 --repo-dir "$W7" --fixture "$FX5" --now "$NOW7" --force
+has "--force without --stop: says so" "$(jq -r '.hits[0].detail' "$tmp/out.json")" "--force is for watch --stop only"
+# the destination is never overwritten
+alien "$V2"; printf 'taken' > "$MOVED7"
+force 7 "dest exists: refused"
+if cmp -s "$ST7" "$tmp/st7" && [ "$(cat "$MOVED7")" = taken ]; then ok; else failed "[dest exists: nothing changed]"; fi
+rm -f "$MOVED7"
+# nothing to move
+rm -rf "$ST7"
+force 7 "no state file: --force"
+has "no state file: --force: not-started" "$(jq -r '.hits[0].detail' "$tmp/out.json")" "not-started"
+# the real guard: it blocks on the foreign state, and lets go once --force has moved it
+G7() {
+  local out rc
+  out=$(jq -cn --arg c 'gh pr comment 1 -b x' '{hook_event_name:"PreToolUse",tool_name:"Bash",tool_input:{command:$c}}' | CLAUDE_PROJECT_DIR="$W7" bash "$here/../hooks/pr-watch-guard.sh" 2>/dev/null); rc=$?
+  if [ "$rc" = 2 ] || [ "$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)" = deny ]; then echo deny; else echo allow; fi
+}
+alien "$V2"; rm -f "$MOVED7"
+if [ "$(G7)" = deny ]; then ok; else failed "[guard: blocks before --force]"; fi
+force 0 "guard wiring: --force"
+if [ "$(G7)" = allow ]; then ok; else failed "[guard: allows after --force]"; fi
+rm -f "$MOVED7"
+
+# ── summary and mutants ──────────────────────────────────────────────────────────────────────────
 MIN_PASS=300
 if [ "$pass" -lt "$MIN_PASS" ] && [ "${STOP_ON_FAIL:-0}" != 1 ]; then failed "only $pass checks passed, expected at least $MIN_PASS"; fi
 echo "pr-closeout: $pass passed, $fail failed"
@@ -770,8 +828,14 @@ if [ "${NO_MUTANTS:-0}" != 1 ]; then
   mutant w-start-stop  "[watch --start --stop]"            "s/  if \(o\.start && o\.stop\) throw/  if (false) throw/"
   mutant w-req-window  "[missing required after the window: settled]" "s/w\.round - s\.headSeen\[verdict\.head\] < REQUIRED_MISSING_ROUNDS && //"
   mutant w-keys        "[a new comment is not no-progress]" "s/\[\.\.\.w\.newComments\]\.sort\(\)\]/w.newComments.length]/"
+  # an unreadable state: refused as foreign-state, moved aside only by watch --stop --force
+  mutant f-class       "[--force moves a version 2 state aside]" "s/e instanceof ForeignStateError/false/"
+  mutant f-overwrite   "[dest exists: refused]"            "s/if \(fs\.existsSync\(dest\)\) throw/if (false) throw/"
+  mutant f-prefix      "[moved name: foreign-pr-watch"     "s/foreign-pr-watch\./pr-watch.foreign./"
+  mutant f-usage       "[--force with watch-ack]"          "s/if \(o\.force && !\(o\.cmd === 'watch' && o\.stop\)\) throw/if (false) throw/"
+  mutant f-json        "[not JSON: says foreign-state]"    "s/throw foreign\(file, 'not JSON'\)/throw new QueryError('x')/"
   mutants_judged
-  MUT_WANT_N=55
+  MUT_WANT_N=60
   if [ "$mut_n" != "$MUT_WANT_N" ]; then echo "FAIL: $mut_n of $MUT_WANT_N mutants ran"; mut_bad=1; fi
   [ "$mut_bad" = 0 ] || fail=$((fail + 1))
 fi

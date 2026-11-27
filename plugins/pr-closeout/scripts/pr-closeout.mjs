@@ -5,7 +5,7 @@
 //   ready  <owner/repo> <pr> [--expect-head <sha>] [--repo-dir <path>] [--fixture <dir>]
 //          [--accept-unreviewed <path>=<reason>]...
 //   landed <owner/repo> <pr> --expect-head <sha> --repo-dir <path> [--branch <name>] [--fixture <dir>]
-//   watch  <owner/repo> <pr> --repo-dir <path> [--start | --stop] [--fixture <dir>]
+//   watch  <owner/repo> <pr> --repo-dir <path> [--start | --stop [--force]] [--fixture <dir>]
 //   watch-ack <owner/repo> <pr> --repo-dir <path> --comment <key>...
 //
 // stdout is one JSON object; the exit code is the verdict:
@@ -30,7 +30,7 @@ import path from 'node:path';
 const USAGE = `Usage:
   pr-closeout.mjs ready  <owner/repo> <pr> [--expect-head <sha>] [--repo-dir <path>] [--fixture <dir>] [--accept-unreviewed <path>=<reason>]...
   pr-closeout.mjs landed <owner/repo> <pr> --expect-head <sha> --repo-dir <path> [--branch <name>] [--fixture <dir>]
-  pr-closeout.mjs watch  <owner/repo> <pr> --repo-dir <path> [--start | --stop]
+  pr-closeout.mjs watch  <owner/repo> <pr> --repo-dir <path> [--start | --stop [--force]]
   pr-closeout.mjs watch-ack <owner/repo> <pr> --repo-dir <path> --comment <key>...`;
 
 export class QueryError extends Error {}
@@ -502,8 +502,8 @@ function parseArgs(argv) {
   const m = /^([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)$/.exec(slug || '');
   if (!m) throw new UsageError('<owner/repo> expected');
   if (!/^[1-9][0-9]*$/.test(prArg || '')) throw new UsageError('<pr> must be a number');
-  const o = { cmd, owner: m[1], repo: m[2], pr: Number(prArg), accept: [], comments: [], start: false, stop: false };
-  const watchFlags = ['--start', '--stop', '--now', '--comment'];
+  const o = { cmd, owner: m[1], repo: m[2], pr: Number(prArg), accept: [], comments: [], start: false, stop: false, force: false };
+  const watchFlags = ['--start', '--stop', '--force', '--now', '--comment'];
   for (let i = 0; i < rest.length; i++) {
     const flag = rest[i];
     const val = rest[i + 1];
@@ -512,6 +512,7 @@ function parseArgs(argv) {
     if ((flag === '--start' || flag === '--stop') && cmd !== 'watch') throw new UsageError(`${flag} is for watch only`);
     if (flag === '--start') { o.start = true; continue; }
     if (flag === '--stop') { o.stop = true; continue; }
+    if (flag === '--force') { o.force = true; continue; }
     if (val === undefined) throw new UsageError(`${flag} needs a value`);
     i++;
     if (flag === '--now') {
@@ -534,6 +535,7 @@ function parseArgs(argv) {
       o.accept.push({ path: p, reason });
     }
   }
+  if (o.force && !(o.cmd === 'watch' && o.stop)) throw new UsageError('--force is for watch --stop only');
   return o;
 }
 
@@ -682,6 +684,17 @@ function runAttempts(o, checks) {
   return out;
 }
 
+// `watch --stop --force` on a state this script cannot read: the file moves to a name the guard hook's glob
+// (pr-watch.*.local.json) misses and the usual *.local.json ignore rule still covers. Its bytes stay as they
+// were, so a newer version, or the user, can still read it; nothing is rewritten and nothing is overwritten.
+function moveAside(file, o) {
+  const stamp = (o.now || new Date()).toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '');
+  const dest = path.join(path.dirname(file), `foreign-pr-watch.${o.pr}.${stamp}.local.json`);
+  if (fs.existsSync(dest)) throw new QueryError(`${dest} already exists; not overwriting it`);
+  try { fs.renameSync(file, dest); } catch (e) { throw new QueryError(`could not move ${file} aside: ${e.message}`); }
+  return { exit: 0, gate: null, hits: [], watch: { active: false, movedAside: dest } };
+}
+
 // One round of `watch`: read the state (or start one), ask GitHub and the clone, judge, write. Every
 // refusal before the judgement (not started, too soon, wrong branch, a state it did not write) is
 // exit 7 with the state file untouched.
@@ -689,7 +702,11 @@ function watchCli(o) {
   if (!o.repoDir) throw new UsageError('watch needs --repo-dir');
   const now = o.now || new Date();
   const file = statePath(o.repoDir, o.pr);
-  let s = loadState(file, o.pr);
+  let s;
+  try { s = loadState(file, o.pr); } catch (e) {
+    if (o.stop && o.force && e instanceof ForeignStateError) return moveAside(file, o);
+    throw e;
+  }
   if (!s && !o.start) throw new QueryError(`not-started: no watch state at ${file}; start one with watch --start`);
   if (o.start && o.stop) throw new UsageError('--start and --stop together');
   if (o.stop) {
