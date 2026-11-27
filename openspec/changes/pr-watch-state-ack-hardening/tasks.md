@@ -85,7 +85,7 @@
 5. Commit: `git add plugins/pr-closeout/skills/pr-watch/SKILL.md plugins/pr-closeout/tests/pr-watch-docs.test.sh && git commit --no-gpg-sign -m "pr-watch skill: foreign-state is reported to the user, --force is never added by the skill"`.
 
 ### Task 4: READMEs, changelogs, versions, full verification
-- [ ] 2.2 Docs and versions say 1.4.0 / 1.25.0 and every suite plus `openspec validate` is green.
+- [x] 2.2 Docs and versions say 1.4.0 / 1.25.0 and every suite plus `openspec validate` is green.
 
 **Files:**
 - Modify: `plugins/pr-closeout/README.md` and `README.zh-TW.md` (the `watch` bullet, :108), `plugins/pr-closeout/CHANGELOG.md`, `plugins/pr-closeout/.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, `CHANGELOG.md`, `CHANGELOG.zh-TW.md`
