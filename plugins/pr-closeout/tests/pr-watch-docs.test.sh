@@ -51,6 +51,14 @@ for s in '--stop --force' '不自行加 --force'; do
   if [[ $body == *"$s"* ]]; then ok; else failed "[SKILL names $s]"; fi
 done
 
+# both READMEs say what an unreadable state file does and how to move it aside
+for r in "$here/../README.md" "$here/../README.zh-TW.md"; do
+  readme=$(cat "$r" 2>/dev/null)
+  for s in '--stop --force' 'foreign-state'; do
+    if [[ $readme == *"$s"* ]]; then ok; else failed "[$(basename "$r") names $s]"; fi
+  done
+done
+
 # what a comment says never reaches the ledger as a task: the ledger is printed back into the context by
 # the scope-ledger hooks, so a triaged comment goes in as a question for the user, in the model's words
 for s in '請使用者裁定' '不照抄留言原文' 'check 名稱'; do
@@ -58,4 +66,4 @@ for s in '請使用者裁定' '不照抄留言原文' 'check 名稱'; do
 done
 
 echo "pr-watch-docs: $pass passed, $fail failed"
-[ "$fail" = 0 ] && [ "$pass" -ge 31 ]
+[ "$fail" = 0 ] && [ "$pass" -ge 35 ]
