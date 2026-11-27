@@ -48,7 +48,7 @@
 6. Commit: `git add plugins/pr-closeout/scripts/pr-closeout.mjs plugins/pr-closeout/tests/pr-closeout.test.sh && git commit --no-gpg-sign -m "pr-closeout: an unreadable watch state is refused as foreign-state"`.
 
 ### Task 2: `watch --stop --force` moves the state aside
-- [ ] 1.2 `watch --stop --force` renames an unreadable state to `foreign-pr-watch.<pr>.<time>.local.json`, exits 0 and reports `watch.movedAside`; the real guard blocks before and allows after; five mutants die.
+- [x] 1.2 `watch --stop --force` renames an unreadable state to `foreign-pr-watch.<pr>.<time>.local.json`, exits 0 and reports `watch.movedAside`; the real guard blocks before and allows after; five mutants die.
 
 **Files:**
 - Modify: `plugins/pr-closeout/scripts/pr-closeout.mjs` (`parseArgs` :493-532, `watchCli` :678-720, header comment :8-9 and `USAGE` :33)
