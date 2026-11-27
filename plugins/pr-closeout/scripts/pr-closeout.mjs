@@ -35,6 +35,12 @@ const USAGE = `Usage:
 
 export class QueryError extends Error {}
 class UsageError extends Error {}
+// A watch state this script cannot read (another version wrote it, it is damaged, or it is not a file).
+// The message starts with FOREIGN_STATE so the pr-watch skill can tell it from the other exit-7 refusals.
+export const FOREIGN_STATE = 'foreign-state';
+export class ForeignStateError extends QueryError {}
+const foreign = (file, why) => new ForeignStateError(
+  `${FOREIGN_STATE}: state ${file}: ${why}; upgrade the plugin, or run watch --stop --force to move it aside`);
 
 const PAGE = 100;
 const GQL = `query($owner:String!,$name:String!,$n:Int!){repository(owner:$owner,name:$name){pullRequest(number:$n){
@@ -537,11 +543,15 @@ export const STATE_VERSION = 1;
 export const statePath = (repoDir, pr) => path.join(repoDir, '.claude', `pr-watch.${pr}.local.json`);
 
 // The state of a PR's watch, null when there is none yet. Anything else that is not a state this
-// version wrote is refused, never rebuilt: a rebuilt state forgets which comments were handled.
+// version wrote is refused as a ForeignStateError, never rebuilt: a rebuilt state forgets which comments
+// were handled. Only `watch --stop --force` may touch such a file, and it moves it aside, never rewrites it.
 export function loadState(file, pr) {
   if (!fs.existsSync(file)) return null;
-  const s = parse(fs.readFileSync(file, 'utf8'), `state ${file}`);
-  const bad = (why) => new QueryError(`state ${file}: ${why}`);
+  let text;
+  try { text = fs.readFileSync(file, 'utf8'); } catch (e) { throw foreign(file, `unreadable: ${e.code}`); }
+  let s;
+  try { s = JSON.parse(text); } catch { throw foreign(file, 'not JSON'); }
+  const bad = (why) => foreign(file, why);
   if (!s || typeof s !== 'object' || Array.isArray(s)) throw bad('not an object');
   if (s.version !== STATE_VERSION) throw bad(`version ${JSON.stringify(s.version)}, this script writes ${STATE_VERSION}`);
   if (s.pr !== pr) throw bad(`it is the state of PR ${JSON.stringify(s.pr)}, not ${pr}`);

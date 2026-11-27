@@ -645,7 +645,38 @@ printf '*.local.json\n' > "$R5/.gitignore"
 wcli 0 "ignored state" 2026-11-25T00:35:00Z --start
 jqeq "stateIgnored: ignored" '.watch.stateIgnored' 'true'
 
-# ── summary and mutants ──────────────────────────────────────────────────────────────────────────
+# ── pr-watch-state-ack-hardening: a state file this script cannot read ───────────────────────────
+# Anything loadState cannot accept is refused as `foreign-state:` (exit 7) with the file untouched;
+# only `watch --stop --force` may move it (below). The directory case is a path the script cannot read.
+W7="$tmp/w7"; rm -rf "$W7"; mkdir -p "$W7/.claude"; ST7="$W7/.claude/pr-watch.1.local.json"
+alien() { rm -rf "$ST7"; printf '%s' "$1" > "$ST7"; cp "$ST7" "$tmp/st7"; }   # a state the script must neither read nor touch
+V2='{"version":2,"pr":1,"active":true,"seen":[]}'
+OTHER_PR='{"version":1,"pr":2,"active":true,"startedAt":"2026-11-25T00:00:00Z","round":0,"seen":[],"headSeen":{},"noProgressRounds":0,"unchangedRounds":0,"queryFailures":0}'
+for v in "version 2|$V2" 'not JSON|{' 'empty file|' 'whitespace|  ' 'null|null' 'array|[]' "other PR|$OTHER_PR"; do
+  name=${v%%|*}; alien "${v#*|}"
+  run_cli 7 "$name: --stop" watch example/repo 1 --repo-dir "$W7" --stop
+  d=$(jq -r '.hits[0].detail' "$tmp/out.json")
+  has "$name: says foreign-state" "$d" "foreign-state:"
+  has "$name: names --force" "$d" "--stop --force"
+  if cmp -s "$ST7" "$tmp/st7"; then ok; else failed "[$name: refused, file untouched] changed"; fi
+done
+rm -rf "$ST7"; mkdir "$ST7"
+run_cli 7 "a directory: --stop" watch example/repo 1 --repo-dir "$W7" --stop
+has "a directory: says foreign-state" "$(jq -r '.hits[0].detail' "$tmp/out.json")" "foreign-state:"
+if [ -d "$ST7" ]; then ok; else failed "[a directory: left alone]"; fi
+rm -rf "$ST7"
+foreign_case() {   # <label> <args…>: refused as foreign-state, the file as it was
+  local label=$1; shift
+  run_cli 7 "$label" "$@"
+  has "$label: says foreign-state" "$(jq -r '.hits[0].detail' "$tmp/out.json")" "foreign-state:"
+  if cmp -s "$ST7" "$tmp/st7"; then ok; else failed "[$label: file untouched] changed"; fi
+}
+alien "$V2"
+foreign_case "version 2: --start" watch example/repo 1 --repo-dir "$W7" --fixture "$FX5" --start
+foreign_case "version 2: a round" watch example/repo 1 --repo-dir "$W7" --fixture "$FX5" --now 2026-11-25T00:40:00Z
+foreign_case "version 2: watch-ack" watch-ack example/repo 1 --repo-dir "$W7" --comment "issues/comments:1:0123456789abcdef"
+
+# ── summary and mutants──────────────────────────────────────────────────────────────────────────
 MIN_PASS=300
 if [ "$pass" -lt "$MIN_PASS" ] && [ "${STOP_ON_FAIL:-0}" != 1 ]; then failed "only $pass checks passed, expected at least $MIN_PASS"; fi
 echo "pr-closeout: $pass passed, $fail failed"
